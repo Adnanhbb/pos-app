@@ -1,13 +1,9 @@
 // src/brands.tsx
 import React, { useEffect, useState } from "react";
 import { FaPlus, FaEdit, FaTrash } from "react-icons/fa";
-import {
-  getBrands,
-  addBrand,
-  updateBrand,
-  deleteBrand,
-  Brand,
-} from "./db";
+// ✅ Add
+import { indexedDbBrandRepository as brandsRepo } from "./repositories/brandsRepository";
+import {Brand} from "./db";
 
 export default function BrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -19,7 +15,7 @@ export default function BrandsPage() {
         LOAD BRANDS
      =========================== */
   async function loadBrands() {
-    const data = await getBrands();
+    const data = await brandsRepo.getAll();
     setBrands(data);
   }
 
@@ -65,13 +61,13 @@ export default function BrandsPage() {
 
     if (editingBrand) {
       // UPDATE
-      await updateBrand({
+      await brandsRepo.update({
         ...editingBrand,
         name: newBrand.trim(),
       });
     } else {
       // CREATE
-      await addBrand({
+      await brandsRepo.add({
         name: newBrand.trim(),
         itemCount: 0,
       });
@@ -89,7 +85,7 @@ export default function BrandsPage() {
 
     if (!confirm("Delete this brand?")) return;
 
-    await deleteBrand(id);
+    await brandsRepo.delete(id);
     await loadBrands();
   }
 

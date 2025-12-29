@@ -1,7 +1,9 @@
 // src/Categories.tsx
 import React, { useEffect, useState } from "react";
 import { FaPlus, FaEdit, FaTrash } from "react-icons/fa";
-import { getAllCategories, addCategory, updateCategory, deleteCategory, Category } from "./db";
+// ✅ Add
+import { indexedDbCategoryRepository as categoriesRepo } from "./repositories/categoriesRepository";
+import { Category } from "db";
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -11,7 +13,7 @@ export default function CategoriesPage() {
 
   // Load categories
   async function loadCategories() {
-    const data = await getAllCategories();
+    const data = await categoriesRepo.getAll();
     setCategories(data);
   }
 
@@ -42,9 +44,9 @@ export default function CategoriesPage() {
     if (!newCategory.trim()) return alert("Category Name is required");
 
     if (editingCategory) {
-      await updateCategory({ ...editingCategory, name: newCategory.trim() });
+      await categoriesRepo.update({ ...editingCategory, name: newCategory.trim() });
     } else {
-      await addCategory({ name: newCategory.trim(), itemCount: 0 });
+      await categoriesRepo.add({ name: newCategory.trim(), itemCount: 0 });
     }
     await loadCategories();
     closeForm();
@@ -53,7 +55,7 @@ export default function CategoriesPage() {
   async function handleDelete(id?: number) {
     if (!id) return;
     if (!confirm("Delete this category?")) return;
-    await deleteCategory(id);
+    await categoriesRepo.delete(id);
     await loadCategories();
   }
 
