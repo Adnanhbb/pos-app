@@ -1,5 +1,4 @@
-import { Supplier } from "../db"; // domain model
-import * as db from "../db";       // direct IndexedDB access
+import { Supplier, CustomerPayment, SupplierPayment } from "../db";
 
 export interface SupplierRepository {
   getAll(): Promise<Supplier[]>;
@@ -7,12 +6,9 @@ export interface SupplierRepository {
   add(supplier: Omit<Supplier, "id">): Promise<number>;
   update(supplier: Supplier): Promise<void>;
   delete(id: number): Promise<void>;
+  search(query: string): Promise<Supplier[]>;
+  // Optional: add payment functions if POS needs them
+  addPayment(supplierId: number, amount: number, paymentDate: string, remarks?: string, payableSnapshot?: number): Promise<void>;
+  getPaymentsBySupplier(supplierId: number): Promise<SupplierPayment[]>;
+  deletePayment(id: number): Promise<void>;
 }
-
-export const indexedDbSupplierRepository: SupplierRepository = {
-  getAll: () => db.getAllSuppliers(),
-  getPaged: (page, pageSize, query) => db.getSuppliersPaged(page, pageSize, query ?? null),
-  add: (supplier) => db.addSupplier(supplier),
-  update: (supplier) => db.updateSupplier(supplier),
-  delete: (id) => db.deleteSupplier(id),
-};

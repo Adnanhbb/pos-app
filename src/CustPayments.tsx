@@ -1,13 +1,7 @@
 import React, { useEffect, useState } from "react";
-import {
-  getAllCustomers,
-  Customer,
-  getAllCustomerPayments,
-  addCustomerPayment,
-  updateCustomerPayment,
-  deleteCustomerPayment,
-  CustomerPayment,
-} from "./db";
+import { indexedDbCustomerPaymentRepository as customerPaymentsRepo } from "./repositories/indexedDbCustomerPaymentRepository";
+import { indexedDbCustomerRepository as customerRepo } from "./repositories/indexedDbCustomerRepository";
+import {CustomerPayment,Customer} from "./db";
 
 import {
   FaPlus,
@@ -55,12 +49,12 @@ export default function CustPayments() {
   }, [page, query]);
 
   async function loadCustomers() {
-    const all = await getAllCustomers();
+    const all = await customerRepo.getAll();
     setCustomers(all);
   }
 
   async function loadPage() {
-    let data = await getAllCustomerPayments();
+    let data = await customerPaymentsRepo.getAll();
 
     if (query.trim()) {
       const q = query.toLowerCase();
@@ -107,7 +101,7 @@ export default function CustPayments() {
     if (form.amount <= 0) return alert("Enter valid amount");
 
     if (editingPayment) {
-      await updateCustomerPayment(
+      await customerPaymentsRepo.update(
         editingPayment.id!,
         form.customerId,
         form.amount,
@@ -116,7 +110,7 @@ export default function CustPayments() {
         form.payableSnapshot
       );
     } else {
-      await addCustomerPayment(
+      await customerPaymentsRepo.add(
         form.customerId,
         form.amount,
         form.paymentDate,
@@ -132,7 +126,7 @@ export default function CustPayments() {
 
   async function handleDelete(id: number) {
     if (!confirm("Delete this payment?")) return;
-    await deleteCustomerPayment(id);
+    await customerPaymentsRepo.delete(id);
     await loadPage();
     await loadCustomers();
   }
