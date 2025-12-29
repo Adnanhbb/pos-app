@@ -1,13 +1,8 @@
 // src/Suppliers.tsx
 import React, { useEffect, useState } from "react";
-import {
-  getAllSuppliers,
-  getSuppliersPaged,
-  addSupplier,
-  updateSupplier,
-  deleteSupplier,
-  Supplier,
-} from "./db";
+// ✅ Add
+import { indexedDbSupplierRepository as suppliersRepo } from "./repositories/suppliersRepository";
+import {Supplier} from "./db";
 
 import {
   FaPlus,
@@ -62,7 +57,7 @@ export default function Suppliers() {
 
   /** Load paged & filtered suppliers */
   async function loadPage() {
-    let allData = await getAllSuppliers();
+    let allData = await suppliersRepo.getAll();
 
     // Search filter
     if (query?.trim()) {
@@ -94,7 +89,7 @@ export default function Suppliers() {
 
   /** Load summary totals (based on showDueOnly toggle) */
   async function loadSummary() {
-    let all = await getAllSuppliers();
+    let all = await suppliersRepo.getAll();
 
     if (showDueOnly) {
       all = all.filter((c) => (c.balance ?? ((c.payable ?? 0) - (c.paid ?? 0))) > 0);
@@ -143,7 +138,7 @@ async function handleSave() {
   const payableNum = Number(form.payable) || 0;
 
   // Fetch all suppliers to check for duplicates
-  const allSuppliers = await getAllSuppliers(); // make sure this function exists
+  const allSuppliers = await suppliersRepo.getAll(); // make sure this function exists
   const nameExists = allSuppliers.some(
     (s) =>
       s.name.trim().toLowerCase() === form.name.trim().toLowerCase() &&
@@ -166,7 +161,7 @@ async function handleSave() {
       // Recalculate balance if needed
       balance: payableNum - ((editingSupplier.paid ?? 0)),
     };
-    await updateSupplier(updatedSupplier);
+    await suppliersRepo.update(updatedSupplier);
   } else {
     // Adding new supplier
     const newSupplier = {
@@ -178,7 +173,7 @@ async function handleSave() {
       paid: 0,
       balance: payableNum, // initial balance = payable
     };
-    await addSupplier(newSupplier);
+    await suppliersRepo.add(newSupplier);
   }
 
   await loadPage(); // reload supplier table
@@ -189,7 +184,7 @@ async function handleSave() {
     if (!id) return;
     if (!confirm("Delete this supplier?")) return;
 
-    await deleteSupplier(id);
+    await suppliersRepo.delete(id);
 
     const newTotal = Math.max(0, total - 1);
     const newPages = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
