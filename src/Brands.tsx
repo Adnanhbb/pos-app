@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { FaPlus, FaEdit, FaTrash } from "react-icons/fa";
 // ✅ Add
-import { indexedDbBrandRepository as brandsRepo } from "./repositories/brandsRepository";
+import { brandsRepository as brandsRepo } from "./repositories/brandsRepository";
 import {Brand} from "./db";
 
 export default function BrandsPage() {
@@ -67,7 +67,7 @@ export default function BrandsPage() {
       });
     } else {
       // CREATE
-      await brandsRepo.add({
+      await brandsRepo.create({
         name: newBrand.trim(),
         itemCount: 0,
       });
@@ -85,7 +85,7 @@ export default function BrandsPage() {
 
     if (!confirm("Delete this brand?")) return;
 
-    await brandsRepo.delete(id);
+    await brandsRepo.remove(id);
     await loadBrands();
   }
 

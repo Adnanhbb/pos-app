@@ -1,16 +1,27 @@
-import { Category } from "../db"; // domain model
-import * as db from "../db";      // IndexedDB access
+import {
+  Category,
+  getAllCategories,
+  addCategory,
+  updateCategory,
+  deleteCategory,
+} from "../db";
 
-export interface CategoryRepository {
-  getAll(): Promise<Category[]>;
-  add(category: Omit<Category, "id">): Promise<number>;
-  update(category: Category): Promise<void>;
-  delete(id: number): Promise<void>;
-}
+export type { Category };
 
-export const indexedDbCategoryRepository: CategoryRepository = {
-  getAll: () => db.getAllCategories(),
-  add: (category) => db.addCategory(category),
-  update: (category) => db.updateCategory(category),
-  delete: (id) => db.deleteCategory(id),
+export const categoriesRepository = {
+  getAll: async (): Promise<Category[]> => {
+    return await getAllCategories();
+  },
+
+  create: async (category: Omit<Category, "id">): Promise<number> => {
+    return await addCategory(category);
+  },
+
+  update: async (category: Category): Promise<void> => {
+    await updateCategory(category);
+  },
+
+  remove: async (id: number): Promise<void> => {
+    await deleteCategory(id);
+  },
 };

@@ -62,7 +62,11 @@ import POS from "./POS";
 
 
 // DB helpers
-import { getAllUsers, updateUser, User, getSettings } from "./db";
+import { authRepository } from "./repositories/authRepository";
+import { settingsRepository } from "./repositories/settingsRepository";
+import { staffRepository } from "./repositories/staffRepository";
+
+import type { User } from "./db";
 
 // Sample Data
 const salesData = [
@@ -96,12 +100,13 @@ export default function Dashboard() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [editUserOpen, setEditUserOpen] = useState(false);
   const [editForm, setEditForm] = useState<Omit<User, "id">>({
-    Name: "",
-    Mobile: "",
-    Role: "admin",
-    Username: "",
-    Password: "",
-  });
+  Name: "",
+  Mobile: "",
+  Role: "admin",
+  Username: "",
+  Password: "",
+});
+
 
   const userMenuRef = useRef<HTMLDivElement>(null);
 
@@ -137,33 +142,29 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    async function loadCurrentUser() {
-      try {
-        const idRaw = localStorage.getItem("loggedInUserId");
-        if (!idRaw) { setCurrentUser(null); return; }
-        const id = parseInt(idRaw, 10);
-        if (isNaN(id)) { setCurrentUser(null); return; }
-        const users = await getAllUsers();
-        const found = users.find((u) => u.id === id) ?? null;
-        setCurrentUser(found);
-      } catch (err) {
-        console.error("Failed to load current user", err);
-        setCurrentUser(null);
-      }
-    }
-    loadCurrentUser();
-  }, []);
+  authRepository
+    .getCurrentUser()
+    .then(setCurrentUser)
+    .catch((err) => {
+      console.error("Failed to load current user", err);
+      setCurrentUser(null);
+    });
+}, []);
 
-  useEffect(() => {
-    async function fetchSettings() {
-      const settings = await getSettings();
-      if (settings) {
-        if (settings.businessName) setBusinessName(settings.businessName);
-        if (settings.logo) setBusinessLogo(settings.logo);
-      }
-    }
-    fetchSettings();
-  }, []);
+
+useEffect(() => {
+  async function loadSettings() {
+    const settings = await settingsRepository.get();
+    if (!settings) return;
+
+    setBusinessName(settings.businessName || "My Business");
+    setBusinessLogo(settings.logo || "/images/logo.png"); // fallback
+  }
+
+  loadSettings();
+}, []);
+
+
 
   const openEditCurrentUser = () => {
     if (!currentUser) { alert("No user is currently signed in."); return; }
@@ -178,21 +179,42 @@ export default function Dashboard() {
     setUserMenuOpen(false);
   };
 
-  const saveEditedUser = async () => {
-    if (!currentUser?.id) { alert("No user to update."); return; }
-    if (!editForm.Name?.trim() || !editForm.Username?.trim()) { alert("Name and Username are required."); return; }
-    try {
-      await updateUser({ id: currentUser.id, ...editForm });
-      const users = await getAllUsers();
-      const updated = users.find((u) => u.id === currentUser.id) ?? null;
-      setCurrentUser(updated);
-      setEditUserOpen(false);
-      alert("User updated.");
-    } catch (err) {
-      console.error(err);
-      alert("Failed to update user.");
-    }
-  };
+const saveEditedUser = async () => {
+  if (!currentUser?.id) {
+    alert("No user to update.");
+    return;
+  }
+
+  if (!editForm.Name?.trim() || !editForm.Username?.trim()) {
+    alert("Name and Username are required.");
+    return;
+  }
+
+  try {
+    const userToUpdate: User = {
+      id: currentUser.id,
+      Name: editForm.Name,
+      Mobile: editForm.Mobile,
+      Role: editForm.Role,
+      Username: editForm.Username,
+      Password: editForm.Password,
+    };
+
+    await staffRepository.update(userToUpdate);
+
+    // Reload the current user ONLY
+    const refreshed = await authRepository.getCurrentUser();
+    setCurrentUser(refreshed);
+
+    setEditUserOpen(false);
+    alert("User updated.");
+  } catch (err) {
+    console.error(err);
+    alert("Failed to update user.");
+  }
+};
+
+
 
   const logout = () => {
     localStorage.removeItem("loggedInUserId");

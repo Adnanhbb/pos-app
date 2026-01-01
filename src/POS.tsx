@@ -3,8 +3,11 @@ import React, { useEffect, useMemo, useState } from "react";
 import { FaBarcode, FaEdit, FaTrash, FaTimes, FaCheck, FaPlus } from "react-icons/fa";
 
 // 🔹 DB INTEGRATION
-import { Item as DBItem, getAllItems, getAllCustomers,addCustomer,getAllCategories,getBrands } from "./db";
-import type { Brand, Category } from "./db";
+import { itemsRepository } from "./repositories/itemsRepository";
+import { customersRepository } from "./repositories/customerRepository";
+import { categoriesRepository } from "./repositories/categoriesRepository";
+import { brandsRepository } from "./repositories/brandsRepository";
+import type { Brand, Category,Item } from "./db";
 
 // =====================
 // Types
@@ -54,7 +57,7 @@ function getNextInvoiceNo(current: string) {
 // =====================
 
 export default function SalesPOS() {
-  const [items, setItems] = useState<DBItem[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [editing, setEditing] = useState<CartItem | null>(null);
   const [search, setSearch] = useState("");
@@ -97,14 +100,14 @@ export default function SalesPOS() {
 
   useEffect(() => {
     (async () => {
-      const dbItems = await getAllItems();
+      const dbItems = await itemsRepository.getAll();
       setItems(dbItems);
     })();
   }, []);
 
   useEffect(() => {
     (async () => {
-      const dbCustomers = await getAllCustomers();
+      const dbCustomers = await customersRepository.getAll();
       const mapped = dbCustomers.map(c => ({
         id: c.id!,
         name: c.name,
@@ -133,7 +136,7 @@ export default function SalesPOS() {
 
 useEffect(() => {
   const loadCategories = async () => {
-    const data = await getAllCategories(); // returns Category[]
+    const data = await categoriesRepository.getAll(); // returns Category[]
     setCategories(data);
   };
 
@@ -142,7 +145,7 @@ useEffect(() => {
 
 useEffect(() => {
   const loadBrands = async () => {
-    const data = await getBrands(); // returns Brand[]
+    const data = await brandsRepository.getAll(); // returns Brand[]
     setBrands(data);
   };
 
@@ -190,7 +193,7 @@ useEffect(() => {
     }
   }
 
-  function addToCart(item: DBItem) {
+  function addToCart(item: Item) {
     if (item.availableStock <= 0) return;
 
     setCart(c => {
@@ -736,7 +739,7 @@ useEffect(() => {
     if (!newCustomer.name.trim()) return alert("Customer name is required");
 
     // 1️⃣ Fetch all customers to check for duplicate name
-    const allCustomers = await getAllCustomers();
+    const allCustomers = await customersRepository.getAll();
     const nameExists = allCustomers.some(
       (c) => c.name.trim().toLowerCase() === newCustomer.name.trim().toLowerCase()
     );
@@ -745,7 +748,7 @@ useEffect(() => {
     }
 
     // 2️⃣ Save to IndexedDB
-    const id = await addCustomer({
+    const id = await customersRepository.create({
       name: newCustomer.name,
       mobile: newCustomer.mobile,
       cnic: newCustomer.cnic,
@@ -754,7 +757,7 @@ useEffect(() => {
     });
 
     // 3️⃣ Reload customers from DB (single source of truth)
-    const dbCustomers = await getAllCustomers();
+    const dbCustomers = await customersRepository.getAll();
     const mapped = dbCustomers.map(c => ({
       id: c.id!,
       name: c.name,
@@ -785,7 +788,6 @@ useEffect(() => {
     </div>
   </div>
 )}
-
     </div>
   );
 }

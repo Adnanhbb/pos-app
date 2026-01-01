@@ -1,10 +1,41 @@
-import { Customer } from "../db";
+import {
+  Customer,
+  getAllCustomers,
+  addCustomer,
+  updateCustomer,
+  deleteCustomer,
+  searchCustomers,
+  getCustomersPaged,
+} from "../db";
 
-export interface CustomerRepository {
-  getAll(): Promise<Customer[]>;
-  getPaged(page: number, pageSize: number, query?: string | null): Promise<{ total: number; data: Customer[] }>;
-  add(customer: Omit<Customer, "id">): Promise<number>;
-  update(customer: Customer): Promise<void>;
-  delete(id: number): Promise<void>;
-  search(query: string): Promise<Customer[]>;
-}
+export type { Customer };
+
+export const customersRepository = {
+  getAll: async (): Promise<Customer[]> => {
+    return await getAllCustomers();
+  },
+
+  getPaged: async (
+    page: number,
+    pageSize: number,
+    query?: string
+  ) => {
+    return await getCustomersPaged(page, pageSize, query ?? null);
+  },
+
+  search: async (q: string): Promise<Customer[]> => {
+    return await searchCustomers(q);
+  },
+
+  create: async (customer: Omit<Customer, "id">): Promise<number> => {
+    return await addCustomer(customer);
+  },
+
+  update: async (customer: Customer): Promise<void> => {
+    await updateCustomer(customer);
+  },
+
+  remove: async (id: number): Promise<void> => {
+    await deleteCustomer(id);
+  },
+};

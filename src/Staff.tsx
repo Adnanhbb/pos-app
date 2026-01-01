@@ -1,6 +1,7 @@
 // src/Staff.tsx
 import React, { useEffect, useState, useMemo } from "react";
-import { getUsersPaged, addUser, updateUser, deleteUser, User, Role } from "./db";
+import { staffRepository, StaffForm } from "./repositories/staffRepository";
+import { User, Role } from "./db";
 import { FaPlus, FaEdit, FaTrash, FaSearch, FaTh, FaList } from "react-icons/fa";
 
 const PAGE_SIZE = 8;
@@ -17,26 +18,24 @@ export default function Staff() {
   // Modal / form state
   const [isFormOpen, setFormOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
-  const emptyForm: Omit<User, "id"> = {
+  const emptyForm: StaffForm = {
     Name: "",
     Mobile: "",
     Role: "saleboy",
     Username: "",
     Password: "",
   };
-  const [form, setForm] = useState<Omit<User, "id">>(emptyForm);
+  const [form, setForm] = useState<StaffForm>(emptyForm);
 
   const roles = useMemo(() => ["all", "admin", "saleboy"] as const, []);
 
   /** Load current page of users */
   const loadPage = async () => {
-    const { total: t, data } = await getUsersPaged(
+    const { total: t, data } = await staffRepository.getPaged(
       page,
       PAGE_SIZE,
-      "Name",                 // sortBy
-      "asc",                  // sortDir
-      roleFilter !== "all" ? roleFilter : null, // filterRole
-      query || null           // search query
+      query,
+      roleFilter !== "all" ? roleFilter : undefined
     );
     setUsers(data);
     setTotal(t);
@@ -79,10 +78,10 @@ export default function Staff() {
     if (!form.Username.trim()) return alert("Username is required");
     if (!form.Password.trim()) return alert("Password is required");
 
-    if (editingUser) await updateUser({ ...editingUser, ...form });
+    if (editingUser) await staffRepository.update({ ...editingUser, ...form });
     else {
-      await addUser(form);
-      setPage(1); // jump to first page to see new user
+      await staffRepository.create(form);
+      setPage(1);
     }
 
     closeForm();
@@ -93,7 +92,7 @@ export default function Staff() {
   const handleDelete = async (id?: number) => {
     if (!id) return;
     if (!confirm("Delete this user?")) return;
-    await deleteUser(id);
+    await staffRepository.remove(id);
     const newTotal = Math.max(0, total - 1);
     const newTotalPages = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
     if (page > newTotalPages) setPage(newTotalPages);

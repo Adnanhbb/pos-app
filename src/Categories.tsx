@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { FaPlus, FaEdit, FaTrash } from "react-icons/fa";
 // ✅ Add
-import { indexedDbCategoryRepository as categoriesRepo } from "./repositories/categoriesRepository";
+import { categoriesRepository } from "./repositories/categoriesRepository";
 import { Category } from "db";
 
 export default function CategoriesPage() {
@@ -13,7 +13,7 @@ export default function CategoriesPage() {
 
   // Load categories
   async function loadCategories() {
-    const data = await categoriesRepo.getAll();
+    const data = await categoriesRepository.getAll();
     setCategories(data);
   }
 
@@ -44,9 +44,9 @@ export default function CategoriesPage() {
     if (!newCategory.trim()) return alert("Category Name is required");
 
     if (editingCategory) {
-      await categoriesRepo.update({ ...editingCategory, name: newCategory.trim() });
+      await categoriesRepository.update({ ...editingCategory, name: newCategory.trim() });
     } else {
-      await categoriesRepo.add({ name: newCategory.trim(), itemCount: 0 });
+      await categoriesRepository.create({ name: newCategory.trim(), itemCount: 0 });
     }
     await loadCategories();
     closeForm();
@@ -55,7 +55,7 @@ export default function CategoriesPage() {
   async function handleDelete(id?: number) {
     if (!id) return;
     if (!confirm("Delete this category?")) return;
-    await categoriesRepo.delete(id);
+    await categoriesRepository.remove(id);
     await loadCategories();
   }
 

@@ -1,16 +1,27 @@
-import { Brand } from "../db"; // domain model
-import * as db from "../db";   // direct IndexedDB access
+import {
+  Brand,
+  getBrands,
+  addBrand,
+  updateBrand,
+  deleteBrand,
+} from "../db";
 
-export interface BrandRepository {
-  getAll(): Promise<Brand[]>;
-  add(brand: Omit<Brand, "id">): Promise<number>;
-  update(brand: Brand): Promise<void>;
-  delete(id: number): Promise<void>;
-}
+export type { Brand };
 
-export const indexedDbBrandRepository: BrandRepository = {
-  getAll: () => db.getBrands(),
-  add: (brand) => db.addBrand(brand),
-  update: (brand) => db.updateBrand(brand),
-  delete: (id) => db.deleteBrand(id),
+export const brandsRepository = {
+  getAll: async (): Promise<Brand[]> => {
+    return await getBrands();
+  },
+
+  create: async (brand: Omit<Brand, "id">): Promise<number> => {
+    return await addBrand(brand);
+  },
+
+  update: async (brand: Brand): Promise<void> => {
+    await updateBrand(brand);
+  },
+
+  remove: async (id: number): Promise<void> => {
+    await deleteBrand(id);
+  },
 };
