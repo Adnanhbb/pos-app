@@ -110,6 +110,8 @@ export interface Settings {
 export interface CustomerPayment {
   id?: number;
   customerId: number;
+  customerName: string;
+  invoiceNo: string;
   amount: number;
   paymentDate: string;        // ISO date string
   remarks?: string;
@@ -125,6 +127,34 @@ export interface SupplierPayment {
   remarks?: string;
   payableSnapshot: number;
   balanceSnapshot: number;
+}
+
+export interface DBSale {
+  id?: number;
+  invoiceNo: string;
+  date: string;
+  transactionType: "Sale" | "Purchase" | "Return" | "Quotation";
+  customerId: number | null;
+  subtotal: number;
+  discount: number;
+  tax: number;
+  grandTotal: number;
+  paid: number;
+  arrears: number;
+}
+
+export interface DBSaleItem {
+  id?: number;
+  saleId: number;
+  originalItemId: number;
+  name: string;
+  qty: number;
+  price: number;
+  priceCategory: "Retail" | "Discount" | "Wholesale";
+  discountType: "%" | "flat";
+  discountValue: number;
+  taxType: "%" | "flat";
+  taxValue: number;
 }
 
 /* ==========================================================
@@ -204,6 +234,9 @@ supplier_payments: {
   indexes: { "by-supplier": number; "by-date": string };
 };
 
+sales: { key: number; value: DBSale; indexes: { "by-customer": number } };
+
+sale_items: { key: number; value: DBSaleItem; indexes: { "by-sale": number; "by-item": number } };
 }
 
 /* ==========================================================
@@ -382,6 +415,19 @@ if (!db.objectStoreNames.contains("supplier_payments")) {
   });
   store.createIndex("by-supplier", "supplierId");
   store.createIndex("by-date", "paymentDate");
+}
+
+// SALES
+if (!db.objectStoreNames.contains("sales")) {
+  const store = db.createObjectStore("sales", { keyPath: "id", autoIncrement: true });
+  store.createIndex("by-customer", "customerId");
+}
+
+// SALE ITEMS
+if (!db.objectStoreNames.contains("sale_items")) {
+  const store = db.createObjectStore("sale_items", { keyPath: "id", autoIncrement: true });
+  store.createIndex("by-sale", "saleId");
+  store.createIndex("by-item", "originalItemId");
 }
 
     },
@@ -1122,5 +1168,183 @@ export async function deleteSupplierPayment(id: number) {
   await db.delete("supplier_payments", id);
 }
 
+export async function completeSaleFull(
+  customerId: number | null,
+  cartItems: {
+    originalItemId: number;
+    name: string;
+    qty: number;
+    price: number;
+    priceCategory: "Retail" | "Discount" | "Wholesale";
+    discountType: "%" | "flat";
+    discountValue: number;
+    taxType: "%" | "flat";
+    taxValue: number;
+  }[],
+  paid: number,
+  transactionType: "Sale" | "Purchase" | "Return" | "Quotation" = "Sale"
+) {
+  if (cartItems.length === 0) throw new Error("Cart is empty");
 
+  const db = await initDB();
+
+  // 1️⃣ Calculate totals
+  let subtotal = 0;
+  let totalDiscount = 0;
+  let totalTax = 0;
+
+  for (const item of cartItems) {
+    subtotal += item.qty * item.price;
+
+    const discountAmount =
+      item.discountType === "%"
+        ? (item.qty * item.price * item.discountValue) / 100
+        : item.discountValue;
+    totalDiscount += discountAmount;
+
+    const taxAmount =
+      item.taxType === "%"
+        ? ((item.qty * item.price - discountAmount) * item.taxValue) / 100
+        : item.taxValue;
+    totalTax += taxAmount;
+  }
+
+  const grandTotal = subtotal - totalDiscount + totalTax;
+  const arrears = grandTotal - paid;
+
+  // 2️⃣ Generate invoice number (simple auto-increment)
+  const lastSale = (await db.getAll("sales")).slice(-1)[0];
+  const invoiceNo = lastSale ? `INV-${Number(lastSale.id ?? 0) + 1}` : "INV-1";
+
+  // 3️⃣ Add sale record
+  const saleId = await db.add("sales", {
+    invoiceNo,
+    date: new Date().toISOString(),
+    transactionType,
+    customerId,
+    subtotal,
+    discount: totalDiscount,
+    tax: totalTax,
+    grandTotal,
+    paid,
+    arrears,
+  } as DBSale);
+
+  // 4️⃣ Add each sale item and update stock
+  for (const item of cartItems) {
+    await db.add("sale_items", {
+      saleId,
+      ...item,
+    } as DBSaleItem);
+
+    // update stock if this is a Sale (not Purchase/Return)
+    if (transactionType === "Sale") {
+      const dbItem = await db.get("items", item.originalItemId);
+      if (dbItem) {
+        await db.put("items", {
+          ...dbItem,
+          availableStock: (dbItem.availableStock ?? 0) - item.qty,
+        });
+      }
+    }
+  }
+
+  // 5️⃣ Update customer totals
+  if (customerId) {
+    const customer = await db.get("customers", customerId);
+    if (customer) {
+      await db.put("customers", {
+        ...customer,
+        invoices: (customer.invoices ?? 0) + 1,
+        paid: (customer.paid ?? 0) + paid,
+        balance: (customer.balance ?? 0) + arrears,
+      });
+    }
+  }
+
+  return { saleId, invoiceNo, grandTotal, arrears };
+}
+
+/* ==========================================================
+   GET SINGLE RECORD BY ID
+   ========================================================== */
+
+export async function getCustomerById(id: number): Promise<Customer | undefined> {
+  const conn = await db.open();
+
+  return new Promise(resolve => {
+    const tx = conn.transaction("customers", "readonly");
+    const store = tx.objectStore("customers");
+    const req = store.get(id);
+
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(undefined);
+  });
+}
+
+
+export async function getItemById(id: number): Promise<Item | null> {
+  const db = await initDB();
+  const item = await db.get("items", id);
+  return item ?? null;
+}
+
+const DB_NAME = "POSDatabase";
+const DB_VERSION = 10;
+
+class Database {
+  private conn: IDBDatabase | null = null;
+
+  async open(): Promise<IDBDatabase> {
+    if (this.conn) return this.conn;
+
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+      request.onupgradeneeded = () => {
+        const conn = request.result;
+
+        if (!conn.objectStoreNames.contains("customer_payments")) {
+            conn.createObjectStore("customer_payments", {
+              keyPath: "id",
+              autoIncrement: true,
+            });
+          }
+
+        if (!conn.objectStoreNames.contains("sales")) {
+          conn.createObjectStore("sales", {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+        }
+
+        if (!conn.objectStoreNames.contains("sale_items")) {
+          const store = conn.createObjectStore("sale_items", {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+          store.createIndex("saleId", "saleId");
+        }
+
+          // customers store
+  if (!conn.objectStoreNames.contains("customers")) {
+    conn.createObjectStore("customers", { keyPath: "id", autoIncrement: true });
+  }
+
+  // customer_payments store
+  if (!conn.objectStoreNames.contains("customer_payments")) {
+    const store = conn.createObjectStore("customer_payments", { keyPath: "id", autoIncrement: true });
+    store.createIndex("customerId", "customerId");
+  }
+      };
+
+      request.onsuccess = () => {
+        this.conn = request.result;
+        resolve(this.conn);
+      };
+
+      request.onerror = () => reject(request.error);
+    });
+  }}
+export const db = new Database();
 

@@ -8,6 +8,8 @@ import { customersRepository } from "./repositories/customerRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
 import type { Brand, Category,Item } from "./db";
+import { salesRepository } from "./repositories/SalesRepository";
+import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
 
 // =====================
 // Types
@@ -23,6 +25,8 @@ type CartItem = {
   taxType: "%" | "flat";
   taxValue: number;
   originalItemId: number;
+  priceCategory: "Retail" | "Discount" | "Wholesale";
+
 };
 
 type Customer = {
@@ -30,6 +34,7 @@ type Customer = {
   name: string;
   phone?: string;
   arrears: number;
+  invoices?: number;
 };
 
 // =====================
@@ -88,6 +93,118 @@ export default function SalesPOS() {
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedBrand, setSelectedBrand] = useState<string>("");
 
+  const [paid, setPaid] = useState<number>(0);
+
+  const PRICE_CATEGORIES = ["Retail", "Discount", "Wholesale"] as const;
+  type PriceCategory = typeof PRICE_CATEGORIES[number];
+
+  const salesRepo = salesRepository;
+
+async function handleCompleteSale() {
+  if (cart.length === 0) {
+    alert("Cart is empty");
+    return;
+  }
+
+  const customerId = selectedCustomerId ?? null;
+
+  // 1️⃣ Calculate totals FROM CART
+  let subtotal = 0;
+  let discount = 0;
+  let tax = 0;
+
+  cart.forEach(item => {
+    const line = calcLine(item);
+    subtotal += line.base;
+    discount += line.discount;
+    tax += line.tax;
+  });
+
+  const grandTotal = subtotal - discount + tax;
+  const paidAmount = Number(paid) || 0;
+  const arrears = grandTotal - paidAmount;
+
+  // 2️⃣ Prepare sale items
+  const saleItems = cart.map(ci => ({
+    originalItemId: ci.originalItemId,
+    name: ci.name,
+    qty: ci.qty,
+    price: ci.price,
+    priceCategory: ci.priceCategory,
+    discountType: ci.discountType,
+    discountValue: ci.discountValue,
+    taxType: ci.taxType,
+    taxValue: ci.taxValue,
+  }));
+
+  // 3️⃣ Save Sale + Sale Items
+  const saleId = await salesRepo.addSale(
+    {
+      invoiceNo,
+      date: new Date().toISOString(),
+      transactionType: "Sale",
+      customerId,
+      subtotal,
+      discount,
+      tax,
+      grandTotal,
+      paid: paidAmount,
+      arrears,
+    },
+    saleItems
+  );
+
+  // 4️⃣ Update Customer table with running totals
+  if (customerId) {
+    const customer = await customersRepository.getById(customerId);
+    if (customer) {
+      const newTotalPayable = (customer.payable ?? 0) + grandTotal;
+      const newTotalPaid = (customer.paid ?? 0) + paidAmount;
+      const newBalance = newTotalPayable - newTotalPaid;
+      const newInvoices = (customer.invoices ?? 0) + 1;
+
+      await customersRepository.update({
+        ...customer,
+        payable: newTotalPayable,
+        paid: newTotalPaid,
+        balance: newBalance,
+        invoices: newInvoices,
+      });
+
+      const invoicePayable = customer.balance ?? 0 + grandTotal;
+
+      // 5️⃣ Insert into CustomerPayments table if paid > 0
+     if (customer && paidAmount > 0 && customer.id != null) {
+            await customerPaymentRepository.add({
+              customerId: customer.id!,           // guaranteed number now
+              customerName: customer.name,
+              invoiceNo,
+              amount: paidAmount,
+              paymentDate: new Date().toISOString(),
+              remarks: invoiceNo,
+              payableSnapshot: grandTotal+arrears,
+              balanceSnapshot: newBalance ?? 0,
+            });
+}
+
+    }
+  }
+
+  // 6️⃣ Clear UI & reset states
+  setCart([]);
+  setPaid(0);
+  setSelectedCustomerId(null);
+  setCustomerInput("Walk-in Customer");
+
+  // 7️⃣ Increment invoice for next sale
+  const nextInvoice = getNextInvoiceNo(invoiceNo);
+  setInvoiceNo(nextInvoice);
+  localStorage.setItem("lastInvoiceNo", nextInvoice);
+
+  alert(`Sale completed successfully. Invoice #${invoiceNo}`);
+}
+
+
 
   // =====================
   // INIT LOADS
@@ -113,6 +230,7 @@ export default function SalesPOS() {
         name: c.name,
         phone: c.mobile,
         arrears: c.balance ?? 0,
+        invoices: c.invoices ?? 0,
       }));
 
       setCustomers(mapped);
@@ -167,21 +285,39 @@ useEffect(() => {
   };
 }, [cart.length]);
 
+useEffect(() => {
+  if (!editing) return;
+
+  const item = items.find(i => i.id === editing.originalItemId);
+  if (!item) return;
+
+  let category: PriceCategory = "Retail";
+  if (editing.price === item.wholesalePrice) category = "Wholesale";
+  else if (editing.price === item.discountPrice) category = "Discount";
+
+  setEditing(prev => prev ? { ...prev, priceCategory: category } : prev);
+}, [editing, items]);
+
 
   // =====================
   // CART LOGIC
   // =====================
 
-  function cancelSale() {
-    setItems(prev =>
-      prev.map(item => {
-        const cartItem = cart.find(ci => ci.originalItemId === item.id);
-        if (!cartItem) return item;
-        return { ...item, availableStock: item.availableStock + cartItem.qty };
-      })
-    );
-    setCart([]);
+  async function cancelSale() {
+  for (const ci of cart) {
+    const item = items.find(i => i.id === ci.originalItemId);
+    if (!item) continue;
+
+    // Restore stock (UI + DB)
+    await adjustStock(item, ci.qty);
   }
+
+  setCart([]);
+  setPaid(0);
+  setSelectedCustomerId(null);
+  setCustomerInput("Walk-in Customer");
+}
+
 
   function handleBarcodeScan(code: string) {
     const item = items.find(i => i.barcode === code);
@@ -193,79 +329,142 @@ useEffect(() => {
     }
   }
 
-  function addToCart(item: Item) {
-    if (item.availableStock <= 0) return;
+  async function adjustStock(item: Item, delta: number) {
+  const updatedItem = {
+    ...item,
+    availableStock: item.availableStock + delta,
+  };
 
-    setCart(c => {
-      const existing = c.find(ci => ci.originalItemId === item.id);
-      if (existing) {
-        if (existing.qty < item.availableStock) {
-          return c.map(ci =>
-            ci.originalItemId === item.id ? { ...ci, qty: ci.qty + 1 } : ci
-          );
-        }
-        return c;
-      }
+  // Update DB
+  await itemsRepository.update(updatedItem);
 
-      return [
-        ...c,
-        {
-          id: Date.now(),
-          name: item.name,
-          qty: 1,
-          price: item.retailPrice,
-          discountType: "%",
-          discountValue: 0,
-          taxType: "%",
-          taxValue: 0,
-          originalItemId: item.id!,
-        },
-      ];
-    });
+  // Update UI
+  setItems(prev =>
+    prev.map(i => (i.id === item.id ? updatedItem : i))
+  );
+}
 
-    setItems(prev =>
-      prev.map(i =>
-        i.id === item.id ? { ...i, availableStock: i.availableStock - 1 } : i
-      )
-    );
-  }
+ async function addToCart(item: Item) {
+  if (item.availableStock <= 0) return;
 
-  function updateItem(updated: CartItem) {
-    const originalItem = items.find(i => i.id === updated.originalItemId);
-    if (!originalItem) return;
+  // 1️⃣ Decrement stock (UI + DB)
+  await adjustStock(item, -1);
 
-    const prevQty = cart.find(ci => ci.id === updated.id)?.qty || 0;
-    const diff = updated.qty - prevQty;
+  // 2️⃣ Update cart only
+  setCart(c => {
+    const existing = c.find(ci => ci.originalItemId === item.id);
 
-    if (diff > originalItem.availableStock) {
-      updated.qty = prevQty + originalItem.availableStock;
-    }
-
-    setItems(prev =>
-      prev.map(i =>
-        i.id === updated.originalItemId
-          ? { ...i, availableStock: i.availableStock - diff }
-          : i
-      )
-    );
-
-    setCart(c => c.map(ci => (ci.id === updated.id ? updated : ci)));
-    setEditing(null);
-  }
-
-  function removeItem(id: number) {
-    const removed = cart.find(ci => ci.id === id);
-    if (removed) {
-      setItems(prev =>
-        prev.map(i =>
-          i.id === removed.originalItemId
-            ? { ...i, availableStock: i.availableStock + removed.qty }
-            : i
-        )
+    if (existing) {
+      return c.map(ci =>
+        ci.originalItemId === item.id
+          ? { ...ci, qty: ci.qty + 1 }
+          : ci
       );
     }
-    setCart(c => c.filter(ci => ci.id !== id));
+
+    return [
+      ...c,
+      {
+        id: Date.now(),
+        name: item.name,
+        qty: 1,
+        price: item.retailPrice,
+        priceCategory: "Retail",
+        discountType: "%",
+        discountValue: 0,
+        taxType: "%",
+        taxValue: 0,
+        originalItemId: item.id!,
+      },
+    ];
+  });
+}
+
+
+
+  async function updateItem(updated: CartItem) {
+  const originalItem = items.find(i => i.id === updated.originalItemId);
+  if (!originalItem) return;
+
+  const prevQty =
+    cart.find(ci => ci.id === updated.id)?.qty ?? 0;
+
+  const diff = updated.qty - prevQty;
+
+  // ❗ Guard: insufficient stock
+  if (diff > 0 && diff > originalItem.availableStock) {
+    alert("Not enough stock available");
+    return;
   }
+
+  // 1️⃣ Update UI stock
+  setItems(prev =>
+    prev.map(i =>
+      i.id === updated.originalItemId
+        ? { ...i, availableStock: i.availableStock - diff }
+        : i
+    )
+  );
+
+  // 2️⃣ Update DB stock (single source of truth)
+  await itemsRepository.update({
+    ...originalItem,
+    availableStock: originalItem.availableStock - diff,
+  });
+
+  // 3️⃣ Update cart
+  setCart(prev =>
+    prev.map(ci =>
+      ci.id === updated.id ? { ...updated } : ci
+    )
+  );
+
+  setEditing(null);
+}
+
+
+ async function removeItem(cartItemId: number) {
+  const cartItem = cart.find(ci => ci.id === cartItemId);
+  if (!cartItem) return;
+
+  const item = items.find(i => i.id === cartItem.originalItemId);
+  if (!item) return;
+
+  // Restore stock (UI + DB)
+  await adjustStock(item, cartItem.qty);
+
+  // Remove from cart
+  setCart(prev => prev.filter(ci => ci.id !== cartItemId));
+}
+
+async function applyEdit(updatedQty: number) {
+  if (!editing) return;
+
+  const cartItem = cart.find(ci => ci.id === editing.id);
+  if (!cartItem) return;
+
+  const item = items.find(i => i.id === cartItem.originalItemId);
+  if (!item) return;
+
+  const delta = cartItem.qty - updatedQty;
+  // delta > 0 → restore stock
+  // delta < 0 → deduct stock
+
+  if (delta !== 0) {
+    await adjustStock(item, delta);
+  }
+
+  setCart(prev =>
+    prev.map(ci =>
+      ci.id === editing.id
+        ? { ...ci, qty: updatedQty }
+        : ci
+    )
+  );
+
+  setEditing(null);
+}
+
 
   // =====================
   // FILTERS & TOTALS
@@ -315,6 +514,9 @@ useEffect(() => {
   });
 }, [items, selectedCategory, selectedBrand, search]);
 
+const balance = useMemo(() => {
+  return Math.max(0, totals.grandTotal - paid);
+}, [totals.grandTotal, paid]);
 
 
   return (
@@ -510,23 +712,44 @@ useEffect(() => {
 
 
   {/* CART ITEMS */}
-  <div className="flex-1 overflow-y-auto space-y-1 max-h-[320px]">
-    {cart.map((item) => {
-      const r = calcLine(item);
+  <div className="flex-1 overflow-y-auto space-y-1 max-h-[285px]">
+    {cart.map((ci) => {
+      const r = calcLine(ci);
       return (
-        <div key={item.id} className="bg-white pl-2 pr-2 pt-1 pb-1 rounded shadow">
+        <div key={ci.id} className="bg-white pl-2 pr-2 pt-1 pb-1 rounded shadow">
           <div className="flex justify-between items-start">
             <div>
-              <div className="font-medium">{item.name}</div>
+              <div className="font-medium">{ci.name}</div>
               <div className="text-sm text-gray-500 leading-tight">
-                {item.qty} × {item.price} | Disc: {item.discountValue}{item.discountType} | Tax: {item.taxValue}{item.taxType}
+                {ci.qty} × {ci.price} | Disc: {ci.discountValue}{ci.discountType} | Tax: {ci.taxValue}{ci.taxType}
               </div>
             </div>
             <div className="flex gap-2">
-              <button onClick={() => setEditing(item)} className="p-2 bg-blue-500 text-white rounded">
-                <FaEdit />
+              <button
+                  onClick={() => {
+                    const dbItem = items.find(i => i.id === ci.originalItemId);
+
+                    let category: "Retail" | "Discount" | "Wholesale" = "Retail";
+
+                    if (dbItem) {
+                      if (ci.price === dbItem.wholesalePrice) {
+                        category = "Wholesale";
+                      } else if (ci.price === dbItem.discountPrice) {
+                        category = "Discount";
+                      }
+                    }
+
+                    setEditing({
+                      ...ci,
+                      priceCategory: category, // ✅ stored PER ITEM
+                    });
+                  }}
+                  className="p-2 bg-green-500 text-white rounded"
+                >
+                  <FaEdit />
               </button>
-              <button onClick={() => removeItem(item.id)} className="p-2 bg-red-500 text-white rounded">
+
+              <button onClick={() => removeItem(ci.id)} className="p-2 bg-red-500 text-white rounded">
                 <FaTrash />
               </button>
             </div>
@@ -539,63 +762,86 @@ useEffect(() => {
 
   {/* TOTALS */}
   <div className="bg-white p-4 rounded shadow mt-4">
-    <div className="flex justify-between text-sm">
-      <span>Subtotal</span>
-      <span>{totals.subtotal.toFixed(2)}</span>
+  {/* GRID FOR DESKTOP, STACK FOR MOBILE */}
+  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 text-sm">
+
+    {/* LEFT COLUMN — EXISTING TOTALS */}
+    <div className="space-y-2">
+      <div className="flex justify-between">
+        <span>Subtotal</span>
+        <span>{totals.subtotal.toFixed(2)}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span>Discount</span>
+        <span>-{totals.discount.toFixed(2)}</span>
+      </div>
+
+      <div className="flex justify-between">
+        <span>Tax</span>
+        <span>{totals.tax.toFixed(2)}</span>
+      </div>
+
+      {totals.arrears > 0 && (
+        <div className="flex justify-between text-red-600 font-medium">
+          <span>Previous Dues</span>
+          <span>
+            {selectedCustomer && selectedCustomer.arrears > 0 && (
+              <span>{selectedCustomer.arrears.toFixed(2)}</span>
+            )}
+          </span>
+        </div>
+      )}
+
+      <div className="flex justify-between font-semibold border-t pt-2 text-base">
+        <span>Payable Amount</span>
+        <span>{totals.grandTotal.toFixed(2)}</span>
+      </div>
     </div>
 
-    <div className="flex justify-between text-sm">
-      <span>Discount</span>
-      <span>-{totals.discount.toFixed(2)}</span>
-    </div>
+    {/* RIGHT COLUMN — PAYMENT INFO (UI ONLY, NO NEW VARIABLES) */}
+    <div className="space-y-3 mt-1">
+       <div className="flex items-center gap-4 ml-2">
+          <label className="text-xl font-medium text-green-500 whitespace-nowrap">
+            Paid
+          </label>
 
-    <div className="flex justify-between text-sm">
-      <span>Tax</span>
-      <span>{totals.tax.toFixed(2)}</span>
-    </div>
+          <input
+            type="number"
+            min="0"
+            value={paid}
+            onChange={(e) => setPaid(Number(e.target.value) || 0)}
+            className="flex-1 p-2 border w-full rounded text-center text-xl"
+          />
+        </div>
 
-    {totals.arrears > 0 && (
-      <div className="flex justify-between text-sm text-red-600 font-medium">
-        <span>Previous Dues</span>
-        <span>
-          {selectedCustomer && selectedCustomer.arrears > 0 && (
-            <div className="text-xs text-red-600 font-medium">
-              {selectedCustomer.arrears.toFixed(2)}
-            </div>
-          )}
+      <div className="flex justify-between items-center bg-gray-50 p-3 rounded">
+        <span className="font-medium text-xl text-gray-600">Balance</span>
+        <span className="text-lg font-bold text-red-600 mr-10">
+          {balance.toFixed(2)}
         </span>
       </div>
-    )}
-
-    <div className="flex justify-between font-semibold mt-2 border-t pt-2">
-      <span>Payable Amount</span>
-      <span>{totals.grandTotal.toFixed(2)}</span>
-    </div>
-
-    {/* Buttons */}
-    <div className="flex gap-2 mt-4">
-      <button
-        className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
-        onClick={() => {
-          if (cart.length === 0) return;
-          const nextInvoice = getNextInvoiceNo(invoiceNo);
-          setInvoiceNo(nextInvoice);
-          localStorage.setItem("lastInvoiceNo", nextInvoice);
-          setCart([]);
-          setSelectedDate(new Date().toISOString().split("T")[0]);
-        }}
-      >
-        <FaCheck /> Complete Sale
-      </button>
-
-      <button
-        className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
-        onClick={cancelSale}
-      >
-        <FaTimes /> Cancel Sale
-      </button>
     </div>
   </div>
+
+  {/* ACTION BUTTONS — UNCHANGED */}
+  <div className="flex gap-2 mt-6">
+    <button
+      className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
+      onClick={handleCompleteSale}
+    >
+      <FaCheck /> Complete Sale
+    </button>
+
+    <button
+      className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
+      onClick={cancelSale}
+    >
+      <FaTimes /> Cancel Sale
+    </button>
+  </div>
+</div>
+
 </div>
 
 
@@ -613,7 +859,39 @@ useEffect(() => {
               onChange={e => setEditing({ ...editing, qty: Number(e.target.value) })}
             />
 
-            <label className="text-sm">Price</label>
+              {/* Price Category Radio Buttons */}
+                    <label className="text-sm font-medium block mb-1">
+                    Price
+                  </label>
+
+                  <div className="flex gap-3 text-sm">
+                        {PRICE_CATEGORIES.map(cat => (
+                          <label key={cat} className="flex items-center gap-1">
+                            <input
+                              type="radio"
+                              checked={editing.priceCategory === cat}
+                              onChange={() => {
+                                const item = items.find(i => i.id === editing.originalItemId);
+                                if (!item) return;
+
+                                // Use fallback 0 if any price is undefined
+                                let price = item.retailPrice ?? 0;
+                                if (cat === "Discount") price = item.discountPrice ?? 0;
+                                if (cat === "Wholesale") price = item.wholesalePrice ?? 0;
+
+                                setEditing({
+                                  ...editing,
+                                  priceCategory: cat,
+                                  price,
+                                });
+                              }}
+                            />
+                            {cat}
+                          </label>
+                        ))}
+                      </div>
+
+            {/* <label className="text-sm">Amount</label> */}
             <input
               type="number"
               className="w-full p-2 border rounded mb-2"
@@ -734,53 +1012,53 @@ useEffect(() => {
         </button>
 
         <button
-  className="bg-indigo-600 text-white px-4 py-2 rounded"
-  onClick={async () => {
-    if (!newCustomer.name.trim()) return alert("Customer name is required");
+                    className="bg-indigo-600 text-white px-4 py-2 rounded"
+                    onClick={async () => {
+                      if (!newCustomer.name.trim()) return alert("Customer name is required");
 
-    // 1️⃣ Fetch all customers to check for duplicate name
-    const allCustomers = await customersRepository.getAll();
-    const nameExists = allCustomers.some(
-      (c) => c.name.trim().toLowerCase() === newCustomer.name.trim().toLowerCase()
-    );
-    if (nameExists) {
-      return alert(`A customer with the name "${newCustomer.name}" already exists.`);
-    }
+                      // 1️⃣ Fetch all customers to check for duplicate name
+                      const allCustomers = await customersRepository.getAll();
+                      const nameExists = allCustomers.some(
+                        (c) => c.name.trim().toLowerCase() === newCustomer.name.trim().toLowerCase()
+                      );
+                      if (nameExists) {
+                        return alert(`A customer with the name "${newCustomer.name}" already exists.`);
+                      }
 
-    // 2️⃣ Save to IndexedDB
-    const id = await customersRepository.create({
-      name: newCustomer.name,
-      mobile: newCustomer.mobile,
-      cnic: newCustomer.cnic,
-      address: newCustomer.address,
-      balance: newCustomer.dues,
-    });
+                      // 2️⃣ Save to IndexedDB
+                      const id = await customersRepository.create({
+                        name: newCustomer.name,
+                        mobile: newCustomer.mobile,
+                        cnic: newCustomer.cnic,
+                        address: newCustomer.address,
+                        balance: newCustomer.dues,
+                      });
 
-    // 3️⃣ Reload customers from DB (single source of truth)
-    const dbCustomers = await customersRepository.getAll();
-    const mapped = dbCustomers.map(c => ({
-      id: c.id!,
-      name: c.name,
-      phone: c.mobile,
-      arrears: c.balance ?? 0,
-    }));
+                      // 3️⃣ Reload customers from DB (single source of truth)
+                      const dbCustomers = await customersRepository.getAll();
+                      const mapped = dbCustomers.map(c => ({
+                        id: c.id!,
+                        name: c.name,
+                        phone: c.mobile,
+                        arrears: c.balance ?? 0,
+                      }));
 
-    // 4️⃣ Update UI state
-    setCustomers(mapped);
-    setSelectedCustomerId(id);
-    setCustomerInput(newCustomer.name);
+                      // 4️⃣ Update UI state
+                      setCustomers(mapped);
+                      setSelectedCustomerId(id);
+                      setCustomerInput(newCustomer.name);
 
-    // 5️⃣ Reset modal
-    setNewCustomer({
-      name: "",
-      mobile: "",
-      cnic: "",
-      address: "",
-      dues: 0,
-    });
-    setShowCustomerModal(false);
-  }}
->
+                      // 5️⃣ Reset modal
+                      setNewCustomer({
+                        name: "",
+                        mobile: "",
+                        cnic: "",
+                        address: "",
+                        dues: 0,
+                      });
+                      setShowCustomerModal(false);
+                    }}
+                  >
   Save
 </button>
 

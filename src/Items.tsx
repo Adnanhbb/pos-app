@@ -372,25 +372,25 @@ export default function ItemsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1">Minimum Unit</label>
+                <label className="block text-xs font-medium mb-1"> Unit</label>
                 <select className="w-full p-2 border rounded" value={form.minunit} onChange={(e) => setForm({ ...form, minunit: e.target.value })}>
-                  <option value="">Select Min Unit</option>
+                  <option value="">Select Unit</option>
                   {units.map((u) => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
 
-              <div>
+              {/* <div>
                 <label className="block text-xs font-medium mb-1">Maximum Unit</label>
                 <select className="w-full p-2 border rounded" value={form.maxunit} onChange={(e) => setForm({ ...form, maxunit: e.target.value })}>
                   <option value="">Select Max Unit</option>
                   {units.map((u) => <option key={u} value={u}>{u}</option>)}
                 </select>
-              </div>
+              </div> */}
               
-              <div className="sm:col-span-2">
+              {/* <div className="sm:col-span-2">
                 <label className="block text-xs font-medium mb-1">{conversionLabel}</label>
                 <input type="number" className="w-full p-2 border rounded" value={form.ConvQty} onChange={(e) => setForm({ ...form, ConvQty: Number(e.target.value) })} />
-              </div>
+              </div> */}
 
               <div>
                 <label className="block text-xs font-medium mb-1">Purchase Price</label>

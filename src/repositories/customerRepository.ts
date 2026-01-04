@@ -6,6 +6,7 @@ import {
   deleteCustomer,
   searchCustomers,
   getCustomersPaged,
+  getCustomerById, // 👈 MUST exist in db.ts
 } from "../db";
 
 export type { Customer };
@@ -15,11 +16,11 @@ export const customersRepository = {
     return await getAllCustomers();
   },
 
-  getPaged: async (
-    page: number,
-    pageSize: number,
-    query?: string
-  ) => {
+  getById: async (id: number): Promise<Customer | undefined> => {
+    return await getCustomerById(id);
+  },
+
+  getPaged: async (page: number, pageSize: number, query?: string) => {
     return await getCustomersPaged(page, pageSize, query ?? null);
   },
 
