@@ -59,7 +59,7 @@ import Settings from "./Settings";
 import CustPayments from "./CustPayments";
 import SupPayments from "./SupPayments";
 import POS from "./POS";
-
+import Invoices from "./Invoices";
 
 // DB helpers
 import { authRepository } from "./repositories/authRepository";
@@ -283,11 +283,21 @@ const saveEditedUser = async () => {
                   </button>
                   {posOpen && (
                     <ul className="ml-6 mt-1 space-y-1">
-                      {[{ name: "POS", icon: <FaReceipt /> }, { name: "POS Data Store", icon: <FaDatabase /> }].map((sub) => (
+                      {[{ name: "POS", icon: <FaReceipt /> }, { name: "POS Invoices", icon: <FaDatabase /> }].map((sub) => (
                         <li key={sub.name}>
-                          <button onClick={() => handleMenuClick(sub.name)} className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${activeItem === sub.name ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""}`}>{sub.icon} {sub.name}</button>
+                          <button
+                            onClick={() => handleMenuClick(sub.name === "POS Invoices" ? "Invoices" : sub.name)}
+                            className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
+                              activeItem === (sub.name === "POS Invoices" ? "Invoices" : sub.name)
+                                ? "bg-blue-100 text-blue-600 font-semibold shadow"
+                                : ""
+                            }`}
+                          >
+                            {sub.icon} {sub.name}
+                          </button>
                         </li>
                       ))}
+
                     </ul>
                   )}
                 </li>
@@ -422,6 +432,9 @@ const saveEditedUser = async () => {
          ) 
         : activeItem === "POS" ? (
           <POS />
+        )
+        : activeItem === "Invoices" ? (
+          <Invoices />
         )
         :(
           <>

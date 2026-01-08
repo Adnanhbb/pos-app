@@ -8,8 +8,11 @@ import { customersRepository } from "./repositories/customerRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
 import type { Brand, Category,Item } from "./db";
-import { salesRepository } from "./repositories/SalesRepository";
+import { salesRepository } from "./repositories/salesRepository";
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
+import { discountRepository } from "./repositories/discountRepository";
+import { taxRepository } from "./repositories/taxRepository";
+import type { Discount, Tax } from "./db";
 
 // =====================
 // Types
@@ -20,6 +23,7 @@ type CartItem = {
   name: string;
   qty: number;
   price: number;
+  costPrice: number;
   discountType: "%" | "flat";
   discountValue: number;
   taxType: "%" | "flat";
@@ -36,6 +40,18 @@ type Customer = {
   arrears: number;
   invoices?: number;
 };
+
+interface InvoiceAdjustmentModalProps {
+  type: "discount" | "tax";
+  isOpen: boolean;
+  onClose: () => void;
+  onApply: (data: {
+    id: number;
+    name: string;
+    type: "percentage" | "Fixed Amount";
+    value: number;
+  }) => void;
+}
 
 // =====================
 // Helpers
@@ -55,6 +71,115 @@ function getNextInvoiceNo(current: string) {
   const num = parseInt(current.split("-")[1], 10);
   const nextNum = num + 1;
   return `SAL-${String(nextNum).padStart(4, "0")}`;
+}
+
+function applyAdjustment(
+  base: number,
+  adj: { type: "percentage" | "Fixed Amount"; value: number } | null
+) {
+  if (!adj) return 0;
+  return adj.type === "percentage"
+    ? (base * adj.value) / 100
+    : adj.value;
+}
+
+function InvoiceAdjustmentModal({
+  type,
+  isOpen,
+  onClose,
+  onApply,
+}: InvoiceAdjustmentModalProps) {
+  const [list, setList] = useState<any[]>([]);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [mode, setMode] = useState<"percentage" | "Fixed Amount">("percentage");
+  const [value, setValue] = useState<number>(0);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const load = async () => {
+      const data =
+        type === "discount"
+          ? await discountRepository.getAll()
+          : await taxRepository.getAll();
+
+      setList(data);
+    };
+
+    load();
+  }, [isOpen, type]);
+
+  useEffect(() => {
+    const selected = list.find(x => x.id === selectedId);
+    if (selected) {
+      setMode(selected.type);
+      setValue(selected.value);
+    }
+  }, [selectedId, list]);
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
+      <div className="bg-white p-4 rounded w-80">
+        <h3 className="text-sm font-semibold mb-2">
+          Apply {type === "discount" ? "Discount" : "Tax"}
+        </h3>
+
+        <select
+          className="w-full mb-2 border p-1"
+          value={selectedId ?? ""}
+          onChange={e => setSelectedId(Number(e.target.value))}
+        >
+          <option value="">Select</option>
+          {list.map(x => (
+            <option key={x.id} value={x.id}>
+              {x.name}
+            </option>
+          ))}
+        </select>
+
+        <select
+          className="w-full mb-2 border p-1"
+          value={mode}
+          onChange={e => setMode(e.target.value as any)}
+        >
+          <option value="percentage">Percentage</option>
+          <option value="Fixed Amount">Fixed Amount</option>
+        </select>
+
+        <input
+          type="number"
+          className="w-full mb-3 border p-1"
+          value={value}
+          onChange={e => setValue(Number(e.target.value))}
+        />
+
+        <div className="flex justify-end gap-2">
+          <button className="text-xs" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="text-xs px-2 py-1 bg-black text-white rounded"
+            onClick={() => {
+              const selected = list.find(x => x.id === selectedId);
+              if (!selected) return;
+
+              onApply({
+                id: selected.id,
+                name: selected.name,
+                type: mode,
+                value,
+              });
+              onClose();
+            }}
+          >
+            Apply
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 // =====================
@@ -92,8 +217,21 @@ export default function SalesPOS() {
   const [Brands, setBrands] = useState<Brand[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
   const [selectedBrand, setSelectedBrand] = useState<string>("");
-
   const [paid, setPaid] = useState<number>(0);
+  const [invoiceDiscountId, setInvoiceDiscountId] = useState<number | null>(null);
+  const [invoiceTaxId, setInvoiceTaxId] = useState<number | null>(null);
+  const [showInvoiceDiscountModal, setShowInvoiceDiscountModal] = useState(false);
+  const [showInvoiceTaxModal, setShowInvoiceTaxModal] = useState(false);
+  
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
+  const [taxes, setTaxes] = useState<Tax[]>([]);
+  const [discountMode, setDiscountMode] = useState<"percentage" | "Fixed Amount">("percentage");
+  const [discountValue, setDiscountValue] = useState<number>(0);
+  const [taxMode, setTaxMode] = useState<"percentage" | "Fixed Amount">("percentage");
+  const [taxValue, setTaxValue] = useState<number>(0);
+  const [selectedDiscount, setSelectedDiscount] = useState<Discount | null>(null);
+  const [selectedTax, setSelectedTax] = useState<Tax | null>(null);
+
 
   const PRICE_CATEGORIES = ["Retail", "Discount", "Wholesale"] as const;
   type PriceCategory = typeof PRICE_CATEGORIES[number];
@@ -107,6 +245,8 @@ async function handleCompleteSale() {
   }
 
   const customerId = selectedCustomerId ?? null;
+  const customerName = selectedCustomer ? selectedCustomer.name : "Walk-in Customer";
+  const dues = selectedCustomer ? selectedCustomer.arrears ?? 0 : 0;
 
   // 1️⃣ Calculate totals FROM CART
   let subtotal = 0;
@@ -120,11 +260,20 @@ async function handleCompleteSale() {
     tax += line.tax;
   });
 
-  const grandTotal = subtotal - discount + tax;
+  const grandTotal = subtotal - discount + tax + dues;
   const paidAmount = Number(paid) || 0;
   const arrears = grandTotal - paidAmount;
 
-  // 2️⃣ Prepare sale items
+  // 2️⃣ Calculate profit
+  let profit = 0;
+  cart.forEach(item => {
+    const lineBase = item.qty * item.price;
+    const costBase = item.qty * item.costPrice;
+    const discountAmt = item.discountType === "%" ? (lineBase * item.discountValue) / 100 : item.discountValue;
+    profit += (lineBase - discountAmt) - costBase;
+  });
+
+  // 3️⃣ Prepare sale items
   const saleItems = cart.map(ci => ({
     originalItemId: ci.originalItemId,
     name: ci.name,
@@ -137,28 +286,32 @@ async function handleCompleteSale() {
     taxValue: ci.taxValue,
   }));
 
-  // 3️⃣ Save Sale + Sale Items
-  const saleId = await salesRepo.addSale(
+  // 4️⃣ Save the sale (always!)
+  const customerIdForDB = customerId ?? 0; // 0 = walk-in
+  const saleId = await salesRepository.addSale(
     {
       invoiceNo,
       date: new Date().toISOString(),
       transactionType: "Sale",
-      customerId,
+      customerId: customerIdForDB,
+      customerName,
       subtotal,
       discount,
       tax,
+      dues,
       grandTotal,
       paid: paidAmount,
       arrears,
+      profit,
     },
     saleItems
   );
 
-  // 4️⃣ Update Customer table with running totals
+  // 5️⃣ Update Customer totals & payments if a saved customer
   if (customerId) {
     const customer = await customersRepository.getById(customerId);
     if (customer) {
-      const newTotalPayable = (customer.payable ?? 0) + grandTotal;
+      const newTotalPayable = (customer.payable ?? 0) + grandTotal - dues;
       const newTotalPaid = (customer.paid ?? 0) + paidAmount;
       const newBalance = newTotalPayable - newTotalPaid;
       const newInvoices = (customer.invoices ?? 0) + 1;
@@ -171,40 +324,37 @@ async function handleCompleteSale() {
         invoices: newInvoices,
       });
 
-      const invoicePayable = customer.balance ?? 0 + grandTotal;
+      if (paidAmount > 0) {
+        await customerPaymentRepository.add({
+          customerId: customer?.id ?? 0, // 0 = walk-in
+          customerName: customer ? customer.name : "Walk-in Customer",
+          invoiceNo,
+          amount: paidAmount,
+          paymentDate: new Date().toISOString(),
+          remarks: invoiceNo,
+          payableSnapshot: grandTotal,
+          balanceSnapshot: customer ? newBalance ?? 0 : 0,
+        });
 
-      // 5️⃣ Insert into CustomerPayments table if paid > 0
-     if (customer && paidAmount > 0 && customer.id != null) {
-            await customerPaymentRepository.add({
-              customerId: customer.id!,           // guaranteed number now
-              customerName: customer.name,
-              invoiceNo,
-              amount: paidAmount,
-              paymentDate: new Date().toISOString(),
-              remarks: invoiceNo,
-              payableSnapshot: grandTotal+arrears,
-              balanceSnapshot: newBalance ?? 0,
-            });
-}
-
+      }
     }
   }
 
   // 6️⃣ Clear UI & reset states
   setCart([]);
   setPaid(0);
+  setDiscountValue(0);
+  setTaxValue(0);
   setSelectedCustomerId(null);
   setCustomerInput("Walk-in Customer");
 
   // 7️⃣ Increment invoice for next sale
-  const nextInvoice = getNextInvoiceNo(invoiceNo);
-  setInvoiceNo(nextInvoice);
-  localStorage.setItem("lastInvoiceNo", nextInvoice);
+  const nextInvoice = await getNextInvoiceNoFromDB();
+    setInvoiceNo(nextInvoice);
+  //localStorage.setItem("lastInvoiceNo", nextInvoice);
 
   alert(`Sale completed successfully. Invoice #${invoiceNo}`);
 }
-
-
 
   // =====================
   // INIT LOADS
@@ -298,6 +448,25 @@ useEffect(() => {
   setEditing(prev => prev ? { ...prev, priceCategory: category } : prev);
 }, [editing, items]);
 
+useEffect(() => {
+  const loadAdjustments = async () => {
+    const dbDiscounts = await discountRepository.getAll();
+    const dbTaxes = await taxRepository.getAll();
+    setDiscounts(dbDiscounts);
+    setTaxes(dbTaxes);
+  };
+
+  loadAdjustments();
+}, []);
+
+useEffect(() => {
+  const initializeInvoiceNo = async () => {
+    const nextInvoice = await getNextInvoiceNoFromDB();
+    setInvoiceNo(nextInvoice);
+  };
+
+  initializeInvoiceNo();
+}, []);
 
   // =====================
   // CART LOGIC
@@ -314,6 +483,8 @@ useEffect(() => {
 
   setCart([]);
   setPaid(0);
+  setDiscountValue(0);
+  setTaxValue(0);
   setSelectedCustomerId(null);
   setCustomerInput("Walk-in Customer");
 }
@@ -369,6 +540,7 @@ useEffect(() => {
         name: item.name,
         qty: 1,
         price: item.retailPrice,
+        costPrice: item.purchasePrice ?? 0,
         priceCategory: "Retail",
         discountType: "%",
         discountValue: 0,
@@ -465,6 +637,18 @@ async function applyEdit(updatedQty: number) {
   setEditing(null);
 }
 
+async function getNextInvoiceNoFromDB(): Promise<string> {
+  const allSales = await salesRepository.getAllSales();
+
+  if (allSales.length === 0) return "SAL-0001";
+
+  // Extract numeric part and find the maximum
+  const latestNumber = allSales
+    .map(s => parseInt(s.invoiceNo.split("-")[1], 10))
+    .sort((a, b) => b - a)[0];
+
+  return `SAL-${String(latestNumber + 1).padStart(4, "0")}`;
+}
 
   // =====================
   // FILTERS & TOTALS
@@ -480,24 +664,32 @@ async function applyEdit(updatedQty: number) {
     [items]
   );
 
-  const totals = useMemo(() => {
-    let subtotal = 0, discount = 0, tax = 0, total = 0;
-    cart.forEach(i => {
-      const r = calcLine(i);
-      subtotal += r.base;
-      discount += r.discount;
-      tax += r.tax;
-      total += r.total;
-    });
+const totals = useMemo(() => {
+  let subtotal = 0;      // includes cart item taxes
+  let cartItemDiscount = 0; // info only
 
-    return {
-      subtotal,
-      discount,
-      tax,
-      arrears: customerArrears,
-      grandTotal: total + customerArrears,
-    };
-  }, [cart, customerArrears]);
+  cart.forEach(i => {
+    const r = calcLine(i);
+    subtotal += r.total;   // ✅ total already includes cart item discount & tax
+    cartItemDiscount += r.discount; // just for info
+  });
+
+  // Apply invoice-level adjustments (on subtotal)
+  const invoiceDiscountAmount = applyAdjustment(subtotal, selectedDiscount ? { type: discountMode, value: discountValue } : null);
+  const invoiceTaxAmount = applyAdjustment(subtotal - invoiceDiscountAmount, selectedTax ? { type: taxMode, value: taxValue } : null);
+
+  const grandTotal = subtotal - invoiceDiscountAmount + invoiceTaxAmount + customerArrears;
+
+  return {
+    subtotal,
+    cartItemDiscount,
+    discount: invoiceDiscountAmount,
+    tax: invoiceTaxAmount,   // invoice-level tax only
+    arrears: customerArrears,
+    grandTotal,
+  };
+}, [cart, customerArrears, selectedDiscount, discountMode, discountValue, selectedTax, taxMode, taxValue]);
+
 
   const filteredItems = useMemo(() => {
   return items.filter((item) => {
@@ -773,12 +965,24 @@ const balance = useMemo(() => {
       </div>
 
       <div className="flex justify-between">
-        <span>Discount</span>
+        <span>Discount 
+        <button
+        className="ml-1 text-[10px] px-1 border rounded bg-green-500 text-white"
+        onClick={() => setShowInvoiceDiscountModal(true)}>
+            +
+    </button>
+        </span>
         <span>-{totals.discount.toFixed(2)}</span>
       </div>
 
       <div className="flex justify-between">
-        <span>Tax</span>
+        <span>Tax
+          <button
+          className="ml-1 text-[10px] px-1 border rounded bg-red-500 text-white"
+          onClick={() => setShowInvoiceTaxModal(true)}>
+            +
+    </button>
+        </span>
         <span>{totals.tax.toFixed(2)}</span>
       </div>
 
@@ -1066,6 +1270,149 @@ const balance = useMemo(() => {
     </div>
   </div>
 )}
+{showInvoiceDiscountModal && (
+  <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
+    <div className="bg-white p-4 rounded w-80">
+      <h3 className="font-semibold mb-3">Invoice Discount</h3>
+
+      {/* Discount Name */}
+      <select
+        className="w-full border p-2 rounded mb-2"
+        value={selectedDiscount?.id ?? ""}
+        onChange={e => {
+          const d = discounts.find(d => d.id === Number(e.target.value));
+          if (d) {
+            setSelectedDiscount(d);
+            setDiscountMode(d.type === "percentage" ? "percentage" : "Fixed Amount");
+            setDiscountValue(d.value);
+          } else {
+            setSelectedDiscount(null);
+            setDiscountMode("percentage");
+            setDiscountValue(0);
+          }
+        }}
+      >
+        <option value="">Select Discount</option>
+        {discounts.map(d => (
+          <option key={d.id} value={d.id}>
+            {d.name}
+          </option>
+        ))}
+      </select>
+
+      {/* Discount Type */}
+      <select
+        className="w-full border p-2 mb-2 rounded"
+        value={discountMode}
+        onChange={e => setDiscountMode(e.target.value as "percentage" | "Fixed Amount")}
+      >
+        <option value="percentage">Percentage</option>
+        <option value="Fixed Amount">Fixed Amount</option>
+      </select>
+
+      {/* Discount Value */}
+      <input
+        type="number"
+        className="w-full border p-2 mb-3 rounded"
+        value={discountValue}
+        onChange={e => setDiscountValue(Number(e.target.value))}
+      />
+
+      <div className="flex justify-end gap-2">
+        {/* <button
+          className="px-3 py-1 border rounded"
+          onClick={() => setShowInvoiceDiscountModal(false)}
+        >
+          Cancel
+        </button> */}
+        <button
+          className="px-3 py-1 bg-blue-600 text-white rounded"
+          onClick={() => {
+            if (selectedDiscount) {
+              // Update cart items or invoice totals here
+              setShowInvoiceDiscountModal(false);
+            }
+            setShowInvoiceDiscountModal(false);
+          }}
+        >
+          Ok
+        </button>
+      </div>
     </div>
+  </div>
+)}
+
+{showInvoiceTaxModal && (
+  <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
+    <div className="bg-white p-4 rounded w-80">
+      <h3 className="font-semibold mb-3">Invoice Tax</h3>
+
+      {/* Tax Name */}
+      <select
+        className="w-full border p-2 rounded mb-2"
+        value={selectedTax?.id ?? ""}
+        onChange={e => {
+          const t = taxes.find(t => t.id === Number(e.target.value));
+          if (t) {
+            setSelectedTax(t);
+            setTaxMode(t.type === "percentage" ? "percentage" : "Fixed Amount");
+            setTaxValue(t.value);
+          } else {
+            setSelectedTax(null);
+            setTaxMode("percentage");
+            setTaxValue(0);
+          }
+        }}
+      >
+        <option value="">Select Tax</option>
+        {taxes.map(t => (
+          <option key={t.id} value={t.id}>
+            {t.name}
+          </option>
+        ))}
+      </select>
+
+      {/* Tax Type */}
+      <select
+        className="w-full border p-2 mb-2 rounded"
+        value={taxMode}
+        onChange={e => setTaxMode(e.target.value as "percentage" | "Fixed Amount")}
+      >
+        <option value="percentage">Percentage</option>
+        <option value="Fixed Amount">Fixed Amount</option>
+      </select>
+
+      {/* Tax Value */}
+      <input
+        type="number"
+        className="w-full border p-2 mb-3 rounded"
+        value={taxValue}
+        onChange={e => setTaxValue(Number(e.target.value))}
+      />
+
+      <div className="flex justify-end gap-2">
+        {/* <button
+          className="px-3 py-1 border rounded"
+          onClick={() => setShowInvoiceTaxModal(false)}
+        >
+          Cancel
+        </button> */}
+        <button
+          className="px-3 py-1 bg-blue-600 text-white rounded"
+          onClick={() => {
+            if (selectedTax) {
+              setShowInvoiceTaxModal(false);
+            }
+            setShowInvoiceTaxModal(false);
+          }}
+        >
+          Ok
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
+    </div>    
   );
 }

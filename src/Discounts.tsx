@@ -119,7 +119,7 @@ export default function Discounts() {
 
                 {/* Show "Amount" instead of "amount" */}
                 <td className="px-4 py-2 border">
-                  {d.type === "amount" ? "Amount" : "Percentage"}
+                  {d.type === "amount" ? "Fixed Amount" : "Percentage"}
                 </td>
 
                 <td className="px-4 py-2 border">{d.value}</td>
@@ -186,7 +186,7 @@ export default function Discounts() {
                   }
                 >
                   <option value="percentage">Percentage</option>
-                  <option value="amount">Amount</option>
+                  <option value="amount">Fixed Amount</option>
                 </select>
               </div>
 

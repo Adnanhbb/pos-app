@@ -135,12 +135,15 @@ export interface DBSale {
   date: string;
   transactionType: "Sale" | "Purchase" | "Return" | "Quotation";
   customerId: number | null;
+  customerName: string;
   subtotal: number;
   discount: number;
   tax: number;
+  dues: number;
   grandTotal: number;
   paid: number;
   arrears: number;
+  profit:number;
 }
 
 export interface DBSaleItem {
@@ -161,22 +164,25 @@ export interface DBSaleItem {
    DATABASE SCHEMA
    ========================================================== */
 
-interface POSDB extends DBSchema {
+ interface POSDB extends DBSchema {
   users: {
     key: number;
     value: User;
     indexes: { "by-username": string; "by-role": string };
   };
+
   customers: {
     key: number;
     value: Customer;
     indexes: { "by-name": string; "by-mobile": string };
   };
+
   suppliers: {
     key: number;
     value: Supplier;
     indexes: { "by-name": string; "by-mobile": string };
   };
+
   items: {
     key: number;
     value: Item;
@@ -187,57 +193,82 @@ interface POSDB extends DBSchema {
       "by-category": string;
     };
   };
+
   categories: {
     key: number;
     value: Category;
     indexes: { "by-name": string };
   };
+
   brands: {
     key: number;
     value: Brand;
     indexes: { "by-name": string };
   };
+
   units: {
     key: number;
     value: Unit;
     indexes: { "by-name": string };
   };
+
   discounts: {
     key: number;
     value: Discount;
     indexes: { "by-name": string };
   };
+
   taxes: {
     key: number;
     value: Tax;
     indexes: { "by-name": string };
   };
+
   expenses: {
     key: number;
     value: Expense;
     indexes: { "by-date": string; "by-description": string };
   };
+
   settings: {
     key: number;
     value: Settings;
     indexes: { "by-businessName": string };
   };
+
   customer_payments: {
-  key: number;
-  value: CustomerPayment;
-  indexes: { "by-customer": number; "by-date": string };
-};
+    key: number;
+    value: CustomerPayment;
+    indexes: { "by-customer": number; "by-date": string };
+  };
 
-supplier_payments: {
-  key: number;
-  value: SupplierPayment;
-  indexes: { "by-supplier": number; "by-date": string };
-};
+  supplier_payments: {
+    key: number;
+    value: SupplierPayment;
+    indexes: { "by-supplier": number; "by-date": string };
+  };
 
-sales: { key: number; value: DBSale; indexes: { "by-customer": number } };
+  // Use 0 or -1 for walk-ins
+    sales: {
+      key: number;
+      value: DBSale;
+      indexes: {
+        "by-customer": number;  // NO null
+        "by-transactionType": DBSale["transactionType"];
+        "by-invoiceNo": string;
+      };
+    };
 
-sale_items: { key: number; value: DBSaleItem; indexes: { "by-sale": number; "by-item": number } };
+  sale_items: {
+    key: number;
+    value: DBSaleItem;
+    indexes: {
+      "by-saleId": number;
+    };
+  };
 }
+
+
 
 /* ==========================================================
    INIT DB
@@ -419,16 +450,29 @@ if (!db.objectStoreNames.contains("supplier_payments")) {
 
 // SALES
 if (!db.objectStoreNames.contains("sales")) {
-  const store = db.createObjectStore("sales", { keyPath: "id", autoIncrement: true });
+  const store = db.createObjectStore("sales", {
+    keyPath: "id",
+    autoIncrement: true,
+  });
+
   store.createIndex("by-customer", "customerId");
+
+  // ✅ NEW — safe index for ALL invoices
+  store.createIndex("by-transactionType", "transactionType");
+  store.createIndex("by-invoiceNo", "invoiceNo");
 }
+
 
 // SALE ITEMS
 if (!db.objectStoreNames.contains("sale_items")) {
-  const store = db.createObjectStore("sale_items", { keyPath: "id", autoIncrement: true });
-  store.createIndex("by-sale", "saleId");
-  store.createIndex("by-item", "originalItemId");
+  const store = db.createObjectStore("sale_items", {
+    keyPath: "id",
+    autoIncrement: true,
+  });
+
+  store.createIndex("by-saleId", "saleId");
 }
+
 
     },
   });

@@ -1,0 +1,246 @@
+import { useEffect, useState } from "react";
+import { salesRepository } from "./repositories/salesRepository";
+import type { DBSale, DBSaleItem } from "./db";
+import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight } from "react-icons/fa";
+
+const PAGE_SIZE = 10;
+const TRANSACTION_TYPES = ["All", "Sales", "Purchases", "Returns", "Quotations"] as const;
+
+export default function Invoices() {
+  const [sales, setSales] = useState<DBSale[]>([]);
+  const [currentPage, setCurrentPage] = useState<number>(1);
+  const [totalRecords, setTotalRecords] = useState<number>(0);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  const [selectedInvoice, setSelectedInvoice] = useState<DBSale | null>(null);
+  const [invoiceItems, setInvoiceItems] = useState<DBSaleItem[]>([]);
+  const [itemsLoading, setItemsLoading] = useState<boolean>(false);
+
+  const [transactionTypeFilter, setTransactionTypeFilter] = useState<typeof TRANSACTION_TYPES[number]>("All");
+
+  const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+
+  // Load total count on mount or filter change
+  useEffect(() => {
+    async function loadCount() {
+      if (transactionTypeFilter === "All") {
+        const count = await salesRepository.getSalesCount();
+        setTotalRecords(count);
+      } else {
+        const { total } = await salesRepository.getSalesPaged(1, PAGE_SIZE, transactionTypeFilter as any);
+        setTotalRecords(total);
+      }
+      setCurrentPage(1);
+    }
+    loadCount();
+  }, [transactionTypeFilter]);
+
+  // Load current page
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadPage() {
+      setLoading(true);
+      let data: DBSale[] = [];
+      if (transactionTypeFilter === "All") {
+        data = await salesRepository.getSalesPage(currentPage, PAGE_SIZE);
+      } else {
+        const res = await salesRepository.getSalesPaged(currentPage, PAGE_SIZE, transactionTypeFilter as any);
+        data = res.data;
+      }
+      if (!cancelled) {
+        // Sort ascending by invoiceNo (assuming numeric)
+        data.sort((a, b) => Number(a.invoiceNo ?? 0) - Number(b.invoiceNo ?? 0));
+        setSales(data);
+        setLoading(false);
+      }
+    }
+
+    loadPage();
+    return () => { cancelled = true; };
+  }, [currentPage, transactionTypeFilter]);
+
+  // Load selected invoice items
+  useEffect(() => {
+    if (!selectedInvoice || selectedInvoice.id === undefined) {
+      setInvoiceItems([]);
+      return;
+    }
+
+    const id: number = selectedInvoice.id;
+    let cancelled = false;
+
+    async function loadItems() {
+      setItemsLoading(true);
+      try {
+        const items = await salesRepository.getSaleItems(id);
+        if (!cancelled) setInvoiceItems(items || []);
+      } catch {
+        if (!cancelled) setInvoiceItems([]);
+      } finally {
+        if (!cancelled) setItemsLoading(false);
+      }
+    }
+
+    loadItems();
+    return () => { cancelled = true; };
+  }, [selectedInvoice]);
+
+  const goToPage = (page: number) => {
+    if (page < 1 || page > totalPages) return;
+    setCurrentPage(page);
+  };
+
+  return (
+    <div className="p-4 flex flex-col lg:flex-row gap-4">
+      
+      {/* LEFT PANEL */}
+      <div className="w-full lg:w-4/5 bg-white shadow rounded-lg p-4 flex flex-col gap-4">
+        <h1 className="text-xl font-semibold">Invoices</h1>
+
+        {/* Transaction type filter */}
+        <div className="flex gap-3 mt-2">
+          {TRANSACTION_TYPES.map(type => (
+            <label
+              key={type}
+              className={`flex items-center gap-2 px-3 py-1 rounded cursor-pointer transition
+                ${transactionTypeFilter === type
+                  ? "bg-indigo-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"}
+              `}
+            >
+              <input
+                type="radio"
+                name="transactionType"
+                value={type}
+                checked={transactionTypeFilter === type}
+                onChange={() => setTransactionTypeFilter(type)}
+                className="mr-1 hidden"
+              />
+              {type}
+            </label>
+          ))}
+        </div>
+
+        {loading ? <div>Loading invoices...</div> : (
+          <table className="w-full border-collapse border mt-2 text-sm">
+            <thead>
+              <tr className="bg-gray-100">
+                <th className="border p-2">Invoice #</th>
+                <th className="border p-2">Customer</th>
+                <th className="border p-2">Date</th>
+                <th className="border p-2">Payable</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sales.map(sale => (
+                <tr
+                  key={sale.id}
+                  className={`cursor-pointer hover:bg-gray-100 ${selectedInvoice?.id === sale.id ? "bg-blue-50" : ""}`}
+                  onClick={() => setSelectedInvoice(sale)}
+                >
+                  <td className="border p-2">{sale.invoiceNo}</td>
+                  <td className="border p-2">{sale.customerName}</td>
+                  <td className="border p-2">
+                    {new Date(sale.date).toLocaleDateString()}
+                  </td>
+                  <td className="border p-2 text-right">{sale.grandTotal}</td>
+                </tr>
+              ))}
+              {sales.length === 0 && (
+                <tr>
+                  <td colSpan={4} className="p-4 text-center">No invoices found</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
+           
+        {/* Pagination */}
+        <div className="flex justify-center items-center gap-2 mt-2">
+          <button onClick={() => goToPage(1)} disabled={currentPage === 1} className="p-1 border rounded hover:bg-gray-100"><FaAngleDoubleLeft /></button>
+          <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1} className="p-1 border rounded hover:bg-gray-100"><FaAngleLeft /></button>
+          <span className="px-2">Page {currentPage} of {totalPages}</span>
+          <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages} className="p-1 border rounded hover:bg-gray-100"><FaAngleRight /></button>
+          <button onClick={() => goToPage(totalPages)} disabled={currentPage === totalPages} className="p-1 border rounded hover:bg-gray-100"><FaAngleDoubleRight /></button>
+        </div>
+      </div>
+
+      {/* RIGHT PANEL */}
+      <div className="w-full lg:w-1/2 bg-white shadow rounded-lg p-4 flex flex-col gap-4">
+        {selectedInvoice ? (
+          <>
+            {/* Header: invoice info */}
+            <div className="flex justify-between items-start mb-4 text-sm">
+              <div >
+                <h2 className="text-lg font-semibold">Invoice #{selectedInvoice.invoiceNo}</h2>
+                <p><strong>Date:</strong> {selectedInvoice.date}</p>
+                <p><strong>Customer Name:</strong> {selectedInvoice.customerName ?? "N/A"}</p>
+              </div>
+              <div>
+                {/* <p><strong>Transaction:</strong> {selectedInvoice.transactionType}</p> */}
+                {/* <p><strong>Customer Name:</strong> {selectedInvoice.customerId ?? "N/A"}</p> */}
+              </div>
+            </div>
+
+            {/* Items */}
+            <div className="flex-2 overflow-auto text-xs">
+              {itemsLoading ? <div>Loading items...</div> : invoiceItems.length > 0 ? (
+                <table className="w-full border-collapse border">
+                  <thead>
+                    <tr className="bg-gray-100">
+                      <th className="border p-2">Name</th>
+                      <th className="border p-2">Qty</th>
+                      <th className="border p-2">Price</th>
+                      <th className="border p-2">Disc</th>
+                      <th className="border p-2">Tax</th>
+                      <th className="border p-2">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {invoiceItems.map(item => (
+                      <tr key={item.id}>
+                        <td className="border p-2">{item.name}</td>
+                        <td className="border p-2 text-right">{item.qty}</td>
+                        <td className="border p-2 text-right">{item.price}</td>
+                        <td className="border p-2 text-right">{item.discountValue}{item.discountType}</td>
+                        <td className="border p-2 text-right">{item.taxValue}{item.taxType}</td>
+                        <td className="border p-2 text-right">
+                        {(() => {
+                            const base = item.qty * item.price;
+                            const discount = item.discountType === "%" ? (base * item.discountValue) / 100 : item.discountValue;
+                            const taxed = item.taxType === "%" ? ((base - discount) * item.taxValue) / 100 : item.taxValue;
+                            return base - discount + taxed;
+                        })()}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : <div>No items found</div>}
+            </div>
+
+            {/* Totals */}
+           <div className="border-t pt-2 mt-2 grid grid-cols-2 gap-4 text-sm">
+                {/* Left column */}
+                <div className="flex flex-col gap-1">
+                  <p><strong>Subtotal:</strong> {selectedInvoice.subtotal}</p>
+                  <p><strong>Discount:</strong> {selectedInvoice.discount}</p>
+                  <p><strong>Tax:</strong> {selectedInvoice.tax}</p>
+                  <p><strong>Prev. Dues:</strong> {selectedInvoice.dues}</p>
+                </div>
+
+                {/* Right column */}
+                <div className="flex flex-col gap-1 text-right">
+                  <p className="text-blue-500"><strong>Grand Total:</strong> {selectedInvoice.grandTotal}</p>
+                  <p className="text-green-500"><strong>Paid:</strong> {selectedInvoice.paid}</p>
+                  <p className="text-red-500"><strong>Balance:</strong> {selectedInvoice.arrears}</p>
+                </div>
+              </div>
+
+          </>
+        ) : <div className="text-center text-gray-500">Select an invoice to view details</div>}
+      </div>
+    </div>
+  );
+}
