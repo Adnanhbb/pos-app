@@ -1,93 +1,38 @@
-import { db } from "../db";
+import { initDB } from "../db"; // whatever your modern idb init function is
 import type { CustomerPayment } from "../db";
 
 export const customerPaymentRepository = {
-  // Get all customer payments
   async getAll(): Promise<CustomerPayment[]> {
-    const conn = await db.open();
-    return new Promise((resolve, reject) => {
-      const tx = conn.transaction("customer_payments", "readonly");
-      const store = tx.objectStore("customer_payments");
-      const req = store.getAll();
-
-      req.onsuccess = () => resolve(req.result as CustomerPayment[] || []);
-      req.onerror = () => reject(req.error);
-    });
+    const db = await initDB();
+    return await db.getAll("customer_payments"); // simple idb call
   },
 
-  // Get payments by a specific customer
   async getByCustomer(customerId: number): Promise<CustomerPayment[]> {
-    const conn = await db.open();
-    return new Promise((resolve, reject) => {
-      const tx = conn.transaction("customer_payments", "readonly");
-      const store = tx.objectStore("customer_payments");
-      const results: CustomerPayment[] = [];
-
-      const cursorReq = store.openCursor();
-      cursorReq.onsuccess = (e) => {
-        const cursor = (e.target as IDBRequest<IDBCursorWithValue>).result;
-        if (!cursor) return resolve(results);
-
-        if (cursor.value.customerId === customerId) {
-          results.push(cursor.value as CustomerPayment);
-        }
-        cursor.continue();
-      };
-
-      cursorReq.onerror = () => reject(cursorReq.error);
-    });
+    const db = await initDB();
+    const all = await db.getAll("customer_payments");
+    return all.filter(p => p.customerId === customerId);
   },
 
-  // Add a new payment
   async add(payment: Omit<CustomerPayment, "id">): Promise<number> {
-    const conn = await db.open();
-
-    // Ensure required fields exist
-    if (
-      payment.customerId === undefined ||
-      payment.customerName === undefined ||
-      payment.invoiceNo === undefined ||
-      payment.amount === undefined ||
-      payment.paymentDate === undefined ||
-      payment.payableSnapshot === undefined ||
-      payment.balanceSnapshot === undefined
-    ) {
-      throw new Error("Missing required fields in CustomerPayment");
-    }
-
-    return new Promise((resolve, reject) => {
-      const tx = conn.transaction("customer_payments", "readwrite");
-      const store = tx.objectStore("customer_payments");
-      const req = store.add(payment);
-
-      req.onsuccess = () => resolve(req.result as number);
-      req.onerror = () => reject(req.error);
-    });
+    const db = await initDB();
+    return await db.add("customer_payments", payment);
   },
 
-  // Update an existing payment
   async update(payment: CustomerPayment): Promise<void> {
-    const conn = await db.open();
-    return new Promise((resolve, reject) => {
-      const tx = conn.transaction("customer_payments", "readwrite");
-      const store = tx.objectStore("customer_payments");
-      const req = store.put(payment);
-
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
+    const db = await initDB();
+    await db.put("customer_payments", payment);
   },
 
-  // Delete a payment
   async delete(id: number): Promise<void> {
-    const conn = await db.open();
-    return new Promise((resolve, reject) => {
-      const tx = conn.transaction("customer_payments", "readwrite");
-      const store = tx.objectStore("customer_payments");
-      const req = store.delete(id);
+    const db = await initDB();
+    await db.delete("customer_payments", id);
+  },
 
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
+  async deleteByInvoiceNo(invoiceNo: string): Promise<void> {
+    const db = await initDB();
+    const all = await db.getAll("customer_payments");
+    for (const p of all.filter(p => p.invoiceNo === invoiceNo)) {
+      await db.delete("customer_payments", p.id!);
+    }
   },
 };

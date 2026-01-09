@@ -82,7 +82,7 @@ export const salesRepository = {
   const offset = (page - 1) * pageSize;
 
   return new Promise((resolve, reject) => {
-    const request = store.openCursor();
+const request = store.openCursor(null, "prev");
 
     request.onerror = () => reject(request.error);
 

@@ -293,7 +293,7 @@ async function handleCompleteSale() {
       invoiceNo,
       date: new Date().toISOString(),
       transactionType: "Sale",
-      customerId: customerIdForDB,
+      customerId: customerId ?? 0,
       customerName,
       subtotal,
       discount,
@@ -998,8 +998,8 @@ const balance = useMemo(() => {
       )}
 
       <div className="flex justify-between font-semibold border-t pt-2 text-base">
-        <span>Payable Amount</span>
-        <span>{totals.grandTotal.toFixed(2)}</span>
+        <span className="text-blue-600">Payable Amount</span>
+        <span className="text-blue-600">{totals.grandTotal.toFixed(2)}</span>
       </div>
     </div>
 
@@ -1015,12 +1015,12 @@ const balance = useMemo(() => {
             min="0"
             value={paid}
             onChange={(e) => setPaid(Number(e.target.value) || 0)}
-            className="flex-1 p-2 border w-full rounded text-center text-xl"
+            className="flex-1 p-2 border w-full rounded text-center text-xl text-green-500"
           />
         </div>
 
       <div className="flex justify-between items-center bg-gray-50 p-3 rounded">
-        <span className="font-medium text-xl text-gray-600">Balance</span>
+        <span className="font-medium text-xl text-red-600">Balance</span>
         <span className="text-lg font-bold text-red-600 mr-10">
           {balance.toFixed(2)}
         </span>

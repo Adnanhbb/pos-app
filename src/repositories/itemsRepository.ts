@@ -8,6 +8,8 @@ import {
   getItemsPaged,
 } from "../db";
 
+import { db } from "../db";
+
 export type { Item };
 
 export const itemsRepository = {
@@ -38,4 +40,18 @@ export const itemsRepository = {
   remove: async (id: number): Promise<void> => {
     await deleteItem(id);
   },
+
+  async getById(id: number): Promise<Item | undefined> {
+  const conn = await db.open();
+  const tx = conn.transaction("items", "readonly");
+  const store = tx.objectStore("items");
+
+  return new Promise((resolve, reject) => {
+    const req = store.get(id);
+
+    req.onsuccess = () => resolve(req.result as Item | undefined);
+    req.onerror = () => reject(req.error);
+  });
+},
+
 };

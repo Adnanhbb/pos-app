@@ -4,7 +4,7 @@ import type { DBSale, DBSaleItem } from "./db";
 import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight } from "react-icons/fa";
 
 const PAGE_SIZE = 10;
-const TRANSACTION_TYPES = ["All", "Sales", "Purchases", "Returns", "Quotations"] as const;
+const TRANSACTION_TYPES = ["All", "Sale", "Purchase", "Return", "Quotation"] as const;
 
 export default function Invoices() {
   const [sales, setSales] = useState<DBSale[]>([]);
@@ -19,6 +19,8 @@ export default function Invoices() {
   const [transactionTypeFilter, setTransactionTypeFilter] = useState<typeof TRANSACTION_TYPES[number]>("All");
 
   const totalPages = Math.ceil(totalRecords / PAGE_SIZE);
+
+  const [search, setSearch] = useState("");
 
   // Load total count on mount or filter change
   useEffect(() => {
@@ -91,14 +93,34 @@ export default function Invoices() {
     setCurrentPage(page);
   };
 
+  // 🔽 AFTER all useEffect / useMemo blocks
+const filteredInvoices = sales.filter(inv => {
+  // Radio filter
+  if (transactionTypeFilter !== "All" && inv.transactionType !== transactionTypeFilter) {
+    return false;
+  }
+
+  // Search filter
+  if (search.trim()) {
+    const q = search.toLowerCase();
+    return (
+      inv.invoiceNo.toLowerCase().includes(q) ||
+      inv.customerName.toLowerCase().includes(q)
+    );
+  }
+
+  return true;
+});
+
   return (
     <div className="p-4 flex flex-col lg:flex-row gap-4">
       
       {/* LEFT PANEL */}
       <div className="w-full lg:w-4/5 bg-white shadow rounded-lg p-4 flex flex-col gap-4">
-        <h1 className="text-xl font-semibold">Invoices</h1>
+        <h1 className="text-xl font-semibold">View Invoices</h1>
 
-        {/* Transaction type filter */}
+        <div className="flex items-center justify-between gap-4">
+          {/* Transaction type filter */}
         <div className="flex gap-3 mt-2">
           {TRANSACTION_TYPES.map(type => (
             <label
@@ -122,6 +144,16 @@ export default function Invoices() {
           ))}
         </div>
 
+        {/* Right: Search input */}
+          <input
+            type="text"
+            placeholder="Search invoice or customer..."
+            className="border rounded px-2 py-1 text-sm w-64"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+
         {loading ? <div>Loading invoices...</div> : (
           <table className="w-full border-collapse border mt-2 text-sm">
             <thead>
@@ -133,18 +165,18 @@ export default function Invoices() {
               </tr>
             </thead>
             <tbody>
-              {sales.map(sale => (
+              {filteredInvoices.map(filteredInvoices => (
                 <tr
-                  key={sale.id}
-                  className={`cursor-pointer hover:bg-gray-100 ${selectedInvoice?.id === sale.id ? "bg-blue-50" : ""}`}
-                  onClick={() => setSelectedInvoice(sale)}
+                  key={filteredInvoices.id}
+                  className={`cursor-pointer hover:bg-gray-100 ${selectedInvoice?.id === filteredInvoices.id ? "bg-blue-50" : ""}`}
+                  onClick={() => setSelectedInvoice(filteredInvoices)}
                 >
-                  <td className="border p-2">{sale.invoiceNo}</td>
-                  <td className="border p-2">{sale.customerName}</td>
+                  <td className="border p-2">{filteredInvoices.invoiceNo}</td>
+                  <td className="border p-2">{filteredInvoices.customerName}</td>
                   <td className="border p-2">
-                    {new Date(sale.date).toLocaleDateString()}
+                    {new Date(filteredInvoices.date).toLocaleDateString()}
                   </td>
-                  <td className="border p-2 text-right">{sale.grandTotal}</td>
+                  <td className="border p-2 text-right">{filteredInvoices.grandTotal}</td>
                 </tr>
               ))}
               {sales.length === 0 && (
