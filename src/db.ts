@@ -1132,7 +1132,7 @@ export async function addCustomerPayment(
   const db = await initDB();
   const customer = await db.get("customers", customerId);
   if (!customer) throw new Error("Customer not found");
-
+  
   const currentBalance = customer.balance ?? 0;
   const currentPayable = payableSnapshot ?? currentBalance;
 

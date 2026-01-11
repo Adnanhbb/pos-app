@@ -27,11 +27,7 @@ export default function App() {
         <Login onLogin={handleLogin} />
       ) : (
         // Show dashboard if logged in
-        <Dashboard
-          username={user.username}
-          role={user.role}
-          onLogout={handleLogout}
-        />
+        <Dashboard/>
       )}
     </>
   );

@@ -58,10 +58,10 @@ export default function CustPayments() {
 
     if (query.trim()) {
       const q = query.toLowerCase();
-      data = data.filter(p => {
-        const c = customers.find(x => x.id === p.customerId);
-        return c?.name.toLowerCase().includes(q);
-      });
+      data = data.filter((p: CustomerPayment) => {
+      const c = customers.find((x: Customer) => x.id === p.customerId);
+      return c?.name.toLowerCase().includes(q);
+    });
     }
 
     const totalCount = data.length;
@@ -96,33 +96,45 @@ export default function CustPayments() {
     setFormOpen(false);
   }
 
-  async function handleSave() {
-    if (!form.customerId) return alert("Select customer");
-    if (form.amount <= 0) return alert("Enter valid amount");
+ async function handleSave() {
+  if (!form.customerId) return alert("Select customer");
+  if (form.amount <= 0) return alert("Enter valid amount");
 
-    if (editingPayment) {
-      await customerPaymentsRepo.update(
-        editingPayment.id!,
-        form.customerId,
-        form.amount,
-        form.paymentDate,
-        form.remarks,
-        form.payableSnapshot
-      );
-    } else {
-      await customerPaymentsRepo.add(
-        form.customerId,
-        form.amount,
-        form.paymentDate,
-        form.remarks,
-        form.payableSnapshot
-      );
-    }
-
-    await loadPage();
-    await loadCustomers();
-    closeForm();
+  if (editingPayment) {
+    // Update existing payment: include all properties
+    const updatedPayment: CustomerPayment = {
+      id: editingPayment.id!,
+      customerId: form.customerId,
+      amount: form.amount,
+      paymentDate: form.paymentDate,
+      remarks: form.remarks,
+      payableSnapshot: form.payableSnapshot,
+      // Fill the other properties from existing record if needed
+      customerName: editingPayment.customerName,
+      invoiceNo: editingPayment.invoiceNo,
+      balanceSnapshot: editingPayment.balanceSnapshot,
+    };
+    await customerPaymentsRepo.update(updatedPayment);
+  } else {
+    // Add new payment: only required fields
+    const newPayment: Omit<CustomerPayment, "id"> = {
+      customerId: form.customerId,
+      amount: form.amount,
+      paymentDate: form.paymentDate,
+      remarks: form.remarks,
+      payableSnapshot: form.payableSnapshot,
+      // Provide default or empty values for other required fields
+      customerName: customers.find(c => c.id === form.customerId)?.name || "",
+      invoiceNo: "",            // default or generate
+      balanceSnapshot: form.payableSnapshot,
+    };
+    await customerPaymentsRepo.add(newPayment);
   }
+
+  await loadPage();
+  await loadCustomers();
+  closeForm();
+}
 
   async function handleDelete(id: number) {
     if (!confirm("Delete this payment?")) return;

@@ -4,7 +4,7 @@ import { validateUser, getSettings, getUserByUsername } from "./db";
 import { FaUser, FaLock } from "react-icons/fa";
 
 interface LoginProps {
-  onLogin: (name: string, role: string) => void;
+  onLogin: (name: string, role: "admin" | "saleboy") => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
@@ -40,7 +40,7 @@ export default function Login({ onLogin }: LoginProps) {
         localStorage.setItem("loggedInUserId", String(user.id));
 
         // pass display name and role to app state
-        onLogin(user.Name, user.Role);
+        onLogin(user.Name, user.Role as "admin" | "saleboy");
 
         if (rememberMe) localStorage.setItem("rememberedUser", user.Username);
       } else {

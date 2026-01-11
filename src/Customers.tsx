@@ -75,7 +75,7 @@ const [form, setForm] = useState<CustomerForm>(emptyForm);
     if (query?.trim()) {
       const q = query.trim().toLowerCase();
       allData = allData.filter(
-        (c) =>
+        (c: Customer) =>
           c.name.toLowerCase().includes(q) ||
           c.mobile.toLowerCase().includes(q) ||
           c.address?.toLowerCase().includes(q)
@@ -85,7 +85,7 @@ const [form, setForm] = useState<CustomerForm>(emptyForm);
     // Due Only filter
     if (showDueOnly) {
       allData = allData.filter(
-        (c) => (c.balance ?? (Number(c.payable ?? 0) - (c.paid ?? 0))) > 0
+        (c: Customer) => (c.balance ?? (Number(c.payable ?? 0) - (c.paid ?? 0))) > 0
       );
     }
 
@@ -104,13 +104,22 @@ const [form, setForm] = useState<CustomerForm>(emptyForm);
     let all = await customersRepo.getAll();
 
     if (showDueOnly) {
-      all = all.filter((c) => (c.balance ?? (Number(c.payable ?? 0) - (c.paid ?? 0))) > 0);
+      all = all.filter((c: Customer) => (c.balance ?? (Number(c.payable ?? 0) - (c.paid ?? 0))) > 0);
     }
 
     setTotalCustomers(all.length);
-    setTotalPayable(all.reduce((s, c) => s + Number(c.payable ?? 0), 0));
-    setTotalPaid(all.reduce((s, c) => s + (c.paid ?? 0), 0));
-    setTotalBalance(all.reduce((s, c) => s + (c.balance ?? 0), 0));
+    setTotalPayable(
+        all.reduce((s: number, c: Customer) => s + Number(c.payable ?? 0), 0)
+      );
+
+      setTotalPaid(
+        all.reduce((s: number, c: Customer) => s + (c.paid ?? 0), 0)
+      );
+
+      setTotalBalance(
+        all.reduce((s: number, c: Customer) => s + (c.balance ?? 0), 0)
+);
+
   }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -153,11 +162,13 @@ async function handleSave() {
   const balanceNum = payableNum - paidNum;
 
   // Fetch all customers to check for duplicates
-  const allCustomers = await customersRepo.getAll();
-  const nameExists = allCustomers.some(c =>
-    c.name.trim().toLowerCase() === form.name.trim().toLowerCase() &&
-    c.id !== editingCustomer?.id // ignore current customer when editing
-  );
+  const allCustomers: Customer[] = await customersRepo.getAll();
+
+    const nameExists = allCustomers.some((c: Customer) =>
+      c.name.trim().toLowerCase() === form.name.trim().toLowerCase() &&
+      c.id !== editingCustomer?.id
+    );
+
   if (nameExists) {
     return alert(`A customer with the name "${form.name}" already exists.`);
   }
@@ -177,7 +188,7 @@ async function handleSave() {
   if (editingCustomer) {
     await customersRepo.update(customerToSave);
   } else {
-    await customersRepo.add(customerToSave);
+    await customersRepo.create(customerToSave);
     setPage(1);
   }
 
@@ -190,7 +201,7 @@ async function handleSave() {
     if (!id) return;
     if (!confirm("Delete this customer?")) return;
 
-    await customersRepo.delete(id);
+    await customersRepo.remove(id);
 
     const newTotal = Math.max(0, total - 1);
     const newPages = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
