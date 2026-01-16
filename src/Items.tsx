@@ -173,6 +173,20 @@ export default function ItemsPage() {
                 ? `No. of ${form.minunit} per ${form.maxunit}`
                 : "Unit Conversion Qty";
 
+  function splitStock(
+  totalMinUnits: number,
+  convQty: number
+) {
+  if (!convQty || convQty <= 0) {
+    return { maxQty: 0, minQty: totalMinUnits };
+  }
+
+  const maxQty = Math.floor(totalMinUnits / convQty);
+  const minQty = totalMinUnits % convQty;
+
+  return { maxQty, minQty };
+}
+
   return (
     <div className="p-2 sm:p-4 lg:p-8">
       {/* Header */}
@@ -261,7 +275,31 @@ export default function ItemsPage() {
                   <td className="p-3">{it.retailPrice}</td>
                   <td className="p-3">{it.discountPrice || 0}</td>
                   <td className="p-3">{it.wholesalePrice}</td>
-                  <td className="p-3">{it.availableStock}</td>
+                  <td className="p-3 text-sm">
+                      {(() => {
+                        const { maxQty, minQty } = splitStock(it.availableStock, it.ConvQty);
+
+                        return (
+                          <div className="leading-tight">
+                            {maxQty > 0 && (
+                              <div className="font-medium">
+                                {maxQty} {it.maxunit}s
+                              </div>
+                            )}
+
+                            {minQty > 0 && (
+                              <div className="text-gray-600 text-xs">
+                                {minQty} {it.minunit}s
+                              </div>
+                            )}
+
+                            {maxQty === 0 && minQty === 0 && (
+                              <div className="text-red-500 text-xs">Out of stock</div>
+                            )}
+                          </div>
+                        );
+                      })()}
+                    </td>
                   <td className="p-3 text-center flex justify-center gap-2">
                     <button onClick={() => openEdit(it)} className="p-2 bg-blue-500 text-white rounded">
                       <FaEdit />
@@ -356,7 +394,7 @@ export default function ItemsPage() {
 
               {/* Dropdowns for Brand / Category / Unit */}
               <div>
-                <label className="block text-xs font-medium mb-1">Brand</label>
+                {/* <label className="block text-xs font-medium mb-1">Brand</label> */}
                 <select className="w-full p-2 border rounded" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })}>
                   <option value="">Select Brand</option>
                   {brands.map((b) => <option key={b} value={b}>{b}</option>)}
@@ -364,7 +402,7 @@ export default function ItemsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1">Category</label>
+                {/* <label className="block text-xs font-medium mb-1">Category</label> */}
                 <select className="w-full p-2 border rounded" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
                   <option value="">Select Category</option>
                   {categories.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -372,25 +410,25 @@ export default function ItemsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1"> Unit</label>
+                {/* <label className="block text-xs font-medium mb-1"> Minimum Unit</label> */}
                 <select className="w-full p-2 border rounded" value={form.minunit} onChange={(e) => setForm({ ...form, minunit: e.target.value })}>
-                  <option value="">Select Unit</option>
+                  <option value="">Select Min Unit</option>
                   {units.map((u) => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
 
-              {/* <div>
-                <label className="block text-xs font-medium mb-1">Maximum Unit</label>
+              <div>
+                {/* <label className="block text-xs font-medium mb-1">Maximum Unit</label> */}
                 <select className="w-full p-2 border rounded" value={form.maxunit} onChange={(e) => setForm({ ...form, maxunit: e.target.value })}>
                   <option value="">Select Max Unit</option>
                   {units.map((u) => <option key={u} value={u}>{u}</option>)}
                 </select>
-              </div> */}
+              </div>
               
-              {/* <div className="sm:col-span-2">
+               <div className="sm:col-span-2">
                 <label className="block text-xs font-medium mb-1">{conversionLabel}</label>
                 <input type="number" className="w-full p-2 border rounded" value={form.ConvQty} onChange={(e) => setForm({ ...form, ConvQty: Number(e.target.value) })} />
-              </div> */}
+              </div>
 
               <div>
                 <label className="block text-xs font-medium mb-1">Purchase Price</label>
@@ -412,8 +450,8 @@ export default function ItemsPage() {
                 <input type="number" className="w-full p-2 border rounded" value={form.wholesalePrice} onChange={(e) => setForm({ ...form, wholesalePrice: Number(e.target.value) })} />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium mb-1">Opening Stock</label>
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-medium mb-1">Opening Stock ({form.minunit})</label>
                 <input type="number" className="w-full p-2 border rounded" value={form.availableStock} onChange={(e) => setForm({ ...form, availableStock: Number(e.target.value) })} />
               </div>
 

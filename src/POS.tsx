@@ -17,21 +17,37 @@ import type { Discount, Tax } from "./db";
 // =====================
 // Types
 // =====================
+type UnitType = "min" | "max";
 
 type CartItem = {
   id: number;
   name: string;
+
+  /** Quantity is ALWAYS stored in MIN UNIT */
   qty: number;
-  price: number;
+
+  /** Selected unit in UI */
+  unit: UnitType;
+
+  /** Base price per MIN UNIT */
+  minUnitPrice: number;
+
+  /** Conversion info */
+  convQty: number;
+  minunit: string;
+  maxunit: string;
+
+  /** Existing pricing & tax fields */
   costPrice: number;
   discountType: "%" | "flat";
   discountValue: number;
   taxType: "%" | "flat";
   taxValue: number;
+
   originalItemId: number;
   priceCategory: "Retail" | "Discount" | "Wholesale";
-
 };
+
 
 type Customer = {
   id: number;
@@ -53,12 +69,44 @@ interface InvoiceAdjustmentModalProps {
   }) => void;
 }
 
+/**
+ * Normalize price to MIN UNIT
+ */
+export function normalizeToMinUnit(
+  price: number,
+  unit: UnitType,
+  convQty: number
+): number {
+  return unit === "max" ? price / convQty : price;
+}
+
+/**
+ * Convert normalized min-unit price to display unit
+ */
+export function priceForDisplay(
+  minUnitPrice: number,
+  unit: UnitType,
+  convQty: number
+): number {
+  return unit === "max" ? minUnitPrice * convQty : minUnitPrice;
+}
+
+/**
+ * Calculate total
+ */
+export function calculateTotal(
+  qty: number,
+  minUnitPrice: number
+): number {
+  return qty * minUnitPrice;
+}
+
 // =====================
 // Helpers
 // =====================
 
 function calcLine(item: CartItem) {
-  const base = item.qty * item.price;
+  const base = item.qty * item.minUnitPrice;
   const discount =
     item.discountType === "%" ? (base * item.discountValue) / 100 : item.discountValue;
   const afterDiscount = Math.max(0, base - discount);
@@ -267,7 +315,7 @@ async function handleCompleteSale() {
   // 2️⃣ Calculate profit
   let profit = 0;
   cart.forEach(item => {
-    const lineBase = item.qty * item.price;
+    const lineBase = item.qty * item.minUnitPrice;
     const costBase = item.qty * item.costPrice;
     const discountAmt = item.discountType === "%" ? (lineBase * item.discountValue) / 100 : item.discountValue;
     profit += (lineBase - discountAmt) - costBase;
@@ -278,7 +326,7 @@ async function handleCompleteSale() {
     originalItemId: ci.originalItemId,
     name: ci.name,
     qty: ci.qty,
-    price: ci.price,
+    price: ci.minUnitPrice,
     priceCategory: ci.priceCategory,
     discountType: ci.discountType,
     discountValue: ci.discountValue,
@@ -340,6 +388,14 @@ async function handleCompleteSale() {
     }
   }
 
+  function normalizeToMinUnit(
+  price: number,
+  unit: UnitType,
+  convQty: number
+): number {
+  return unit === "max" ? price / convQty : price;
+}
+
   // 6️⃣ Clear UI & reset states
   setCart([]);
   setPaid(0);
@@ -355,6 +411,32 @@ async function handleCompleteSale() {
 
   alert(`Sale completed successfully. Invoice #${invoiceNo}`);
 }
+
+interface UnitPriceContext {
+  unit: UnitType;        // which unit the entered price belongs to
+  price: number;         // price for THAT unit
+}
+
+function priceForUnit(
+  ctx: UnitPriceContext,
+  item: Item,
+  targetUnit: UnitType
+): number {
+  if (ctx.unit === targetUnit) {
+    return ctx.price;
+  }
+
+  if (ctx.unit === "min" && targetUnit === "max") {
+    return ctx.price * item.ConvQty;
+  }
+
+  if (ctx.unit === "max" && targetUnit === "min") {
+    return ctx.price / item.ConvQty;
+  }
+
+  return ctx.price; // safety fallback
+}
+
 
   // =====================
   // INIT LOADS
@@ -434,19 +516,6 @@ useEffect(() => {
     window.removeEventListener("beforeunload", handleBeforeUnload);
   };
 }, [cart.length]);
-
-useEffect(() => {
-  if (!editing) return;
-
-  const item = items.find(i => i.id === editing.originalItemId);
-  if (!item) return;
-
-  let category: PriceCategory = "Retail";
-  if (editing.price === item.wholesalePrice) category = "Wholesale";
-  else if (editing.price === item.discountPrice) category = "Discount";
-
-  setEditing(prev => prev ? { ...prev, priceCategory: category } : prev);
-}, [editing, items]);
 
 useEffect(() => {
   const loadAdjustments = async () => {
@@ -534,21 +603,38 @@ useEffect(() => {
     }
 
     return [
-      ...c,
-      {
-        id: Date.now(),
-        name: item.name,
-        qty: 1,
-        price: item.retailPrice,
-        costPrice: item.purchasePrice ?? 0,
-        priceCategory: "Retail",
-        discountType: "%",
-        discountValue: 0,
-        taxType: "%",
-        taxValue: 0,
-        originalItemId: item.id!,
-      },
-    ];
+  ...c,
+  {
+    id: Date.now(),
+    name: item.name,
+
+    // quantity is ALWAYS stored in MIN UNIT
+    qty: 1,
+
+    // selected unit (UI-controlled later)
+    unit: "min",
+
+    // base pricing (single source of truth)
+    minUnitPrice: item.retailPrice,
+
+    // unit metadata
+    convQty: item.ConvQty,
+    minunit: item.minunit,
+    maxunit: item.maxunit,
+
+    costPrice: item.purchasePrice ?? 0,
+    priceCategory: "Retail",
+
+    discountType: "%",
+    discountValue: 0,
+
+    taxType: "%",
+    taxValue: 0,
+
+    originalItemId: item.id!,
+  },
+];
+
   });
 }
 
@@ -558,10 +644,17 @@ useEffect(() => {
   const originalItem = items.find(i => i.id === updated.originalItemId);
   if (!originalItem) return;
 
-  const prevQty =
+  // 1️⃣ Normalize NEW qty → MIN unit
+  const newQtyMin =
+    updated.unit === "max"
+      ? updated.qty * originalItem.ConvQty
+      : updated.qty;
+
+  // 2️⃣ Previous qty is ALREADY in MIN unit
+  const prevQtyMin =
     cart.find(ci => ci.id === updated.id)?.qty ?? 0;
 
-  const diff = updated.qty - prevQty;
+  const diff = newQtyMin - prevQtyMin;
 
   // ❗ Guard: insufficient stock
   if (diff > 0 && diff > originalItem.availableStock) {
@@ -569,7 +662,7 @@ useEffect(() => {
     return;
   }
 
-  // 1️⃣ Update UI stock
+  // 3️⃣ Update UI stock (MIN units only)
   setItems(prev =>
     prev.map(i =>
       i.id === updated.originalItemId
@@ -578,19 +671,49 @@ useEffect(() => {
     )
   );
 
-  // 2️⃣ Update DB stock (single source of truth)
+  // 4️⃣ Update DB stock (MIN units only)
   await itemsRepository.update({
     ...originalItem,
     availableStock: originalItem.availableStock - diff,
   });
 
-  // 3️⃣ Update cart
+  // 5️⃣ Determine base MIN-unit price
+  let basePrice: number;
+  switch (updated.priceCategory) {
+    case "Retail":
+      basePrice = originalItem.retailPrice;
+      break;
+    case "Discount":
+      basePrice = originalItem.discountPrice ?? originalItem.retailPrice;
+      break;
+    case "Wholesale":
+      basePrice = originalItem.wholesalePrice;
+      break;
+    default:
+      basePrice = originalItem.retailPrice;
+  }
+
+  // 6️⃣ Update cart (CANONICAL FORM)
   setCart(prev =>
     prev.map(ci =>
-      ci.id === updated.id ? { ...updated } : ci
+      ci.id === updated.id
+        ? {
+            ...ci,
+
+            // UI state
+            unit: updated.unit,
+            priceCategory: updated.priceCategory,
+
+            // Canonical storage
+            qty: newQtyMin,          // ✅ always MIN
+            minUnitPrice: basePrice, // ✅ always MIN
+            convQty: originalItem.ConvQty,
+          }
+        : ci
     )
   );
 
+  // 7️⃣ Close modal
   setEditing(null);
 }
 
@@ -710,6 +833,52 @@ const balance = useMemo(() => {
   return Math.max(0, totals.grandTotal - paid);
 }, [totals.grandTotal, paid]);
 
+function normalizeToMinUnit(
+  price: number,
+  unit: UnitType,
+  convQty: number
+): number {
+  return unit === "max" ? price / convQty : price;
+}
+
+  type UnitType = "min" | "max";
+
+  function getPriceByCategory(
+  item: Item,
+  category: "Retail" | "Discount" | "Wholesale"
+) {
+  if (category === "Discount") return item.discountPrice ?? 0;
+  if (category === "Wholesale") return item.wholesalePrice ?? 0;
+  return item.retailPrice ?? 0;
+}
+
+function calculatePrice(
+  item: Item,
+  unit: "min" | "max",
+  category: "Retail" | "Discount" | "Wholesale"
+) {
+  const basePrice = getPriceByCategory(item, category);
+  return unit === "max"
+    ? basePrice * (item.ConvQty ?? 1)
+    : basePrice;
+}
+
+function getBaseMinUnitPrice(
+  item: Item,
+  category: "Retail" | "Discount" | "Wholesale"
+) {
+  if (category === "Discount") return item.discountPrice ?? item.retailPrice;
+  if (category === "Wholesale") return item.wholesalePrice;
+  return item.retailPrice;
+}
+
+function priceForDisplay(
+  minUnitPrice: number,
+  unit: UnitType,
+  convQty: number
+) {
+  return unit === "max" ? minUnitPrice * convQty : minUnitPrice;
+}
 
   return (
     <div className="h-full flex bg-gray-100">
@@ -797,12 +966,12 @@ const balance = useMemo(() => {
         className={`p-2 border-2 shadow rounded cursor-pointer text-sm select-none ${
           item.availableStock <= 0
             ? "bg-gray-200 cursor-not-allowed"
-            : "hover:bg-gray-100"
+            : "hover:bg-blue-100"
         }`}
       >
-        <div className="font-medium">{item.name}</div>
-        <div className="text-xs text-gray-500">
-          Rs {item.retailPrice} | Stock: {item.availableStock > 0 ? item.availableStock : "0"}
+        <div className="font-medium text-blue-400">{item.name}</div>
+        <div className="text-xs text-green-500">
+          <span className="text-yellow-500">Rs {item.retailPrice}</span> | Stock: {item.availableStock > 0 ? item.availableStock : "0"} {item.minunit}
         </div>
         {item.availableStock <= 0 && (
           <div className="text-red-500 text-xs font-semibold mt-1">Out of Stock</div>
@@ -913,28 +1082,25 @@ const balance = useMemo(() => {
             <div>
               <div className="font-medium">{ci.name}</div>
               <div className="text-sm text-gray-500 leading-tight">
-                {ci.qty} × {ci.price} | Disc: {ci.discountValue}{ci.discountType} | Tax: {ci.taxValue}{ci.taxType}
+               <span className="text-blue-400">{ci.unit === "max"? ci.qty / ci.convQty : ci.qty}×
+                            {priceForDisplay(ci.minUnitPrice, ci.unit, ci.convQty)}</span>  | <span className="text-yellow-400">Unit: {ci.unit === "max" ? ci.maxunit : ci.minunit}</span> | <span className="text-green-400">Disc: {ci.discountValue}{ci.discountType}</span> | <span className="text-red-400">Tax: {ci.taxValue}{ci.taxType}</span>
               </div>
             </div>
             <div className="flex gap-2">
               <button
                   onClick={() => {
-                    const dbItem = items.find(i => i.id === ci.originalItemId);
+                   const item = items.find(i => i.id === ci.originalItemId);
+  if (!item) return;
 
-                    let category: "Retail" | "Discount" | "Wholesale" = "Retail";
+  setEditing({
+    ...ci,
 
-                    if (dbItem) {
-                      if (ci.price === dbItem.wholesalePrice) {
-                        category = "Wholesale";
-                      } else if (ci.price === dbItem.discountPrice) {
-                        category = "Discount";
-                      }
-                    }
-
-                    setEditing({
-                      ...ci,
-                      priceCategory: category, // ✅ stored PER ITEM
-                    });
+    // ✅ convert qty BACK for display
+    qty:
+      ci.unit === "max"
+        ? ci.qty / item.ConvQty
+        : ci.qty,
+  });
                   }}
                   className="p-2 bg-green-500 text-white rounded"
                 >
@@ -1053,8 +1219,29 @@ const balance = useMemo(() => {
       {editing && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
           <div className="bg-white p-5 rounded w-96">
-            <h3 className="font-semibold mb-3">{editing.name}</h3>
+            <h3 className="font-semibold mb-3  text-red-500">{editing.name}</h3>
 
+            <div className="mb-2">
+    <label className="text-xs font-medium">Unit</label>
+
+    <select
+        className="w-full p-2 border rounded"
+        value={editing.unit}
+        onChange={(e) => {
+          if (!editing) return;
+
+          const newUnit = e.target.value as UnitType;
+
+          setEditing({
+            ...editing,
+            unit: newUnit,
+          });
+        }}
+      >
+        <option value="min">{editing.minunit}</option>
+        <option value="max">{editing.maxunit}</option>
+      </select>
+  </div>
             <label className="text-sm">Quantity</label>
             <input
               type="number"
@@ -1075,33 +1262,49 @@ const balance = useMemo(() => {
                               type="radio"
                               checked={editing.priceCategory === cat}
                               onChange={() => {
+                                if (!editing) return;
+
                                 const item = items.find(i => i.id === editing.originalItemId);
                                 if (!item) return;
 
-                                // Use fallback 0 if any price is undefined
-                                let price = item.retailPrice ?? 0;
-                                if (cat === "Discount") price = item.discountPrice ?? 0;
-                                if (cat === "Wholesale") price = item.wholesalePrice ?? 0;
+                                const baseMinPrice = getBaseMinUnitPrice(item, cat);
 
                                 setEditing({
                                   ...editing,
                                   priceCategory: cat,
-                                  price,
+                                  minUnitPrice: baseMinPrice,
                                 });
                               }}
                             />
+
                             {cat}
                           </label>
                         ))}
-                      </div>
+                  </div>
 
             {/* <label className="text-sm">Amount</label> */}
-            <input
-              type="number"
-              className="w-full p-2 border rounded mb-2"
-              value={editing.price}
-              onChange={e => setEditing({ ...editing, price: Number(e.target.value) })}
-            />
+           <input
+                    type="number"
+                    className="w-full p-2 border rounded mb-2"
+                    value={priceForDisplay(
+                      editing.minUnitPrice,
+                      editing.unit,
+                      editing.convQty
+                    )}
+                    onChange={(e) => {
+                      const price = Number(e.target.value) || 0;
+
+                      setEditing({
+                        ...editing,
+                        minUnitPrice: normalizeToMinUnit(
+                          price,
+                          editing.unit,
+                          editing.convQty
+                        ),
+                      });
+                    }}
+                  />
+
 
             <label className="text-sm">Discount</label>
             <div className="flex gap-2 mb-2">
