@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { salesRepository } from "./repositories/salesRepository";
 import type { DBSale, DBSaleItem } from "./db";
-import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight } from "react-icons/fa";
+import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight, FaTrash } from "react-icons/fa";
 
 const PAGE_SIZE = 10;
 const TRANSACTION_TYPES = ["All", "Sale", "Purchase", "Return", "Quotation"] as const;
@@ -112,6 +112,36 @@ const filteredInvoices = sales.filter(inv => {
   return true;
 });
 
+const handleDeleteInvoice = async (invoice: DBSale) => {
+  if (!invoice.id) return;
+
+  const confirmDelete = window.confirm(
+    `Are you sure you want to delete Invoice #${invoice.invoiceNo}?\n\nThis will restore stock automatically.`
+  );
+  if (!confirmDelete) return;
+
+  try {
+    // ✅ ONE call does EVERYTHING atomically:
+    // - restores stock (MIN units)
+    // - deletes sale_items
+    // - deletes sale
+    await salesRepository.deleteSaleAndRestoreStock(invoice.id);
+
+    // ✅ Update UI list
+    setSales(prev => prev.filter(s => s.id !== invoice.id));
+
+    // Optional: clear right panel if same invoice was selected
+    setSelectedInvoice(prev =>
+      prev?.id === invoice.id ? null : prev
+    );
+
+    alert(`Invoice #${invoice.invoiceNo} deleted successfully.`);
+  } catch (err) {
+    console.error("Delete invoice failed:", err);
+    alert("Failed to delete invoice. Check console for details.");
+  }
+};
+
   return (
     <div className="p-4 flex flex-col lg:flex-row gap-4">
       
@@ -162,6 +192,7 @@ const filteredInvoices = sales.filter(inv => {
                 <th className="border p-2">Customer</th>
                 <th className="border p-2">Date</th>
                 <th className="border p-2">Payable</th>
+                <th className="border p-2">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -177,6 +208,17 @@ const filteredInvoices = sales.filter(inv => {
                     {new Date(filteredInvoices.date).toLocaleDateString()}
                   </td>
                   <td className="border p-2 text-right">{filteredInvoices.grandTotal}</td>
+                   <td className="border p-2 text-center">
+                    <button
+                      onClick={e => {
+                        e.stopPropagation(); // prevent selecting the invoice
+                        handleDeleteInvoice(filteredInvoices);
+                      }}
+                      className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+                    >
+                      <FaTrash />
+                    </button>
+                  </td>
                 </tr>
               ))}
               {sales.length === 0 && (
@@ -199,7 +241,7 @@ const filteredInvoices = sales.filter(inv => {
       </div>
 
       {/* RIGHT PANEL */}
-      <div className="w-full lg:w-1/2 bg-white shadow rounded-lg p-4 flex flex-col gap-4">
+      <div className="w-full lg:w-2/2 bg-white shadow rounded-lg p-4 flex flex-col gap-4">
         {selectedInvoice ? (
           <>
             {/* Header: invoice info */}

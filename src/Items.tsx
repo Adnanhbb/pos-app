@@ -275,7 +275,7 @@ export default function ItemsPage() {
                   <td className="p-3">{it.retailPrice}</td>
                   <td className="p-3">{it.discountPrice || 0}</td>
                   <td className="p-3">{it.wholesalePrice}</td>
-                  <td className="p-3 text-sm">
+                  <td className="p-3 text-sm text-blue-500">
                       {(() => {
                         const { maxQty, minQty } = splitStock(it.availableStock, it.ConvQty);
 
@@ -288,7 +288,7 @@ export default function ItemsPage() {
                             )}
 
                             {minQty > 0 && (
-                              <div className="text-gray-600 text-xs">
+                              <div className="text-green-600 text-xs">
                                 {minQty} {it.minunit}s
                               </div>
                             )}

@@ -1,7 +1,7 @@
-//src/repositories/SalesRepository
+// src/repositories/SalesRepository.ts
 
 import { db } from "../db";
-import type { DBSale, DBSaleItem } from "../db";
+import type { DBSale, DBSaleItem, Item } from "../db";
 
 function promisify<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -28,10 +28,7 @@ export const salesRepository = {
         const saleId = saleReq.result as number;
 
         for (const item of items) {
-          saleItemsStore.add({
-            ...item,
-            saleId,
-          });
+          saleItemsStore.add({ ...item, saleId });
         }
 
         tx.oncomplete = () => resolve(saleId);
@@ -45,139 +42,163 @@ export const salesRepository = {
   async getAllSales(): Promise<DBSale[]> {
     const conn = await db.open();
     const tx = conn.transaction("sales", "readonly");
-    const store = tx.objectStore("sales");
-    return promisify(store.getAll());
+    return promisify(tx.objectStore("sales").getAll());
   },
-
-  async getSaleItems(saleId: number): Promise<DBSaleItem[]> {
-  const conn = await db.open();
-  const tx = conn.transaction("sale_items", "readonly");
-  const store = tx.objectStore("sale_items");
-
-  const allItems: DBSaleItem[] = await promisify(store.getAll());
-  return allItems.filter(item => item.saleId === saleId);
-},
-
 
   async getSale(id: number): Promise<DBSale | undefined> {
     const conn = await db.open();
     const tx = conn.transaction("sales", "readonly");
+    return promisify(tx.objectStore("sales").get(id));
+  },
+
+  async getSaleItems(saleId: number): Promise<DBSaleItem[]> {
+    const conn = await db.open();
+    const tx = conn.transaction("sale_items", "readonly");
+    const store = tx.objectStore("sale_items");
+
+    const all = await promisify(store.getAll());
+    return all.filter(i => i.saleId === saleId);
+  },
+
+  async getSalesCount(): Promise<number> {
+    const conn = await db.open();
+    const tx = conn.transaction("sales", "readonly");
+    return promisify(tx.objectStore("sales").count());
+  },
+
+  async getSalesPage(page: number, pageSize: number): Promise<DBSale[]> {
+    const conn = await db.open();
+    const tx = conn.transaction("sales", "readonly");
     const store = tx.objectStore("sales");
-    return promisify(store.get(id));
+
+    const offset = (page - 1) * pageSize;
+    const result: DBSale[] = [];
+
+    return new Promise((resolve, reject) => {
+      let skipped = 0;
+      const req = store.openCursor(null, "prev");
+
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) return resolve(result);
+
+        if (skipped < offset) {
+          skipped++;
+          cursor.continue();
+          return;
+        }
+
+        if (result.length < pageSize) {
+          result.push(cursor.value);
+          cursor.continue();
+          return;
+        }
+
+        resolve(result);
+      };
+    });
   },
 
   async getSalesPaged(
-  page: number,
-  pageSize: number,
-  transactionType?: DBSale["transactionType"],
-  invoiceNo?: string
-): Promise<{ data: DBSale[]; total: number }> {
-  const conn = await db.open();
-  const tx = conn.transaction("sales", "readonly");
-  const store = tx.objectStore("sales");
+    page: number,
+    pageSize: number,
+    transactionType?: DBSale["transactionType"],
+    invoiceNo?: string
+  ): Promise<{ data: DBSale[]; total: number }> {
+    const conn = await db.open();
+    const tx = conn.transaction("sales", "readonly");
+    const store = tx.objectStore("sales");
 
-  const results: DBSale[] = [];
-  let total = 0;
-  let skipped = 0;
-  const offset = (page - 1) * pageSize;
-
-  return new Promise((resolve, reject) => {
-const request = store.openCursor(null, "prev");
-
-    request.onerror = () => reject(request.error);
-
-    request.onsuccess = () => {
-      const cursor = request.result;
-      if (!cursor) {
-        resolve({ data: results, total });
-        return;
-      }
-
-      const sale = cursor.value as DBSale;
-
-      // FILTER: transaction type
-      if (transactionType && sale.transactionType !== transactionType) {
-        cursor.continue();
-        return;
-      }
-
-      // FILTER: invoice number search
-      if (invoiceNo && sale.invoiceNo !== invoiceNo) {
-        cursor.continue();
-        return;
-      }
-
-      total++;
-
-      if (skipped < offset) {
-        skipped++;
-        cursor.continue();
-        return;
-      }
-
-      if (results.length < pageSize) {
-        results.push(sale);
-        cursor.continue();
-        return;
-      }
-
-      // page filled
-      resolve({ data: results, total });
-    };
-  });
-},
-
-async getSalesCount(): Promise<number> {
-  const conn = await db.open();
-  const tx = conn.transaction("sales", "readonly");
-  const store = tx.objectStore("sales");
-  return promisify(store.count());
-},
-
-async getSalesPage(
-  page: number,
-  pageSize: number
-): Promise<DBSale[]> {
-  if (page < 1) throw new Error("Page must be >= 1");
-
-  const conn = await db.open();
-  const tx = conn.transaction("sales", "readonly");
-  const store = tx.objectStore("sales");
-
-  const offset = (page - 1) * pageSize;
-  const result: DBSale[] = [];
-
-  return new Promise((resolve, reject) => {
+    const offset = (page - 1) * pageSize;
+    const results: DBSale[] = [];
     let skipped = 0;
+    let total = 0;
 
-    const request = store.openCursor(null, "prev");
+    return new Promise((resolve, reject) => {
+      const req = store.openCursor(null, "prev");
 
-    request.onerror = () => reject(request.error);
+      req.onerror = () => reject(req.error);
+      req.onsuccess = () => {
+        const cursor = req.result;
+        if (!cursor) return resolve({ data: results, total });
 
-    request.onsuccess = () => {
-      const cursor = request.result;
+        const sale = cursor.value as DBSale;
 
-      if (!cursor) {
-        resolve(result);
-        return;
-      }
+        if (transactionType && sale.transactionType !== transactionType) {
+          cursor.continue();
+          return;
+        }
 
-      if (skipped < offset) {
-        skipped++;
-        cursor.continue();
-        return;
-      }
+        if (invoiceNo && sale.invoiceNo !== invoiceNo) {
+          cursor.continue();
+          return;
+        }
 
-      if (result.length < pageSize) {
-        result.push(cursor.value as DBSale);
-        cursor.continue();
-        return;
-      }
+        total++;
 
-      resolve(result);
-    };
-  });
-},
+        if (skipped < offset) {
+          skipped++;
+          cursor.continue();
+          return;
+        }
 
+        if (results.length < pageSize) {
+          results.push(sale);
+          cursor.continue();
+          return;
+        }
 
+        resolve({ data: results, total });
+      };
+    });
+  },
+
+  /**
+   * 🔴 DELETE SALE + RESTORE STOCK (MIN UNITS)
+   */
+  async deleteSaleAndRestoreStock(saleId: number): Promise<void> {
+    const conn = await db.open();
+
+    return new Promise((resolve, reject) => {
+      const tx = conn.transaction(
+        ["sales", "sale_items", "items"],
+        "readwrite"
+      );
+
+      const salesStore = tx.objectStore("sales");
+      const saleItemsStore = tx.objectStore("sale_items");
+      const itemsStore = tx.objectStore("items");
+
+      const saleItemsReq = saleItemsStore.getAll();
+
+      saleItemsReq.onsuccess = () => {
+        const saleItems = (saleItemsReq.result as DBSaleItem[])
+          .filter(i => i.saleId === saleId);
+
+        // 1️⃣ Restore stock (MIN units)
+        for (const si of saleItems) {
+          const itemReq = itemsStore.get(si.originalItemId);
+          itemReq.onsuccess = () => {
+            const item = itemReq.result as Item;
+            if (!item) return;
+
+            item.availableStock += si.qty; // qty is already MIN
+            itemsStore.put(item);
+          };
+        }
+
+        // 2️⃣ Delete sale items
+        for (const si of saleItems) {
+          if (si.id != null) saleItemsStore.delete(si.id);
+        }
+
+        // 3️⃣ Delete sale
+        salesStore.delete(saleId);
+      };
+
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+  },
 };

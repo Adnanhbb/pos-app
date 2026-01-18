@@ -1,5 +1,5 @@
 // src/POS.tsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState,useRef } from "react";
 import { FaBarcode, FaEdit, FaTrash, FaTimes, FaCheck, FaPlus } from "react-icons/fa";
 
 // 🔹 DB INTEGRATION
@@ -46,6 +46,8 @@ type CartItem = {
 
   originalItemId: number;
   priceCategory: "Retail" | "Discount" | "Wholesale";
+
+  uiDeductedQty: number;
 };
 
 
@@ -388,6 +390,17 @@ async function handleCompleteSale() {
     }
   }
 
+  // 6️⃣ FINAL: Update stock in DATABASE (authoritative)
+for (const ci of cart) {
+  const item = await itemsRepository.getById(ci.originalItemId);
+  if (!item) continue;
+
+  await itemsRepository.update({
+    ...item,
+    availableStock: item.availableStock - ci.qty, // qty already in MIN units
+  });
+}
+
   function normalizeToMinUnit(
   price: number,
   unit: UnitType,
@@ -541,14 +554,15 @@ useEffect(() => {
   // CART LOGIC
   // =====================
 
-  async function cancelSale() {
-  for (const ci of cart) {
-    const item = items.find(i => i.id === ci.originalItemId);
-    if (!item) continue;
-
-    // Restore stock (UI + DB)
-    await adjustStock(item, ci.qty);
-  }
+function cancelSale() {
+  // restore only what was deducted in UI
+  setItems(prev =>
+    prev.map(i => {
+      const ci = cart.find(c => c.originalItemId === i.id);
+      if (!ci) return i;
+      return { ...i, availableStock: i.availableStock + ci.uiDeductedQty };
+    })
+  );
 
   setCart([]);
   setPaid(0);
@@ -557,7 +571,6 @@ useEffect(() => {
   setSelectedCustomerId(null);
   setCustomerInput("Walk-in Customer");
 }
-
 
   function handleBarcodeScan(code: string) {
     const item = items.find(i => i.barcode === code);
@@ -569,154 +582,103 @@ useEffect(() => {
     }
   }
 
-  async function adjustStock(item: Item, delta: number) {
-  const updatedItem = {
-    ...item,
-    availableStock: item.availableStock + delta,
-  };
-
-  // Update DB
-  await itemsRepository.update(updatedItem);
-
-  // Update UI
-  setItems(prev =>
-    prev.map(i => (i.id === item.id ? updatedItem : i))
-  );
-}
-
- async function addToCart(item: Item) {
+function addToCart(item: Item) {
   if (item.availableStock <= 0) return;
 
-  // 1️⃣ Decrement stock (UI + DB)
-  await adjustStock(item, -1);
+  // 1️⃣ Decrement stock in UI only
+  setItems(prev =>
+    prev.map(i =>
+      i.id === item.id ? { ...i, availableStock: i.availableStock - 1 } : i
+    )
+  );
 
-  // 2️⃣ Update cart only
-  setCart(c => {
-    const existing = c.find(ci => ci.originalItemId === item.id);
-
+  // 2️⃣ Update cart
+  setCart(prev => {
+    const existing = prev.find(ci => ci.originalItemId === item.id);
     if (existing) {
-      return c.map(ci =>
+      // ✅ Increment qty AND uiDeductedQty
+      return prev.map(ci =>
         ci.originalItemId === item.id
-          ? { ...ci, qty: ci.qty + 1 }
+          ? { ...ci, qty: ci.qty + 1, uiDeductedQty: ci.uiDeductedQty + 1 }
           : ci
       );
     }
 
+    // New cart item
     return [
-  ...c,
-  {
-    id: Date.now(),
-    name: item.name,
-
-    // quantity is ALWAYS stored in MIN UNIT
-    qty: 1,
-
-    // selected unit (UI-controlled later)
-    unit: "min",
-
-    // base pricing (single source of truth)
-    minUnitPrice: item.retailPrice,
-
-    // unit metadata
-    convQty: item.ConvQty,
-    minunit: item.minunit,
-    maxunit: item.maxunit,
-
-    costPrice: item.purchasePrice ?? 0,
-    priceCategory: "Retail",
-
-    discountType: "%",
-    discountValue: 0,
-
-    taxType: "%",
-    taxValue: 0,
-
-    originalItemId: item.id!,
-  },
-];
-
+      ...prev,
+      {
+        id: Date.now(),
+        name: item.name,
+        qty: 1,                 // canonical MIN UNIT
+        unit: "min",
+        minUnitPrice: item.retailPrice,
+        convQty: item.ConvQty,
+        minunit: item.minunit,
+        maxunit: item.maxunit,
+        costPrice: item.purchasePrice ?? 0,
+        priceCategory: "Retail",
+        discountType: "%",
+        discountValue: 0,
+        taxType: "%",
+        taxValue: 0,
+        originalItemId: item.id!,
+        uiDeductedQty: 1,       // initial deduction
+      },
+    ];
   });
 }
 
-
-
-  async function updateItem(updated: CartItem) {
+function updateItem(updated: CartItem) {
   const originalItem = items.find(i => i.id === updated.originalItemId);
   if (!originalItem) return;
 
-  // 1️⃣ Normalize NEW qty → MIN unit
-  const newQtyMin =
-    updated.unit === "max"
-      ? updated.qty * originalItem.ConvQty
-      : updated.qty;
+  const prevCartItem = cart.find(ci => ci.id === updated.id);
+  if (!prevCartItem) return;
 
-  // 2️⃣ Previous qty is ALREADY in MIN unit
-  const prevQtyMin =
-    cart.find(ci => ci.id === updated.id)?.qty ?? 0;
+  // 1️⃣ Compute new MIN unit qty
+  const newQtyMin = updated.unit === "max" ? updated.qty * originalItem.ConvQty : updated.qty;
 
-  const diff = newQtyMin - prevQtyMin;
+  // 2️⃣ Compute difference in qty
+  const diff = newQtyMin - prevCartItem.qty;
 
-  // ❗ Guard: insufficient stock
-  if (diff > 0 && diff > originalItem.availableStock) {
-    alert("Not enough stock available");
-    return;
-  }
-
-  // 3️⃣ Update UI stock (MIN units only)
+  // 3️⃣ Update UI stock by subtracting or restoring based on diff
   setItems(prev =>
     prev.map(i =>
-      i.id === updated.originalItemId
+      i.id === originalItem.id
         ? { ...i, availableStock: i.availableStock - diff }
         : i
     )
   );
 
-  // 4️⃣ Update DB stock (MIN units only)
-  await itemsRepository.update({
-    ...originalItem,
-    availableStock: originalItem.availableStock - diff,
-  });
-
-  // 5️⃣ Determine base MIN-unit price
-  let basePrice: number;
-  switch (updated.priceCategory) {
-    case "Retail":
-      basePrice = originalItem.retailPrice;
-      break;
-    case "Discount":
-      basePrice = originalItem.discountPrice ?? originalItem.retailPrice;
-      break;
-    case "Wholesale":
-      basePrice = originalItem.wholesalePrice;
-      break;
-    default:
-      basePrice = originalItem.retailPrice;
-  }
-
-  // 6️⃣ Update cart (CANONICAL FORM)
+  // 4️⃣ Update cart item, include uiDeductedQty
   setCart(prev =>
     prev.map(ci =>
       ci.id === updated.id
         ? {
             ...ci,
-
-            // UI state
+            qty: newQtyMin,
             unit: updated.unit,
             priceCategory: updated.priceCategory,
-
-            // Canonical storage
-            qty: newQtyMin,          // ✅ always MIN
-            minUnitPrice: basePrice, // ✅ always MIN
+            discountType: updated.discountType,
+            discountValue: updated.discountValue,
+            taxType: updated.taxType,
+            taxValue: updated.taxValue,
+            minUnitPrice:
+              updated.priceCategory === "Discount"
+                ? originalItem.discountPrice ?? originalItem.retailPrice
+                : updated.priceCategory === "Wholesale"
+                ? originalItem.wholesalePrice
+                : originalItem.retailPrice,
             convQty: originalItem.ConvQty,
+            uiDeductedQty: prevCartItem.uiDeductedQty + diff, // update UI deduction
           }
         : ci
     )
   );
 
-  // 7️⃣ Close modal
   setEditing(null);
 }
-
 
  async function removeItem(cartItemId: number) {
   const cartItem = cart.find(ci => ci.id === cartItemId);
@@ -726,7 +688,13 @@ useEffect(() => {
   if (!item) return;
 
   // Restore stock (UI + DB)
-  await adjustStock(item, cartItem.qty);
+        setItems(prev =>
+          prev.map(i =>
+            i.id === item.id
+              ? { ...i, availableStock: i.availableStock + cartItem.qty }
+              : i
+          )
+        );
 
   // Remove from cart
   setCart(prev => prev.filter(ci => ci.id !== cartItemId));
@@ -734,20 +702,6 @@ useEffect(() => {
 
 async function applyEdit(updatedQty: number) {
   if (!editing) return;
-
-  const cartItem = cart.find(ci => ci.id === editing.id);
-  if (!cartItem) return;
-
-  const item = items.find(i => i.id === cartItem.originalItemId);
-  if (!item) return;
-
-  const delta = cartItem.qty - updatedQty;
-  // delta > 0 → restore stock
-  // delta < 0 → deduct stock
-
-  if (delta !== 0) {
-    await adjustStock(item, delta);
-  }
 
   setCart(prev =>
     prev.map(ci =>
@@ -760,6 +714,7 @@ async function applyEdit(updatedQty: number) {
   setEditing(null);
 }
 
+
 async function getNextInvoiceNoFromDB(): Promise<string> {
   const allSales = await salesRepository.getAllSales();
 
@@ -771,6 +726,26 @@ async function getNextInvoiceNoFromDB(): Promise<string> {
     .sort((a, b) => b - a)[0];
 
   return `SAL-${String(latestNumber + 1).padStart(4, "0")}`;
+}
+
+function formatStock(
+  stockMin: number,
+  convQty: number,
+  minUnit: string,
+  maxUnit: string
+) {
+  if (convQty <= 0) {
+    return `${stockMin} ${minUnit}`;
+  }
+
+  const max = Math.floor(stockMin / convQty);
+  const min = stockMin % convQty;
+
+  const parts: string[] = [];
+  if (max > 0) parts.push(`${max} ${maxUnit}`);
+  if (min > 0) parts.push(`${min} ${minUnit}`);
+
+  return parts.length > 0 ? parts.join(" ") : `0 ${minUnit}`;
 }
 
   // =====================
@@ -880,6 +855,30 @@ function priceForDisplay(
   return unit === "max" ? minUnitPrice * convQty : minUnitPrice;
 }
 
+function formatStockDisplay(
+  minQty: number,
+  convQty: number,
+  minUnit: string,
+  maxUnit: string
+) {
+  if (!convQty || convQty <= 0) {
+    return `${minQty} ${minUnit}`;
+  }
+
+  const max = Math.floor(minQty / convQty);
+  const min = minQty % convQty;
+
+  if (max > 0 && min > 0) {
+    return `${max}${maxUnit} ${min}${minUnit}`;
+  }
+
+  if (max > 0) {
+    return `${max}${maxUnit}`;
+  }
+
+  return `${min}${minUnit}`;
+}
+
   return (
     <div className="h-full flex bg-gray-100">
 
@@ -953,7 +952,7 @@ function priceForDisplay(
   </div>
 
   {/* Items grid */}
-  <div className="grid grid-cols-4 gap-2 auto-rows-min overflow-y-auto max-h-[calc(100vh-170px)]" style={{ maxHeight: `calc(6 * 85px)` }}>
+  <div className="grid grid-cols-4 gap-2 auto-rows-min overflow-y-auto max-h-[calc(100vh-170px)]">
   {filteredItems.length === 0 ? (
     <div className="col-span-4 text-center text-gray-500 text-sm py-10">
       No items found. Adjust your search, category, or brand filters.
@@ -971,25 +970,36 @@ function priceForDisplay(
       >
         <div className="font-medium text-blue-400">{item.name}</div>
         <div className="text-xs text-green-500">
-          <span className="text-yellow-500">Rs {item.retailPrice}</span> | Stock: {item.availableStock > 0 ? item.availableStock : "0"} {item.minunit}
+          <span className="text-yellow-500">Rs {item.retailPrice}</span> |{" "}
+          {item.availableStock > 0
+            ? formatStockDisplay(
+                item.availableStock,
+                item.ConvQty,
+                item.minunit,
+                item.maxunit
+              )
+            : "0"}
         </div>
         {item.availableStock <= 0 && (
-          <div className="text-red-500 text-xs font-semibold mt-1">Out of Stock</div>
+          <div className="text-red-500 text-xs font-semibold mt-1">
+            Out of Stock
+          </div>
         )}
       </div>
     ))
   )}
 </div>
 
+
 </div>
 
 
       {/* RIGHT – CART */}
-        <div className="w-3/5 p-4 flex flex-col">
+        <div className="w-3/10 flex flex-col ml-2">
   {/* HEADER */}
-  <div className="bg-white p-3 rounded shadow mb-4">
+  <div className="bg-white p-3 rounded shadow mb-3">
   {/* Row 1: Invoice + Total Items */}
-  <div className="flex justify-between items-center mb-2">
+  <div className="flex justify-between items-center mb-1">
     <div className="text-lg font-semibold">
       Invoice: {invoiceNo}
     </div>
@@ -1077,13 +1087,13 @@ function priceForDisplay(
     {cart.map((ci) => {
       const r = calcLine(ci);
       return (
-        <div key={ci.id} className="bg-white pl-2 pr-2 pt-1 pb-1 rounded shadow">
+        <div key={ci.id} className="bg-white pl-2 pr-2 pb-1 rounded shadow">
           <div className="flex justify-between items-start">
             <div>
               <div className="font-medium">{ci.name}</div>
               <div className="text-sm text-gray-500 leading-tight">
-               <span className="text-blue-400">{ci.unit === "max"? ci.qty / ci.convQty : ci.qty}×
-                            {priceForDisplay(ci.minUnitPrice, ci.unit, ci.convQty)}</span>  | <span className="text-yellow-400">Unit: {ci.unit === "max" ? ci.maxunit : ci.minunit}</span> | <span className="text-green-400">Disc: {ci.discountValue}{ci.discountType}</span> | <span className="text-red-400">Tax: {ci.taxValue}{ci.taxType}</span>
+               <span className="text-blue-400">{ci.unit === "max"? ci.qty / ci.convQty : ci.qty}{ci.unit === "max" ? ci.maxunit : ci.minunit}×
+                            {priceForDisplay(ci.minUnitPrice, ci.unit, ci.convQty)}</span>  | <span className="text-green-400">Disc: {ci.discountValue}{ci.discountType}</span> | <span className="text-red-400">Tax: {ci.taxValue}{ci.taxType}</span>
               </div>
             </div>
             <div className="flex gap-2">
@@ -1219,9 +1229,24 @@ function priceForDisplay(
       {editing && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
           <div className="bg-white p-5 rounded w-96">
-            <h3 className="font-semibold mb-3  text-red-500">{editing.name}</h3>
+  <div className="flex justify-between items-start mb-3">
+    <h3 className="font-semibold text-red-500">
+      {editing.name}
+    </h3>
 
-            <div className="mb-2">
+    <span className="text-xs text-green-500 text-right">
+      Stock:&nbsp;
+      {formatStock(
+        items.find(i => i.id === editing.originalItemId)?.availableStock ?? 0,
+        editing.convQty,
+        editing.minunit,
+        editing.maxunit
+      )}
+    </span>
+  </div>
+
+  <div className="mb-2">
+
     <label className="text-xs font-medium">Unit</label>
 
     <select

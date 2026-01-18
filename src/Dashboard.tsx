@@ -341,7 +341,7 @@ const saveEditedUser = async () => {
       {sidebarOpen && <div className="fixed inset-0 bg-black bg-opacity-30 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
       {/* MAIN CONTENT */}
-      <main className="flex-1 p-4 lg:p-8 flex flex-col gap-6 pt-20 lg:pt-8">
+      <main className="flex-1 p-4 lg:p-4 flex-col gap-6 pt-20 lg:pt-6">
         {/* HEADER DESKTOP */}
         <div className="hidden lg:flex justify-between items-center mb-6">
           <h2 className="text-xl font-bold">{activeItem}</h2>
