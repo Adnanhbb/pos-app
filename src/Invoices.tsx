@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { salesRepository } from "./repositories/salesRepository";
 import type { DBSale, DBSaleItem } from "./db";
 import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight, FaTrash } from "react-icons/fa";
+import { customersRepository } from "./repositories/customerRepository";
+import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
 
 const PAGE_SIZE = 10;
 const TRANSACTION_TYPES = ["All", "Sale", "Purchase", "Return", "Quotation"] as const;
@@ -121,16 +123,38 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
   if (!confirmDelete) return;
 
   try {
-    // ✅ ONE call does EVERYTHING atomically:
-    // - restores stock (MIN units)
-    // - deletes sale_items
-    // - deletes sale
+    // 1️⃣ RESTORE STOCK AND DELETE SALE/ITEMS
     await salesRepository.deleteSaleAndRestoreStock(invoice.id);
 
-    // ✅ Update UI list
+    // 2️⃣ UPDATE CUSTOMER ARREARS/PAYABLE/BALANCE IF NOT WALK-IN
+    if (invoice.customerId) {
+      const customer = await customersRepository.getById(invoice.customerId);
+      if (customer) {
+        // Reverse the amounts that were added in handleCompleteSale
+        const newTotalPayable = (customer.payable ?? 0) - (invoice.grandTotal - (invoice.dues ?? 0));
+        const newTotalPaid = (customer.paid ?? 0) - (invoice.paid ?? 0);
+        const newBalance = newTotalPayable - newTotalPaid;
+        const newInvoices = (customer.invoices ?? 1) - 1;
+
+        await customersRepository.update({
+          ...customer,
+          payable: newTotalPayable,
+          paid: newTotalPaid,
+          balance: newBalance,
+          invoices: newInvoices >= 0 ? newInvoices : 0,
+        });
+
+        // Optional: Remove the payment record for this invoice if needed
+        if (invoice.paid && invoice.paid > 0) {
+          await customerPaymentRepository.deleteByInvoiceNo(invoice.invoiceNo);
+        }
+      }
+    }
+
+    // 3️⃣ UPDATE UI LIST
     setSales(prev => prev.filter(s => s.id !== invoice.id));
 
-    // Optional: clear right panel if same invoice was selected
+    // 4️⃣ CLEAR RIGHT PANEL IF SAME INVOICE SELECTED
     setSelectedInvoice(prev =>
       prev?.id === invoice.id ? null : prev
     );
@@ -141,6 +165,7 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
     alert("Failed to delete invoice. Check console for details.");
   }
 };
+
 
   return (
     <div className="p-4 flex flex-col lg:flex-row gap-4">
@@ -188,8 +213,8 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
           <table className="w-full border-collapse border mt-2 text-sm">
             <thead>
               <tr className="bg-gray-100">
-                <th className="border p-2">Invoice #</th>
-                <th className="border p-2">Customer</th>
+                <th className="border p-2">Invoice #: </th>
+                <th className="border p-2">Cust/Supp Name</th>
                 <th className="border p-2">Date</th>
                 <th className="border p-2">Payable</th>
                 <th className="border p-2">Action</th>
@@ -247,9 +272,9 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
             {/* Header: invoice info */}
             <div className="flex justify-between items-start mb-4 text-sm">
               <div >
-                <h2 className="text-lg font-semibold">Invoice #{selectedInvoice.invoiceNo}</h2>
+                <h2 className="text-lg font-semibold">Invoice #: {selectedInvoice.invoiceNo}</h2>
                 <p><strong>Date:</strong> {selectedInvoice.date}</p>
-                <p><strong>Customer Name:</strong> {selectedInvoice.customerName ?? "N/A"}</p>
+                <p><strong>Cust/Supp Name:</strong> {selectedInvoice.customerName ?? "N/A"}</p>
               </div>
               <div>
                 {/* <p><strong>Transaction:</strong> {selectedInvoice.transactionType}</p> */}

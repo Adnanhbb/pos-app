@@ -11,33 +11,39 @@ function promisify<T>(request: IDBRequest<T>): Promise<T> {
 }
 
 export const salesRepository = {
-  async addSale(
-    sale: Omit<DBSale, "id">,
-    items: Omit<DBSaleItem, "id" | "saleId">[]
-  ): Promise<number> {
-    const conn = await db.open();
+  /**
+   * Add a SALE or PURCHASE transaction
+   */
+  // Accept sale items along with the sale object
+async addTransaction(
+  transaction: Omit<DBSale, "id"> & { items?: Omit<DBSaleItem, "id" | "saleId">[] }
+): Promise<number> {
+  const conn = await db.open();
 
-    return new Promise((resolve, reject) => {
-      const tx = conn.transaction(["sales", "sale_items"], "readwrite");
-      const salesStore = tx.objectStore("sales");
-      const saleItemsStore = tx.objectStore("sale_items");
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction(["sales", "sale_items"], "readwrite");
+    const salesStore = tx.objectStore("sales");
+    const saleItemsStore = tx.objectStore("sale_items");
 
-      const saleReq = salesStore.add(sale);
+    const { items, ...saleData } = transaction; // ✅ now TypeScript knows 'items' exists
+    const saleReq = salesStore.add(saleData);
 
-      saleReq.onsuccess = () => {
-        const saleId = saleReq.result as number;
+    saleReq.onsuccess = () => {
+      const saleId = saleReq.result as number;
 
+      if (items && Array.isArray(items)) {
         for (const item of items) {
           saleItemsStore.add({ ...item, saleId });
         }
+      }
 
-        tx.oncomplete = () => resolve(saleId);
-      };
+      tx.oncomplete = () => resolve(saleId);
+    };
 
-      saleReq.onerror = () => reject(saleReq.error);
-      tx.onerror = () => reject(tx.error);
-    });
-  },
+    saleReq.onerror = () => reject(saleReq.error);
+    tx.onerror = () => reject(tx.error);
+  });
+},
 
   async getAllSales(): Promise<DBSale[]> {
     const conn = await db.open();
@@ -155,7 +161,7 @@ export const salesRepository = {
   },
 
   /**
-   * 🔴 DELETE SALE + RESTORE STOCK (MIN UNITS)
+   * 🔴 DELETE SALE/PURCHASE + RESTORE STOCK (MIN UNITS)
    */
   async deleteSaleAndRestoreStock(saleId: number): Promise<void> {
     const conn = await db.open();
@@ -173,8 +179,9 @@ export const salesRepository = {
       const saleItemsReq = saleItemsStore.getAll();
 
       saleItemsReq.onsuccess = () => {
-        const saleItems = (saleItemsReq.result as DBSaleItem[])
-          .filter(i => i.saleId === saleId);
+        const saleItems = (saleItemsReq.result as DBSaleItem[]).filter(
+          i => i.saleId === saleId
+        );
 
         // 1️⃣ Restore stock (MIN units)
         for (const si of saleItems) {
@@ -183,7 +190,7 @@ export const salesRepository = {
             const item = itemReq.result as Item;
             if (!item) return;
 
-            item.availableStock += si.qty; // qty is already MIN
+            item.availableStock += si.qty;
             itemsStore.put(item);
           };
         }
@@ -193,7 +200,7 @@ export const salesRepository = {
           if (si.id != null) saleItemsStore.delete(si.id);
         }
 
-        // 3️⃣ Delete sale
+        // 3️⃣ Delete sale/purchase
         salesStore.delete(saleId);
       };
 

@@ -5,6 +5,7 @@ import { FaBarcode, FaEdit, FaTrash, FaTimes, FaCheck, FaPlus } from "react-icon
 // 🔹 DB INTEGRATION
 import { itemsRepository } from "./repositories/itemsRepository";
 import { customersRepository } from "./repositories/customerRepository";
+import { SupplierRepository } from "./repositories/suppliersRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
 import type { Brand, Category,Item } from "./db";
@@ -242,7 +243,7 @@ export default function SalesPOS() {
   const [editing, setEditing] = useState<CartItem | null>(null);
   const [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
-  const [invoiceNo, setInvoiceNo] = useState("SAL-0001");
+  const [invoiceNo, setInvoiceNo] = useState("");
   const [transactionType, setTransactionType] =
     useState<"Sale" | "Purchase" | "Return" | "Quotation">("Sale");
 
@@ -259,10 +260,35 @@ export default function SalesPOS() {
     address: "",
     dues: 0,
   });
+
+  const [showSupplierModal, setShowSupplierModal] = useState(false);
+  const [newSupplier, setNewSupplier] = useState({
+    name: "",
+    mobile: "",
+    cnic: "",
+    address: "",
+    dues: 0, // or opening balance if applicable
+  });
+
   const [selectedCustomerName, setSelectedCustomerName] = useState("Walk-in Customer");
   const [customerInput, setCustomerInput] = useState("Walk-in Customer");
   const [isCustomerOpen, setIsCustomerOpen] = useState(false);
   const [filteredCustomers, setFilteredCustomers] = useState(customers);
+
+  type Supplier = {
+  id: number;
+  name: string;
+  phone?: string;
+  };
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+  const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(null);
+  const [supplierInput, setSupplierInput] = useState("Direct Purchase");
+  const [isSupplierOpen, setIsSupplierOpen] = useState(false);
+
+  const filteredSuppliers = suppliers.filter(s =>
+  s.name.toLowerCase().includes(supplierInput.toLowerCase())
+  );
+
   const [Categories, setCategories] = useState<Category[]>([]);
   const [Brands, setBrands] = useState<Brand[]>([]);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
@@ -288,77 +314,109 @@ export default function SalesPOS() {
 
   const salesRepo = salesRepository;
 
-async function handleCompleteSale() {
+  const isPurchase = transactionType === "Purchase";
+
+async function handleCompleteTransaction() {
   if (cart.length === 0) {
     alert("Cart is empty");
     return;
   }
 
+  // 1️⃣ Prepare IDs & names
   const customerId = selectedCustomerId ?? null;
-  const customerName = selectedCustomer ? selectedCustomer.name : "Walk-in Customer";
-  const dues = selectedCustomer ? selectedCustomer.arrears ?? 0 : 0;
+  const customerName = selectedCustomer
+    ? selectedCustomer.name
+    : "Walk-in Customer";
 
-  // 1️⃣ Calculate totals FROM CART
-  let subtotal = 0;
-  let discount = 0;
-  let tax = 0;
+  const supplierId = isPurchase ? selectedSupplierId ?? null : null;
+  const dues = !isPurchase && selectedCustomer ? selectedCustomer.arrears ?? 0 : 0;
 
+  // 2️⃣ CALCULATE ITEM TOTALS
+  let invoiceSubtotal = 0;
   cart.forEach(item => {
     const line = calcLine(item);
-    subtotal += line.base;
-    discount += line.discount;
-    tax += line.tax;
+    invoiceSubtotal += line.total; // includes item-level discount & tax
   });
 
-  const grandTotal = subtotal - discount + tax + dues;
+  // 3️⃣ CALCULATE INVOICE-LEVEL DISCOUNT & TAX AS FLAT VALUES
+  let invoiceDiscount = 0;
+  let invoiceTax = 0;
+
+  if (discountMode === "percentage") {
+    invoiceDiscount = (invoiceSubtotal * Number(discountValue)) / 100;
+  } else {
+    invoiceDiscount = Number(discountValue) || 0;
+  }
+
+  const subtotalAfterDiscount = invoiceSubtotal - invoiceDiscount;
+
+  if (taxMode === "percentage") {
+    invoiceTax = (subtotalAfterDiscount * Number(taxValue)) / 100;
+  } else {
+    invoiceTax = Number(taxValue) || 0;
+  }
+
+  // 4️⃣ GRAND TOTAL
+  const grandTotal = subtotalAfterDiscount + invoiceTax + dues;
   const paidAmount = Number(paid) || 0;
   const arrears = grandTotal - paidAmount;
 
-  // 2️⃣ Calculate profit
+  // 5️⃣ PROFIT (only for SALE)
   let profit = 0;
-  cart.forEach(item => {
-    const lineBase = item.qty * item.minUnitPrice;
-    const costBase = item.qty * item.costPrice;
-    const discountAmt = item.discountType === "%" ? (lineBase * item.discountValue) / 100 : item.discountValue;
-    profit += (lineBase - discountAmt) - costBase;
+  if (!isPurchase) {
+    cart.forEach(item => {
+      const lineBase = item.qty * item.minUnitPrice;
+      const costBase = item.qty * item.costPrice;
+      const discountAmt =
+        item.discountType === "%"
+          ? (lineBase * item.discountValue) / 100
+          : item.discountValue;
+
+      profit += (lineBase - discountAmt) - costBase;
+    });
+  }
+
+  // 6️⃣ PREPARE ITEMS
+  const transactionItems = cart.map(ci => {
+    const line = calcLine(ci);
+    return {
+      originalItemId: ci.originalItemId,
+      name: ci.name,
+      qty: ci.qty,
+      price: ci.minUnitPrice,
+      priceCategory: ci.priceCategory,
+      discountType: ci.discountType,
+      discountValue: line.discount, // item-level
+      taxType: ci.taxType,
+      taxValue: line.tax,           // item-level
+    };
   });
 
-  // 3️⃣ Prepare sale items
-  const saleItems = cart.map(ci => ({
-    originalItemId: ci.originalItemId,
-    name: ci.name,
-    qty: ci.qty,
-    price: ci.minUnitPrice,
-    priceCategory: ci.priceCategory,
-    discountType: ci.discountType,
-    discountValue: ci.discountValue,
-    taxType: ci.taxType,
-    taxValue: ci.taxValue,
-  }));
+  // 7️⃣ SAVE TRANSACTION (SALE / PURCHASE unified)
+  await salesRepository.addTransaction({
+    invoiceNo,
+    date: new Date().toISOString(),
+    transactionType: isPurchase ? "Purchase" : "Sale",
 
-  // 4️⃣ Save the sale (always!)
-  const customerIdForDB = customerId ?? 0; // 0 = walk-in
-  const saleId = await salesRepository.addSale(
-    {
-      invoiceNo,
-      date: new Date().toISOString(),
-      transactionType: "Sale",
-      customerId: customerId ?? 0,
-      customerName,
-      subtotal,
-      discount,
-      tax,
-      dues,
-      grandTotal,
-      paid: paidAmount,
-      arrears,
-      profit,
-    },
-    saleItems
-  );
+    customerId: !isPurchase ? customerId ?? null : null,  // must be number | null
+    customerName: !isPurchase ? customerName ?? "Walk-in Customer" : "",
+    supplierId: isPurchase ? supplierId ?? null : null,   // must be number | null
 
-  // 5️⃣ Update Customer totals & payments if a saved customer
-  if (customerId) {
+    subtotal: invoiceSubtotal,
+    discount: invoiceDiscount,
+    tax: invoiceTax,
+
+    dues,
+    grandTotal: grandTotal,
+    paid: paidAmount,
+    arrears,
+    profit,
+
+    items: transactionItems,
+  });
+
+  // 8️⃣ UPDATE CUSTOMER & PAYMENT (only for SALE)
+  if (!isPurchase && customerId) {
     const customer = await customersRepository.getById(customerId);
     if (customer) {
       const newTotalPayable = (customer.payable ?? 0) + grandTotal - dues;
@@ -376,53 +434,53 @@ async function handleCompleteSale() {
 
       if (paidAmount > 0) {
         await customerPaymentRepository.add({
-          customerId: customer?.id ?? 0, // 0 = walk-in
-          customerName: customer ? customer.name : "Walk-in Customer",
+          customerId: customer.id ?? 0,
+          customerName: customer.name,
           invoiceNo,
           amount: paidAmount,
           paymentDate: new Date().toISOString(),
           remarks: invoiceNo,
           payableSnapshot: grandTotal,
-          balanceSnapshot: customer ? newBalance ?? 0 : 0,
+          balanceSnapshot: newBalance,
         });
-
       }
     }
   }
 
-  // 6️⃣ FINAL: Update stock in DATABASE (authoritative)
-for (const ci of cart) {
-  const item = await itemsRepository.getById(ci.originalItemId);
-  if (!item) continue;
+  // 9️⃣ UPDATE STOCK (repository only)
+  for (const ci of cart) {
+    const item = await itemsRepository.getById(ci.originalItemId);
+    if (!item) continue;
 
-  await itemsRepository.update({
-    ...item,
-    availableStock: item.availableStock - ci.qty, // qty already in MIN units
-  });
-}
+    await itemsRepository.update({
+      ...item,
+      availableStock: isPurchase
+        ? item.availableStock + ci.qty
+        : item.availableStock - ci.qty,
+    });
+  }
 
-  function normalizeToMinUnit(
-  price: number,
-  unit: UnitType,
-  convQty: number
-): number {
-  return unit === "max" ? price / convQty : price;
-}
-
-  // 6️⃣ Clear UI & reset states
+  // 🔟 RESET UI STATE
   setCart([]);
   setPaid(0);
   setDiscountValue(0);
   setTaxValue(0);
   setSelectedCustomerId(null);
   setCustomerInput("Walk-in Customer");
+  setSelectedSupplierId(null);
 
-  // 7️⃣ Increment invoice for next sale
-  const nextInvoice = await getNextInvoiceNoFromDB();
-    setInvoiceNo(nextInvoice);
-  //localStorage.setItem("lastInvoiceNo", nextInvoice);
+  // 1️⃣1️⃣ NEXT INVOICE
+  const prefix =
+  transactionType === "Sale" ? "SAL" :
+  transactionType === "Purchase" ? "PUR" :
+  transactionType === "Return" ? "RET" :
+  "QTN";
 
-  alert(`Sale completed successfully. Invoice #${invoiceNo}`);
+  const nextInvoice = await getNextInvoiceNoFromDB(prefix);
+  setInvoiceNo(nextInvoice);
+
+
+  alert(`${isPurchase ? "Purchase" : "Sale"} completed successfully. Invoice #${invoiceNo}`);
 }
 
 interface UnitPriceContext {
@@ -456,11 +514,6 @@ function priceForUnit(
   // =====================
 
   useEffect(() => {
-    const lastInvoice = localStorage.getItem("lastInvoiceNo");
-    if (lastInvoice) setInvoiceNo(lastInvoice);
-  }, []);
-
-  useEffect(() => {
     (async () => {
       const dbItems = await itemsRepository.getAll();
       setItems(dbItems);
@@ -481,7 +534,9 @@ function priceForUnit(
       setCustomers(mapped);
 
       setSelectedCustomerId(null);
-      setCustomerInput("Walk-in Customer");
+      setSelectedCustomerId(null);
+      setCustomerInput(isPurchase ? "Direct Purchase" : "Walk-in Customer");
+
     })();
   }, []);
 
@@ -491,10 +546,14 @@ function priceForUnit(
   }, [selectedCustomerId, customers]);
 
   useEffect(() => {
-  const q = customerInput.toLowerCase();
-  setFilteredCustomers(
-    customers.filter(c => c.name.toLowerCase().includes(q))
-  );
+  const q = customerInput.toLowerCase().trim();
+  if (!q || q === "walk-in customer") {
+    setFilteredCustomers(customers); // show all customers initially
+  } else {
+    setFilteredCustomers(
+      customers.filter(c => c.name.toLowerCase().includes(q))
+    );
+  }
 }, [customerInput, customers]);
 
 useEffect(() => {
@@ -542,12 +601,62 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  const initializeInvoiceNo = async () => {
-    const nextInvoice = await getNextInvoiceNoFromDB();
-    setInvoiceNo(nextInvoice);
-  };
+  if (isPurchase) {
+    setSelectedCustomerId(null);
+    setCustomerInput("Walk-in Customer");
 
-  initializeInvoiceNo();
+    setSelectedSupplierId(null);
+    setSupplierInput("Direct Purchase");
+  }
+}, [transactionType]);
+
+// whenever isPurchase changes
+useEffect(() => {
+  if (!cart || cart.length === 0) return;
+
+  const updatedCart = cart.map(ci => {
+    const item = items.find(i => i.id === ci.originalItemId);
+    if (!item) return ci;
+
+    if (isPurchase) {
+      // Purchase mode → use buy/cost price
+      return {
+        ...ci,
+        minUnitPrice: item.purchasePrice, // replace with your actual cost field
+        // keep the original priceCategory to satisfy TypeScript
+      };
+    } else {
+      // Sale mode → recalc price based on priceCategory
+      const baseMinPrice = getBaseMinUnitPrice(item, ci.priceCategory);
+      return {
+        ...ci,
+        minUnitPrice: baseMinPrice,
+      };
+    }
+  });
+
+  setCart(updatedCart);
+}, [isPurchase]);
+
+useEffect(() => {
+  async function refreshInvoiceNo() {
+    const prefix =
+      transactionType === "Sale" ? "SAL" :
+      transactionType === "Purchase" ? "PUR" :
+      transactionType === "Return" ? "RET" :
+      "QTN";
+
+    const nextInvoice = await getNextInvoiceNoFromDB(prefix);
+    setInvoiceNo(nextInvoice);
+  }
+
+  refreshInvoiceNo();
+}, [transactionType]);
+
+useEffect(() => {
+  SupplierRepository.getAll().then(data =>
+    setSuppliers(data.map(s => ({ ...s, id: s.id! })))
+  );
 }, []);
 
   // =====================
@@ -572,6 +681,13 @@ function cancelSale() {
   setCustomerInput("Walk-in Customer");
 }
 
+function handleTransactionTypeChange(
+  nextType: "Sale" | "Purchase" | "Return" | "Quotation"
+) {
+  cancelSale();
+  setTransactionType(nextType); // 🔥 invoice handled by useEffect
+}
+
   function handleBarcodeScan(code: string) {
     const item = items.find(i => i.barcode === code);
     if (item) {
@@ -583,47 +699,61 @@ function cancelSale() {
   }
 
 function addToCart(item: Item) {
-  if (item.availableStock <= 0) return;
 
-  // 1️⃣ Decrement stock in UI only
-  setItems(prev =>
-    prev.map(i =>
-      i.id === item.id ? { ...i, availableStock: i.availableStock - 1 } : i
-    )
-  );
+  // ❌ Block only for SALE, not PURCHASE
+  if (!isPurchase && item.availableStock <= 0) return;
 
-  // 2️⃣ Update cart
+  // 1️⃣ Update UI stock ONLY for SALE
+  if (!isPurchase) {
+    setItems(prev =>
+      prev.map(i =>
+        i.id === item.id ? { ...i, availableStock: i.availableStock - 1 } : i
+      )
+    );
+  }
+
+  // 2️⃣ Add to cart
   setCart(prev => {
     const existing = prev.find(ci => ci.originalItemId === item.id);
     if (existing) {
-      // ✅ Increment qty AND uiDeductedQty
       return prev.map(ci =>
         ci.originalItemId === item.id
-          ? { ...ci, qty: ci.qty + 1, uiDeductedQty: ci.uiDeductedQty + 1 }
+          ? {
+              ...ci,
+              qty: ci.qty + 1,
+              uiDeductedQty: isPurchase ? 0 : ci.uiDeductedQty + 1,
+            }
           : ci
       );
     }
 
-    // New cart item
     return [
       ...prev,
       {
         id: Date.now(),
         name: item.name,
-        qty: 1,                 // canonical MIN UNIT
+        qty: 1,
         unit: "min",
-        minUnitPrice: item.retailPrice,
+
+        // 🔴 IMPORTANT CHANGE
+        minUnitPrice: isPurchase
+          ? item.purchasePrice ?? 0
+          : item.retailPrice,
+
         convQty: item.ConvQty,
         minunit: item.minunit,
         maxunit: item.maxunit,
+
         costPrice: item.purchasePrice ?? 0,
         priceCategory: "Retail",
+
         discountType: "%",
         discountValue: 0,
         taxType: "%",
         taxValue: 0,
+
         originalItemId: item.id!,
-        uiDeductedQty: 1,       // initial deduction
+        uiDeductedQty: isPurchase ? 0 : 1,
       },
     ];
   });
@@ -691,7 +821,7 @@ function updateItem(updated: CartItem) {
         setItems(prev =>
           prev.map(i =>
             i.id === item.id
-              ? { ...i, availableStock: i.availableStock + cartItem.qty }
+              ? { ...i, availableStock: i.availableStock + cartItem.uiDeductedQty }
               : i
           )
         );
@@ -715,17 +845,30 @@ async function applyEdit(updatedQty: number) {
 }
 
 
-async function getNextInvoiceNoFromDB(): Promise<string> {
+async function getNextInvoiceNoFromDB(
+  prefix: string = "SAL"
+): Promise<string> {
   const allSales = await salesRepository.getAllSales();
 
-  if (allSales.length === 0) return "SAL-0001";
+  // filter only invoices of the same prefix
+  const sameTypeSales = allSales.filter(s =>
+    s.invoiceNo?.startsWith(`${prefix}-`)
+  );
+
+  if (sameTypeSales.length === 0) {
+    return `${prefix}-0001`;
+  }
 
   // Extract numeric part and find the maximum
-  const latestNumber = allSales
-    .map(s => parseInt(s.invoiceNo.split("-")[1], 10))
+  const latestNumber = sameTypeSales
+    .map(s => {
+      const parts = s.invoiceNo.split("-");
+      return parseInt(parts[1], 10);
+    })
+    .filter(n => !isNaN(n))
     .sort((a, b) => b - a)[0];
 
-  return `SAL-${String(latestNumber + 1).padStart(4, "0")}`;
+  return `${prefix}-${String(latestNumber + 1).padStart(4, "0")}`;
 }
 
 function formatStock(
@@ -879,6 +1022,14 @@ function formatStockDisplay(
   return `${min}${minUnit}`;
 }
 
+const dropdownList = isPurchase ? suppliers : customers;
+
+const selectedName = isPurchase ? supplierInput : customerInput;
+
+const setSelectedName = isPurchase ? setSupplierInput : setCustomerInput;
+
+const setSelectedId = isPurchase ? setSelectedSupplierId : setSelectedCustomerId;
+
   return (
     <div className="h-full flex bg-gray-100">
 
@@ -887,26 +1038,33 @@ function formatStockDisplay(
   {/* Top controls */}
   <div className="flex gap-2 mb-3">
     {/* Transaction Type Selector */}
-<div className="flex items-center gap-4 mb-3">
-        {["Sale", "Purchase", "Return", "Quotation"].map((type) => (
-            <label
-            key={type}
-            className={`flex items-center gap-2 px-3 py-1 rounded cursor-pointer transition
-                ${transactionType === type ? "bg-indigo-600 text-white" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}
-            `}
-            >
-            <input
-                type="radio"
-                name="transactionType"
-                value={type}
-                className="hidden"
-                checked={transactionType === type}
-                onChange={() => setTransactionType(type as any)}
-            />
-            {type}
-            </label>
-        ))}
-        </div>
+      <div className="flex items-center gap-4 mb-3">
+  {(["Sale", "Purchase", "Return", "Quotation"] as const).map(type => (
+    <label
+      key={type}
+      className={`flex items-center gap-2 px-3 py-1 rounded cursor-pointer transition
+        ${
+          transactionType === type
+            ? "bg-indigo-600 text-white"
+            : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+        }
+      `}
+    >
+      <input
+        type="radio"
+        name="transactionType"
+        value={type}
+        className="hidden"
+        checked={transactionType === type}
+        onChange={() => {
+          // 🔁 Always rollback cart + UI stock first
+          handleTransactionTypeChange(type);
+        }}
+      />
+      {type}
+    </label>
+  ))}
+</div>
 
     <input
       type="text"
@@ -951,45 +1109,51 @@ function formatStockDisplay(
 
   </div>
 
-  {/* Items grid */}
-  <div className="grid grid-cols-4 gap-2 auto-rows-min overflow-y-auto max-h-[calc(100vh-170px)]">
+{/* Items grid */}
+<div className="grid grid-cols-4 gap-2 auto-rows-min overflow-y-auto max-h-[calc(100vh-170px)]">
   {filteredItems.length === 0 ? (
     <div className="col-span-4 text-center text-gray-500 text-sm py-10">
       No items found. Adjust your search, category, or brand filters.
     </div>
   ) : (
-    filteredItems.map(item => (
-      <div
-        key={item.id}
-        onClick={() => addToCart(item)}
-        className={`p-2 border-2 shadow rounded cursor-pointer text-sm select-none ${
-          item.availableStock <= 0
-            ? "bg-gray-200 cursor-not-allowed"
-            : "hover:bg-blue-100"
-        }`}
-      >
-        <div className="font-medium text-blue-400">{item.name}</div>
-        <div className="text-xs text-green-500">
-          <span className="text-yellow-500">Rs {item.retailPrice}</span> |{" "}
-          {item.availableStock > 0
-            ? formatStockDisplay(
-                item.availableStock,
-                item.ConvQty,
-                item.minunit,
-                item.maxunit
-              )
-            : "0"}
-        </div>
-        {item.availableStock <= 0 && (
-          <div className="text-red-500 text-xs font-semibold mt-1">
-            Out of Stock
+    filteredItems.map(item => {
+      // 🔹 Dynamic display price based on mode
+      const displayPrice = isPurchase ? item.purchasePrice : item.retailPrice;
+
+      return (
+        <div
+          key={item.id}
+          onClick={() => addToCart(item)}
+          className={`p-2 border-2 shadow rounded cursor-pointer text-sm select-none ${
+            item.availableStock <= 0
+              ? "bg-gray-200 cursor-not-allowed"
+              : "hover:bg-blue-100"
+          }`}
+        >
+          <div className="font-medium text-blue-400">{item.name}</div>
+
+          <div className="text-xs text-green-500">
+            <span className="text-yellow-500">Rs {displayPrice.toFixed(2)}</span> |{" "}
+            {item.availableStock > 0
+              ? formatStockDisplay(
+                  item.availableStock,
+                  item.ConvQty,
+                  item.minunit,
+                  item.maxunit
+                )
+              : "0"}
           </div>
-        )}
-      </div>
-    ))
+
+          {item.availableStock <= 0 && (
+            <div className="text-red-500 text-xs font-semibold mt-1">
+              Out of Stock
+            </div>
+          )}
+        </div>
+      );
+    })
   )}
 </div>
-
 
 </div>
 
@@ -1001,7 +1165,7 @@ function formatStockDisplay(
   {/* Row 1: Invoice + Total Items */}
   <div className="flex justify-between items-center mb-1">
     <div className="text-lg font-semibold">
-      Invoice: {invoiceNo}
+      Invoice #: {invoiceNo}
     </div>
 
     <div className="text-sm text-gray-700">
@@ -1024,60 +1188,118 @@ function formatStockDisplay(
 
     {/* Customer + Quick Add */}
     <div className="flex items-center gap-2">
-      <div className="relative w-56">
+  {/* Customer Input */}
+{/* Customer / Supplier Input */}
+<div className="relative w-56">
   <input
     type="text"
-    value={customerInput}
+    value={isPurchase ? supplierInput : customerInput}
     className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
     onFocus={() => {
-      setIsCustomerOpen(true);
-      if (customerInput === "Walk-in Customer") {
-        setCustomerInput("");
+      if (isPurchase) {
+        setIsSupplierOpen(true);
+        // show all suppliers when focused
+        if (supplierInput === "Direct Purchase") {
+          setSupplierInput("");
+        }
+      } else {
+        setIsCustomerOpen(true);
+        // show all customers when focused
+        if (customerInput === "Walk-in Customer") {
+          setCustomerInput("");
+          setFilteredCustomers(customers);
+        }
       }
     }}
     onChange={(e) => {
-      setCustomerInput(e.target.value);
-      setSelectedCustomerId(null);
-      setIsCustomerOpen(true);
+      const val = e.target.value;
+      if (isPurchase) {
+        setSupplierInput(val);
+        setSelectedSupplierId(null);
+        setIsSupplierOpen(true);
+      } else {
+        setCustomerInput(val);
+        setSelectedCustomerId(null);
+        setIsCustomerOpen(true);
+
+        const q = val.toLowerCase();
+        setFilteredCustomers(
+          customers.filter(c => c.name.toLowerCase().includes(q))
+        );
+      }
     }}
     onBlur={() => {
       setTimeout(() => {
-        setIsCustomerOpen(false);
-        if (!customerInput.trim()) {
-          setCustomerInput("Walk-in Customer");
-          setSelectedCustomerId(null);
+        if (isPurchase) {
+          setIsSupplierOpen(false);
+          if (!supplierInput.trim()) {
+            setSupplierInput("Direct Purchase");
+            setSelectedSupplierId(null);
+          }
+        } else {
+          setIsCustomerOpen(false);
+          if (!customerInput.trim()) {
+            setCustomerInput("Walk-in Customer");
+            setSelectedCustomerId(null);
+          }
         }
-      }, 150); // allows click selection
+      }, 150);
     }}
   />
 
-  {isCustomerOpen && filteredCustomers.length > 0 && (
-    <div className="absolute z-20 mt-1 w-full bg-white border rounded shadow max-h-48 overflow-y-auto">
-      {filteredCustomers.map(c => (
-        <div
-          key={c.id}
-          className="px-2 py-1 text-sm cursor-pointer hover:bg-indigo-100"
-          onMouseDown={() => {
-            setSelectedCustomerId(c.id!);
-            setCustomerInput(c.name);
-            setIsCustomerOpen(false);
-          }}
-        >
-          {c.name}
-        </div>
-      ))}
-    </div>
+  {/* Dropdown */}
+  {isPurchase ? (
+    isSupplierOpen && filteredSuppliers.length > 0 && (
+      <div className="absolute z-20 mt-1 w-full bg-white border rounded shadow max-h-48 overflow-y-auto">
+        {filteredSuppliers.map(s => (
+          <div
+            key={s.id}
+            className="px-2 py-1 text-sm cursor-pointer hover:bg-indigo-100"
+            onMouseDown={() => {
+              setSelectedSupplierId(s.id!);
+              setSupplierInput(s.name);
+              setIsSupplierOpen(false);
+            }}
+          >
+            {s.name}
+          </div>
+        ))}
+      </div>
+    )
+  ) : (
+    isCustomerOpen && filteredCustomers.length > 0 && (
+      <div className="absolute z-20 mt-1 w-full bg-white border rounded shadow max-h-48 overflow-y-auto">
+        {filteredCustomers.map(c => (
+          <div
+            key={c.id}
+            className="px-2 py-1 text-sm cursor-pointer hover:bg-indigo-100"
+            onMouseDown={() => {
+              setSelectedCustomerId(c.id);
+              setCustomerInput(c.name);
+              setIsCustomerOpen(false);
+            }}
+          >
+            {c.name}
+          </div>
+        ))}
+      </div>
+    )
   )}
 </div>
 
-      <button
-        onClick={() => setShowCustomerModal(true)}
-        className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-        title="Add New Customer"
-      >
-        <FaPlus size={12} />
-      </button>
-    </div>
+  <button
+    onClick={() =>
+      isPurchase
+        ? setShowSupplierModal(true)
+        : setShowCustomerModal(true)
+    }
+    className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+    title={isPurchase ? "Add New Supplier" : "Add New Customer"}
+  >
+    <FaPlus size={12} />
+  </button>
+</div>
+
   </div>
 </div>
 
@@ -1208,16 +1430,16 @@ function formatStockDisplay(
   <div className="flex gap-2 mt-6">
     <button
       className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
-      onClick={handleCompleteSale}
+      onClick={handleCompleteTransaction}
     >
-      <FaCheck /> Complete Sale
+      <FaCheck /> Complete {transactionType}
     </button>
 
     <button
       className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
       onClick={cancelSale}
     >
-      <FaTimes /> Cancel Sale
+      <FaTimes /> Cancel {transactionType}
     </button>
   </div>
 </div>
@@ -1225,157 +1447,155 @@ function formatStockDisplay(
 </div>
 
 
-      {/* EDIT MODAL */}
-      {editing && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
-          <div className="bg-white p-5 rounded w-96">
-  <div className="flex justify-between items-start mb-3">
-    <h3 className="font-semibold text-red-500">
-      {editing.name}
-    </h3>
+     {/* EDIT MODAL */}
+{editing && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
+    <div className="bg-white p-5 rounded w-96">
+      <div className="flex justify-between items-start mb-3">
+        <h3 className="font-semibold text-red-500">
+          {editing.name}
+        </h3>
 
-    <span className="text-xs text-green-500 text-right">
-      Stock:&nbsp;
-      {formatStock(
-        items.find(i => i.id === editing.originalItemId)?.availableStock ?? 0,
-        editing.convQty,
-        editing.minunit,
-        editing.maxunit
-      )}
-    </span>
-  </div>
+        <span className="text-xs text-green-500 text-right">
+          Stock:&nbsp;
+          {formatStock(
+            items.find(i => i.id === editing.originalItemId)?.availableStock ?? 0,
+            editing.convQty,
+            editing.minunit,
+            editing.maxunit
+          )}
+        </span>
+      </div>
 
-  <div className="mb-2">
+      <div className="mb-2">
+        <label className="text-xs font-medium">Unit</label>
+        <select
+          className="w-full p-2 border rounded"
+          value={editing.unit}
+          onChange={(e) => {
+            if (!editing) return;
+            const newUnit = e.target.value as UnitType;
+            setEditing({ ...editing, unit: newUnit });
+          }}
+        >
+          <option value="min">{editing.minunit}</option>
+          <option value="max">{editing.maxunit}</option>
+        </select>
+      </div>
 
-    <label className="text-xs font-medium">Unit</label>
+      <label className="text-sm">Quantity</label>
+      <input
+        type="number"
+        className="w-full p-2 border rounded mb-2"
+        value={editing.qty}
+        onChange={e => setEditing({ ...editing, qty: Number(e.target.value) })}
+      />
 
-    <select
-        className="w-full p-2 border rounded"
-        value={editing.unit}
-        onChange={(e) => {
-          if (!editing) return;
+      {/* Price Category / Buy Price */}
+      {isPurchase ? (
+        <>
+          <label className="text-sm font-medium block mb-1">Buy Price</label>
+          <input
+            type="number"
+            className="w-full p-2 border rounded mb-2"
+            value={editing.minUnitPrice}
+            onChange={(e) => {
+              const price = Number(e.target.value) || 0;
+              setEditing({
+                ...editing,
+                minUnitPrice: normalizeToMinUnit(price, editing.unit, editing.convQty),
+              });
+            }}
+          />
+        </>
+      ) : (
+        <>
+          <label className="text-sm font-medium block mb-1">Price</label>
+          <div className="flex gap-3 text-sm mb-2">
+            {PRICE_CATEGORIES.map(cat => (
+              <label key={cat} className="flex items-center gap-1">
+                <input
+                  type="radio"
+                  checked={editing.priceCategory === cat}
+                  onChange={() => {
+                    if (!editing) return;
+                    const item = items.find(i => i.id === editing.originalItemId);
+                    if (!item) return;
+                    const baseMinPrice = getBaseMinUnitPrice(item, cat);
 
-          const newUnit = e.target.value as UnitType;
-
-          setEditing({
-            ...editing,
-            unit: newUnit,
-          });
-        }}
-      >
-        <option value="min">{editing.minunit}</option>
-        <option value="max">{editing.maxunit}</option>
-      </select>
-  </div>
-            <label className="text-sm">Quantity</label>
-            <input
-              type="number"
-              className="w-full p-2 border rounded mb-2"
-              value={editing.qty}
-              onChange={e => setEditing({ ...editing, qty: Number(e.target.value) })}
-            />
-
-              {/* Price Category Radio Buttons */}
-                    <label className="text-sm font-medium block mb-1">
-                    Price
-                  </label>
-
-                  <div className="flex gap-3 text-sm">
-                        {PRICE_CATEGORIES.map(cat => (
-                          <label key={cat} className="flex items-center gap-1">
-                            <input
-                              type="radio"
-                              checked={editing.priceCategory === cat}
-                              onChange={() => {
-                                if (!editing) return;
-
-                                const item = items.find(i => i.id === editing.originalItemId);
-                                if (!item) return;
-
-                                const baseMinPrice = getBaseMinUnitPrice(item, cat);
-
-                                setEditing({
-                                  ...editing,
-                                  priceCategory: cat,
-                                  minUnitPrice: baseMinPrice,
-                                });
-                              }}
-                            />
-
-                            {cat}
-                          </label>
-                        ))}
-                  </div>
-
-            {/* <label className="text-sm">Amount</label> */}
-           <input
-                    type="number"
-                    className="w-full p-2 border rounded mb-2"
-                    value={priceForDisplay(
-                      editing.minUnitPrice,
-                      editing.unit,
-                      editing.convQty
-                    )}
-                    onChange={(e) => {
-                      const price = Number(e.target.value) || 0;
-
-                      setEditing({
-                        ...editing,
-                        minUnitPrice: normalizeToMinUnit(
-                          price,
-                          editing.unit,
-                          editing.convQty
-                        ),
-                      });
-                    }}
-                  />
-
-
-            <label className="text-sm">Discount</label>
-            <div className="flex gap-2 mb-2">
-              <select
-                value={editing.discountType}
-                onChange={e => setEditing({ ...editing, discountType: e.target.value as "%" | "flat" })}
-                className="border p-1 rounded flex-1"
-              >
-                <option value="%">%</option>
-                <option value="flat">Flat</option>
-              </select>
-              <input
-                type="number"
-                className="border p-2 rounded flex-1"
-                value={editing.discountValue}
-                onChange={e => setEditing({ ...editing, discountValue: Number(e.target.value) })}
-              />
-            </div>
-
-            <label className="text-sm">Tax</label>
-            <div className="flex gap-2 mb-3">
-              <select
-                value={editing.taxType}
-                onChange={e => setEditing({ ...editing, taxType: e.target.value as "%" | "flat" })}
-                className="border p-1 rounded flex-1"
-              >
-                <option value="%">%</option>
-                <option value="flat">Flat</option>
-              </select>
-              <input
-                type="number"
-                className="border p-2 rounded flex-1"
-                value={editing.taxValue}
-                onChange={e => setEditing({ ...editing, taxValue: Number(e.target.value) })}
-              />
-            </div>
-
-            <div className="flex justify-end gap-2">
-              <button onClick={() => setEditing(null)}>Cancel</button>
-              <button onClick={() => updateItem(editing)} className="bg-indigo-600 text-white px-4 py-2 rounded">
-                Save
-              </button>
-            </div>
+                    setEditing({
+                      ...editing,
+                      priceCategory: cat,
+                      minUnitPrice: baseMinPrice,
+                    });
+                  }}
+                />
+                {cat}
+              </label>
+            ))}
           </div>
-        </div>
+
+          <input
+            type="number"
+            className="w-full p-2 border rounded mb-2"
+            value={priceForDisplay(editing.minUnitPrice, editing.unit, editing.convQty)}
+            onChange={(e) => {
+              const price = Number(e.target.value) || 0;
+              setEditing({
+                ...editing,
+                minUnitPrice: normalizeToMinUnit(price, editing.unit, editing.convQty),
+              });
+            }}
+          />
+        </>
       )}
+
+      <label className="text-sm">Discount</label>
+      <div className="flex gap-2 mb-2">
+        <select
+          value={editing.discountType}
+          onChange={e => setEditing({ ...editing, discountType: e.target.value as "%" | "flat" })}
+          className="border p-1 rounded flex-1"
+        >
+          <option value="%">%</option>
+          <option value="flat">Flat</option>
+        </select>
+        <input
+          type="number"
+          className="border p-2 rounded flex-1"
+          value={editing.discountValue}
+          onChange={e => setEditing({ ...editing, discountValue: Number(e.target.value) })}
+        />
+      </div>
+
+      <label className="text-sm">Tax</label>
+      <div className="flex gap-2 mb-3">
+        <select
+          value={editing.taxType}
+          onChange={e => setEditing({ ...editing, taxType: e.target.value as "%" | "flat" })}
+          className="border p-1 rounded flex-1"
+        >
+          <option value="%">%</option>
+          <option value="flat">Flat</option>
+        </select>
+        <input
+          type="number"
+          className="border p-2 rounded flex-1"
+          value={editing.taxValue}
+          onChange={e => setEditing({ ...editing, taxValue: Number(e.target.value) })}
+        />
+      </div>
+
+      <div className="flex justify-end gap-2">
+        <button onClick={() => setEditing(null)}>Cancel</button>
+        <button onClick={() => updateItem(editing)} className="bg-indigo-600 text-white px-4 py-2 rounded">
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+
 
       {showCustomerModal && (
   <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -1555,11 +1775,7 @@ function formatStockDisplay(
         </button> */}
         <button
           className="px-3 py-1 bg-blue-600 text-white rounded"
-          onClick={() => {
-            if (selectedDiscount) {
-              // Update cart items or invoice totals here
-              setShowInvoiceDiscountModal(false);
-            }
+          onClick={() => {            
             setShowInvoiceDiscountModal(false);
           }}
         >

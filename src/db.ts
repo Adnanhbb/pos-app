@@ -135,6 +135,7 @@ export interface DBSale {
   date: string;
   transactionType: "Sale" | "Purchase" | "Return" | "Quotation";
   customerId: number | null;
+  supplierId: number | null;
   customerName: string;
   subtotal: number;
   discount: number;
