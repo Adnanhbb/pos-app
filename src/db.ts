@@ -137,6 +137,7 @@ export interface DBSale {
   customerId: number | null;
   supplierId: number | null;
   customerName: string;
+  supplierName: string;
   subtotal: number;
   discount: number;
   tax: number;
@@ -1169,34 +1170,26 @@ export async function addSupplierPayment(
   amount: number,
   paymentDate: string,
   remarks: string = "",
-  payableSnapshot?: number
+  payableSnapshot: number,
+  balanceSnapshot: number
 ) {
   const db = await initDB();
   const supplier = await db.get("suppliers", supplierId);
   if (!supplier) throw new Error("Supplier not found");
 
-  const currentBalance = supplier.balance ?? 0;
-  const currentPayable = payableSnapshot ?? currentBalance;
-
-  const newPaid = (supplier.paid ?? 0) + amount;
-  const newBalance = currentBalance - amount;
-
+  // ✅ Save the payment record only
   await db.add("supplier_payments", {
     supplierId,
     amount,
     paymentDate,
     remarks,
-    payableSnapshot: currentPayable,
-    balanceSnapshot: newBalance,
+    payableSnapshot,
+    balanceSnapshot,
   } as SupplierPayment);
 
-  await db.put("suppliers", {
-    ...supplier,
-    paid: newPaid,
-    balance: newBalance,
-  });
+  // ❌ Do NOT update supplier.paid here anymore
+  // handleCompleteTransaction() will update paid & balance
 }
-
 
 export async function deleteSupplierPayment(id: number) {
   const db = await initDB();

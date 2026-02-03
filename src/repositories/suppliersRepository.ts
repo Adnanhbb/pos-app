@@ -38,15 +38,24 @@ export const SupplierRepository = {
     return await searchSuppliers(query);
   },
 
+  // ✅ Updated addPayment to include balanceSnapshot
   addPayment: async (
-    supplierId: number,
-    amount: number,
-    paymentDate: string,
-    remarks: string = "",
-    payableSnapshot?: number
-  ) => {
-    await addSupplierPayment(supplierId, amount, paymentDate, remarks, payableSnapshot);
-  },
+  supplierId: number,
+  amount: number,
+  paymentDate: string,
+  remarks: string = "",
+  payableSnapshot: number,
+  balanceSnapshot: number
+) => {
+  await addSupplierPayment(
+    supplierId,
+    amount,
+    paymentDate,
+    remarks,
+    payableSnapshot,
+    balanceSnapshot
+  );
+},
 
   getPaymentsBySupplier: async (supplierId: number): Promise<SupplierPayment[]> => {
     const allPayments = await getAllSupplierPayments();
@@ -55,5 +64,10 @@ export const SupplierRepository = {
 
   deletePayment: async (id: number) => {
     await deleteSupplierPayment(id);
+  },
+
+  getById: async (id: number): Promise<Supplier | null> => {
+    const all = await getAllSuppliers();
+    return all.find(s => s.id === id) || null;
   },
 };

@@ -279,6 +279,7 @@ export default function SalesPOS() {
   id: number;
   name: string;
   phone?: string;
+  balance?: number;
   };
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(null);
@@ -316,29 +317,50 @@ export default function SalesPOS() {
 
   const isPurchase = transactionType === "Purchase";
 
+  const selectedSupplier =
+  suppliers.find(s => s.id === selectedSupplierId) || null;
+
+  const [supplierBalance, setSupplierBalance] = useState(0);
+
 async function handleCompleteTransaction() {
   if (cart.length === 0) {
     alert("Cart is empty");
     return;
   }
 
-  // 1️⃣ Prepare IDs & names
-  const customerId = selectedCustomerId ?? null;
-  const customerName = selectedCustomer
-    ? selectedCustomer.name
-    : "Walk-in Customer";
+  /* --------------------------------------------------
+     1️⃣ PREPARE PARTY (CUSTOMER / SUPPLIER)
+  -------------------------------------------------- */
 
+  const customerId = !isPurchase ? selectedCustomerId ?? null : null;
   const supplierId = isPurchase ? selectedSupplierId ?? null : null;
-  const dues = !isPurchase && selectedCustomer ? selectedCustomer.arrears ?? 0 : 0;
 
-  // 2️⃣ CALCULATE ITEM TOTALS
+  const customerName =
+    !isPurchase && selectedCustomer
+      ? selectedCustomer.name
+      : "Walk-in Customer";
+
+  const supplierName =
+    isPurchase && selectedSupplier
+      ? selectedSupplier.name
+      : "Direct Purchase";
+
+  const dues = isPurchase ? supplierBalance : customerArrears;
+
+  /* --------------------------------------------------
+     2️⃣ ITEM SUBTOTAL
+  -------------------------------------------------- */
+
   let invoiceSubtotal = 0;
   cart.forEach(item => {
     const line = calcLine(item);
-    invoiceSubtotal += line.total; // includes item-level discount & tax
+    invoiceSubtotal += line.total;
   });
 
-  // 3️⃣ CALCULATE INVOICE-LEVEL DISCOUNT & TAX AS FLAT VALUES
+  /* --------------------------------------------------
+     3️⃣ INVOICE DISCOUNT & TAX
+  -------------------------------------------------- */
+
   let invoiceDiscount = 0;
   let invoiceTax = 0;
 
@@ -356,27 +378,37 @@ async function handleCompleteTransaction() {
     invoiceTax = Number(taxValue) || 0;
   }
 
-  // 4️⃣ GRAND TOTAL
+  /* --------------------------------------------------
+     4️⃣ GRAND TOTAL
+  -------------------------------------------------- */
+
   const grandTotal = subtotalAfterDiscount + invoiceTax + dues;
   const paidAmount = Number(paid) || 0;
   const arrears = grandTotal - paidAmount;
 
-  // 5️⃣ PROFIT (only for SALE)
+  /* --------------------------------------------------
+     5️⃣ PROFIT (SALE ONLY)
+  -------------------------------------------------- */
+
   let profit = 0;
   if (!isPurchase) {
     cart.forEach(item => {
       const lineBase = item.qty * item.minUnitPrice;
       const costBase = item.qty * item.costPrice;
+
       const discountAmt =
         item.discountType === "%"
           ? (lineBase * item.discountValue) / 100
           : item.discountValue;
 
-      profit += (lineBase - discountAmt) - costBase;
+      profit += lineBase - discountAmt - costBase;
     });
   }
 
-  // 6️⃣ PREPARE ITEMS
+  /* --------------------------------------------------
+     6️⃣ PREPARE ITEMS
+  -------------------------------------------------- */
+
   const transactionItems = cart.map(ci => {
     const line = calcLine(ci);
     return {
@@ -386,28 +418,33 @@ async function handleCompleteTransaction() {
       price: ci.minUnitPrice,
       priceCategory: ci.priceCategory,
       discountType: ci.discountType,
-      discountValue: line.discount, // item-level
+      discountValue: line.discount,
       taxType: ci.taxType,
-      taxValue: line.tax,           // item-level
+      taxValue: line.tax,
     };
   });
 
-  // 7️⃣ SAVE TRANSACTION (SALE / PURCHASE unified)
+  /* --------------------------------------------------
+     7️⃣ SAVE TRANSACTION
+  -------------------------------------------------- */
+
   await salesRepository.addTransaction({
     invoiceNo,
     date: new Date().toISOString(),
-    transactionType: isPurchase ? "Purchase" : "Sale",
+    transactionType,
 
-    customerId: !isPurchase ? customerId ?? null : null,  // must be number | null
-    customerName: !isPurchase ? customerName ?? "Walk-in Customer" : "",
-    supplierId: isPurchase ? supplierId ?? null : null,   // must be number | null
+    customerId,
+    customerName: !isPurchase ? customerName : "",
+
+    supplierId,
+    supplierName: isPurchase ? supplierName : "",
 
     subtotal: invoiceSubtotal,
     discount: invoiceDiscount,
     tax: invoiceTax,
 
     dues,
-    grandTotal: grandTotal,
+    grandTotal,
     paid: paidAmount,
     arrears,
     profit,
@@ -415,26 +452,28 @@ async function handleCompleteTransaction() {
     items: transactionItems,
   });
 
-  // 8️⃣ UPDATE CUSTOMER & PAYMENT (only for SALE)
+  /* --------------------------------------------------
+     8️⃣ UPDATE CUSTOMER (SALE)
+  -------------------------------------------------- */
+
   if (!isPurchase && customerId) {
     const customer = await customersRepository.getById(customerId);
     if (customer) {
-      const newTotalPayable = (customer.payable ?? 0) + grandTotal - dues;
-      const newTotalPaid = (customer.paid ?? 0) + paidAmount;
-      const newBalance = newTotalPayable - newTotalPaid;
-      const newInvoices = (customer.invoices ?? 0) + 1;
+      const newPayable = (customer.payable ?? 0) + grandTotal - dues;
+      const newPaid = (customer.paid ?? 0) + paidAmount;
+      const newBalance = newPayable - newPaid;
 
       await customersRepository.update({
         ...customer,
-        payable: newTotalPayable,
-        paid: newTotalPaid,
+        payable: newPayable,
+        paid: newPaid,
         balance: newBalance,
-        invoices: newInvoices,
+        invoices: (customer.invoices ?? 0) + 1,
       });
 
       if (paidAmount > 0) {
         await customerPaymentRepository.add({
-          customerId: customer.id ?? 0,
+          customerId: customer.id!,
           customerName: customer.name,
           invoiceNo,
           amount: paidAmount,
@@ -447,7 +486,43 @@ async function handleCompleteTransaction() {
     }
   }
 
-  // 9️⃣ UPDATE STOCK (repository only)
+  /* --------------------------------------------------
+     9️⃣ UPDATE SUPPLIER (PURCHASE) — MIRROR CUSTOMER LOGIC
+  -------------------------------------------------- */
+
+ if (isPurchase && supplierId) {
+  const supplier = await SupplierRepository.getById(supplierId);
+  if (supplier) {
+    const newPayable = (supplier.payable ?? 0) + grandTotal - dues;
+    const newPaid = (supplier.paid ?? 0) + paidAmount;
+    const newBalance = newPayable - newPaid;
+
+    await SupplierRepository.update({
+      ...supplier,
+      payable: newPayable,
+      paid: newPaid,
+      balance: newBalance,
+      invoices: (supplier.invoices ?? 0) + 1,
+    });
+
+    if (paidAmount > 0) {
+      await SupplierRepository.addPayment(
+        supplier.id!,
+        paidAmount,
+        new Date().toISOString(),
+        invoiceNo,
+        newPayable,
+        newBalance
+      );
+    }
+  }
+}
+
+
+  /* --------------------------------------------------
+     🔟 UPDATE STOCK
+  -------------------------------------------------- */
+
   for (const ci of cart) {
     const item = await itemsRepository.getById(ci.originalItemId);
     if (!item) continue;
@@ -460,28 +535,40 @@ async function handleCompleteTransaction() {
     });
   }
 
-  // 🔟 RESET UI STATE
+  /* --------------------------------------------------
+     1️⃣1️⃣ RESET UI
+  -------------------------------------------------- */
+
   setCart([]);
   setPaid(0);
   setDiscountValue(0);
   setTaxValue(0);
+
   setSelectedCustomerId(null);
   setCustomerInput("Walk-in Customer");
-  setSelectedSupplierId(null);
 
-  // 1️⃣1️⃣ NEXT INVOICE
+  setSelectedSupplierId(null);
+  setSupplierInput("Direct Purchase");
+
+  /* --------------------------------------------------
+     1️⃣2️⃣ NEXT INVOICE
+  -------------------------------------------------- */
+
   const prefix =
-  transactionType === "Sale" ? "SAL" :
-  transactionType === "Purchase" ? "PUR" :
-  transactionType === "Return" ? "RET" :
-  "QTN";
+    transactionType === "Sale"
+      ? "SAL"
+      : transactionType === "Purchase"
+      ? "PUR"
+      : transactionType === "Return"
+      ? "RET"
+      : "QTN";
 
   const nextInvoice = await getNextInvoiceNoFromDB(prefix);
   setInvoiceNo(nextInvoice);
 
-
-  alert(`${isPurchase ? "Purchase" : "Sale"} completed successfully. Invoice #${invoiceNo}`);
+  alert(`${transactionType} completed successfully. Invoice #${invoiceNo}`);
 }
+
 
 interface UnitPriceContext {
   unit: UnitType;        // which unit the entered price belongs to
@@ -544,6 +631,7 @@ function priceForUnit(
     const customer = customers.find(c => c.id === selectedCustomerId);
     setCustomerArrears(customer?.arrears ?? 0);
   }, [selectedCustomerId, customers]);
+
 
   useEffect(() => {
   const q = customerInput.toLowerCase().trim();
@@ -655,9 +743,26 @@ useEffect(() => {
 
 useEffect(() => {
   SupplierRepository.getAll().then(data =>
-    setSuppliers(data.map(s => ({ ...s, id: s.id! })))
+    setSuppliers(
+      data.map(s => ({
+        id: s.id!,
+        name: s.name,
+        phone: s.mobile,
+        balance: s.balance ?? 0, // 👈 IMPORTANT
+      }))
+    )
   );
 }, []);
+
+useEffect(() => {
+  if (!isPurchase) {
+    setSupplierBalance(0);
+    return;
+  }
+
+  const supplier = suppliers.find(s => s.id === selectedSupplierId);
+  setSupplierBalance(supplier?.balance ?? 0);
+}, [selectedSupplierId, suppliers, isPurchase]);
 
   // =====================
   // CART LOGIC
@@ -919,17 +1024,32 @@ const totals = useMemo(() => {
   const invoiceDiscountAmount = applyAdjustment(subtotal, selectedDiscount ? { type: discountMode, value: discountValue } : null);
   const invoiceTaxAmount = applyAdjustment(subtotal - invoiceDiscountAmount, selectedTax ? { type: taxMode, value: taxValue } : null);
 
-  const grandTotal = subtotal - invoiceDiscountAmount + invoiceTaxAmount + customerArrears;
+  const dues = isPurchase ? supplierBalance : customerArrears;
+
+  const grandTotal =
+  subtotal - invoiceDiscountAmount + invoiceTaxAmount + dues;
 
   return {
-    subtotal,
-    cartItemDiscount,
-    discount: invoiceDiscountAmount,
-    tax: invoiceTaxAmount,   // invoice-level tax only
-    arrears: customerArrears,
-    grandTotal,
-  };
-}, [cart, customerArrears, selectedDiscount, discountMode, discountValue, selectedTax, taxMode, taxValue]);
+  subtotal,
+  cartItemDiscount,
+  discount: invoiceDiscountAmount,
+  tax: invoiceTaxAmount,
+  arrears: dues, // 👈 unified
+  grandTotal,
+};
+
+}, [
+  cart,
+  customerArrears,
+  supplierBalance,
+  selectedDiscount,
+  discountMode,
+  discountValue,
+  selectedTax,
+  taxMode,
+  taxValue,
+  isPurchase
+]);
 
 
   const filteredItems = useMemo(() => {
@@ -1298,7 +1418,7 @@ const setSelectedId = isPurchase ? setSelectedSupplierId : setSelectedCustomerId
   >
     <FaPlus size={12} />
   </button>
-</div>
+    </div>
 
   </div>
 </div>
@@ -1384,16 +1504,23 @@ const setSelectedId = isPurchase ? setSelectedSupplierId : setSelectedCustomerId
         <span>{totals.tax.toFixed(2)}</span>
       </div>
 
-      {totals.arrears > 0 && (
-        <div className="flex justify-between text-red-600 font-medium">
-          <span>Previous Dues</span>
-          <span>
-            {selectedCustomer && selectedCustomer.arrears > 0 && (
-              <span>{selectedCustomer.arrears.toFixed(2)}</span>
-            )}
-          </span>
-        </div>
-      )}
+     {!isPurchase &&
+  selectedCustomerId !== null &&
+  customerArrears > 0 && (
+    <div className="flex justify-between text-red-600 font-medium">
+      <span>Previous Dues</span>
+      <span>{customerArrears.toFixed(2)}</span>
+    </div>
+)}
+
+{isPurchase &&
+  selectedSupplierId !== null &&
+  supplierBalance > 0 && (
+    <div className="flex justify-between text-red-600 font-medium">
+      <span>Previous Dues</span>
+      <span>{supplierBalance.toFixed(2)}</span>
+    </div>
+)}
 
       <div className="flex justify-between font-semibold border-t pt-2 text-base">
         <span className="text-blue-600">Payable Amount</span>
@@ -1717,7 +1844,131 @@ const setSelectedId = isPurchase ? setSelectedSupplierId : setSelectedCustomerId
       </div>
     </div>
   </div>
+      )}
+
+{showSupplierModal && (
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+    <div className="bg-white p-5 rounded w-96 shadow">
+      <h3 className="font-semibold mb-3">Create New Supplier</h3>
+
+      <label className="text-sm">Supplier Name</label>
+      <input
+        type="text"
+        className="w-full p-2 border rounded mb-2"
+        value={newSupplier.name}
+        onChange={(e) =>
+          setNewSupplier({ ...newSupplier, name: e.target.value })
+        }
+      />
+
+      <label className="text-sm">Mobile</label>
+      <input
+        type="text"
+        className="w-full p-2 border rounded mb-2"
+        value={newSupplier.mobile}
+        onChange={(e) =>
+          setNewSupplier({ ...newSupplier, mobile: e.target.value })
+        }
+      />
+
+      <label className="text-sm">CNIC</label>
+      <input
+        type="text"
+        className="w-full p-2 border rounded mb-2"
+        value={newSupplier.cnic}
+        onChange={(e) =>
+          setNewSupplier({ ...newSupplier, cnic: e.target.value })
+        }
+      />
+
+      <label className="text-sm">Address</label>
+      <input
+        type="text"
+        className="w-full p-2 border rounded mb-2"
+        value={newSupplier.address}
+        onChange={(e) =>
+          setNewSupplier({ ...newSupplier, address: e.target.value })
+        }
+      />
+
+      <label className="text-sm">Opening Payable</label>
+      <input
+        type="number"
+        className="w-full p-2 border rounded mb-4"
+        value={newSupplier.dues}
+        onChange={(e) =>
+          setNewSupplier({
+            ...newSupplier,
+            dues: Number(e.target.value),
+          })
+        }
+      />
+
+      <div className="flex justify-end gap-2">
+        <button
+          onClick={() => setShowSupplierModal(false)}
+          className="px-3 py-1"
+        >
+          Cancel
+        </button>
+
+        <button
+          className="bg-indigo-600 text-white px-4 py-2 rounded"
+          onClick={async () => {
+            if (!newSupplier.name.trim()) {
+              return alert("Supplier name is required");
+            }
+
+            // 1️⃣ Duplicate check
+            const allSuppliers = await SupplierRepository.getAll();
+            const exists = allSuppliers.some(
+              s =>
+                s.name.trim().toLowerCase() ===
+                newSupplier.name.trim().toLowerCase()
+            );
+
+            if (exists) {
+              return alert(
+                `A supplier with the name "${newSupplier.name}" already exists.`
+              );
+            }
+
+            // 2️⃣ Save to DB
+            const id = await SupplierRepository.add({
+              name: newSupplier.name,
+              mobile: newSupplier.mobile,
+              cnic: newSupplier.cnic,
+              address: newSupplier.address,
+              payable: newSupplier.dues,
+            });
+
+            // 3️⃣ Reload suppliers
+            const dbSuppliers = await SupplierRepository.getAll();
+            setSuppliers(dbSuppliers.map(s => ({ ...s, id: s.id! })));
+
+            // 4️⃣ Auto-select
+            setSelectedSupplierId(id);
+            setSupplierInput(newSupplier.name);
+
+            // 5️⃣ Reset modal
+            setNewSupplier({
+              name: "",
+              mobile: "",
+              cnic: "",
+              address: "",
+              dues: 0,
+            });
+
+            setShowSupplierModal(false);
+          }}
+        >
+          Save
+        </button>
+      </div>
+    </div>
+  </div>
 )}
+
 {showInvoiceDiscountModal && (
   <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
     <div className="bg-white p-4 rounded w-80">

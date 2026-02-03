@@ -24,6 +24,10 @@ export default function Invoices() {
 
   const [search, setSearch] = useState("");
 
+  // Helper to get the correct party name (customer or supplier)
+  const getPartyName = (inv: DBSale) =>
+  inv.transactionType === "Purchase" ? inv.supplierName ?? "N/A" : inv.customerName ?? "N/A";
+
   // Load total count on mount or filter change
   useEffect(() => {
     async function loadCount() {
@@ -228,7 +232,7 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
                   onClick={() => setSelectedInvoice(filteredInvoices)}
                 >
                   <td className="border p-2">{filteredInvoices.invoiceNo}</td>
-                  <td className="border p-2">{filteredInvoices.customerName}</td>
+                  <td className="border p-2">{getPartyName(filteredInvoices)}</td>
                   <td className="border p-2">
                     {new Date(filteredInvoices.date).toLocaleDateString()}
                   </td>
@@ -274,7 +278,7 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
               <div >
                 <h2 className="text-lg font-semibold">Invoice #: {selectedInvoice.invoiceNo}</h2>
                 <p><strong>Date:</strong> {selectedInvoice.date}</p>
-                <p><strong>Cust/Supp Name:</strong> {selectedInvoice.customerName ?? "N/A"}</p>
+                <p><strong>Cust/Supp Name:</strong> {getPartyName(selectedInvoice)}</p>
               </div>
               <div>
                 {/* <p><strong>Transaction:</strong> {selectedInvoice.transactionType}</p> */}
