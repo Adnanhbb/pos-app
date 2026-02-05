@@ -122,6 +122,8 @@ export interface CustomerPayment {
 export interface SupplierPayment {
   id?: number;
   supplierId: number;
+  supplierName: string;
+  invoiceNo: string;
   amount: number;
   paymentDate: string;
   remarks?: string;
@@ -723,11 +725,19 @@ export async function updateSupplierPayment(
   const supplier = await db.get("suppliers", supplierId);
   if (!supplier) throw new Error("Supplier not found");
 
-  const currentBalance = supplier.balance ?? 0;
-  const currentPayable = payableSnapshot ?? currentBalance;
-  const newPaid = amount; // replacing old payment amount
-  const balanceSnapshot = currentPayable - newPaid;
+  // Determine the current payable for this payment
+  const currentPayable = payableSnapshot ?? supplier.payable ?? 0;
 
+  // Compute new balance
+  // We assume this is replacing an existing payment, so adjust old payment if needed
+  const existingPayment: SupplierPayment | undefined = await db.get("supplier_payments", id);
+  const oldAmount = existingPayment?.amount ?? 0;
+
+  // New balance = old balance + old payment - new payment
+  const previousBalance = supplier.balance ?? currentPayable;
+  const balanceSnapshot = previousBalance + oldAmount - amount;
+
+  // Save the updated payment
   await db.put("supplier_payments", {
     id,
     supplierId,
@@ -738,13 +748,16 @@ export async function updateSupplierPayment(
     balanceSnapshot,
   } as SupplierPayment);
 
+  // Update supplier totals
+  const newPaid = (supplier.paid ?? 0) - oldAmount + amount;
+  const newBalance = (supplier.payable ?? 0) - newPaid;
+
   await db.put("suppliers", {
     ...supplier,
     paid: newPaid,
     balance: balanceSnapshot,
   });
 }
-
 
 export async function getSuppliersPaged(page: number, pageSize: number, query: string | null = null) {
   let data = await getAllSuppliers();
@@ -1320,6 +1333,18 @@ export async function getCustomerById(id: number): Promise<Customer | undefined>
   });
 }
 
+export async function getSupplierById(id: number): Promise<Supplier | undefined> {
+  const conn = await db.open();
+
+  return new Promise(resolve => {
+    const tx = conn.transaction("suppliers", "readonly");
+    const store = tx.objectStore("suppliers");
+    const req = store.get(id);
+
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(undefined);
+  });
+}
 
 export async function getItemById(id: number): Promise<Item | null> {
   const db = await initDB();

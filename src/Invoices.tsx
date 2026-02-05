@@ -1,9 +1,15 @@
+//src/Invoices.tsx
 import { useEffect, useState } from "react";
 import { salesRepository } from "./repositories/salesRepository";
 import type { DBSale, DBSaleItem } from "./db";
 import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight, FaTrash } from "react-icons/fa";
 import { customersRepository } from "./repositories/customerRepository";
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
+import { indexedDbSupplierRepository as suppliersRepository } 
+  from "./repositories/indexedDbSupplierRepository";
+
+import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
+
 
 const PAGE_SIZE = 10;
 const TRANSACTION_TYPES = ["All", "Sale", "Purchase", "Return", "Quotation"] as const;
@@ -130,11 +136,11 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
     // 1️⃣ RESTORE STOCK AND DELETE SALE/ITEMS
     await salesRepository.deleteSaleAndRestoreStock(invoice.id);
 
-    // 2️⃣ UPDATE CUSTOMER ARREARS/PAYABLE/BALANCE IF NOT WALK-IN
-    if (invoice.customerId) {
+    // 2️⃣ UPDATE CUSTOMER OR SUPPLIER ARREARS / PAYABLE / PAID / BALANCE
+    if (invoice.transactionType === "Sale" && invoice.customerId) {
+      // Customer logic
       const customer = await customersRepository.getById(invoice.customerId);
       if (customer) {
-        // Reverse the amounts that were added in handleCompleteSale
         const newTotalPayable = (customer.payable ?? 0) - (invoice.grandTotal - (invoice.dues ?? 0));
         const newTotalPaid = (customer.paid ?? 0) - (invoice.paid ?? 0);
         const newBalance = newTotalPayable - newTotalPaid;
@@ -148,20 +154,42 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
           invoices: newInvoices >= 0 ? newInvoices : 0,
         });
 
-        // Optional: Remove the payment record for this invoice if needed
         if (invoice.paid && invoice.paid > 0) {
           await customerPaymentRepository.deleteByInvoiceNo(invoice.invoiceNo);
         }
       }
+    } else if (invoice.transactionType === "Purchase" && invoice.supplierId) {
+  const supplier = await suppliersRepository.getById(invoice.supplierId);
+  if (supplier) {
+    const newTotalPayable =
+      (supplier.payable ?? 0) - (invoice.grandTotal - (invoice.dues ?? 0));
+    const newTotalPaid =
+      (supplier.paid ?? 0) - (invoice.paid ?? 0);
+    const newBalance = newTotalPayable - newTotalPaid;
+    const newInvoices = (supplier.invoices ?? 1) - 1;
+
+    await suppliersRepository.update({
+      ...supplier,
+      payable: Math.max(0, newTotalPayable),
+      paid: Math.max(0, newTotalPaid),
+      balance: Math.max(0, newBalance),
+      invoices: Math.max(0, newInvoices),
+    });
+
+    if (invoice.paid && invoice.paid > 0) {
+      await supplierPaymentRepository.deleteByInvoiceNo(
+        String(invoice.invoiceNo)
+      );
     }
+  }
+}
+
 
     // 3️⃣ UPDATE UI LIST
     setSales(prev => prev.filter(s => s.id !== invoice.id));
 
     // 4️⃣ CLEAR RIGHT PANEL IF SAME INVOICE SELECTED
-    setSelectedInvoice(prev =>
-      prev?.id === invoice.id ? null : prev
-    );
+    setSelectedInvoice(prev => (prev?.id === invoice.id ? null : prev));
 
     alert(`Invoice #${invoice.invoiceNo} deleted successfully.`);
   } catch (err) {

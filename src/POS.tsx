@@ -5,12 +5,14 @@ import { FaBarcode, FaEdit, FaTrash, FaTimes, FaCheck, FaPlus } from "react-icon
 // 🔹 DB INTEGRATION
 import { itemsRepository } from "./repositories/itemsRepository";
 import { customersRepository } from "./repositories/customerRepository";
-import { SupplierRepository } from "./repositories/suppliersRepository";
+import { suppliersRepository as supplierRepo } 
+  from "./repositories/suppliersRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
 import type { Brand, Category,Item } from "./db";
 import { salesRepository } from "./repositories/salesRepository";
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
+import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
 import { discountRepository } from "./repositories/discountRepository";
 import { taxRepository } from "./repositories/taxRepository";
 import type { Discount, Tax } from "./db";
@@ -331,7 +333,6 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      1️⃣ PREPARE PARTY (CUSTOMER / SUPPLIER)
   -------------------------------------------------- */
-
   const customerId = !isPurchase ? selectedCustomerId ?? null : null;
   const supplierId = isPurchase ? selectedSupplierId ?? null : null;
 
@@ -350,7 +351,6 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      2️⃣ ITEM SUBTOTAL
   -------------------------------------------------- */
-
   let invoiceSubtotal = 0;
   cart.forEach(item => {
     const line = calcLine(item);
@@ -360,7 +360,6 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      3️⃣ INVOICE DISCOUNT & TAX
   -------------------------------------------------- */
-
   let invoiceDiscount = 0;
   let invoiceTax = 0;
 
@@ -381,7 +380,6 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      4️⃣ GRAND TOTAL
   -------------------------------------------------- */
-
   const grandTotal = subtotalAfterDiscount + invoiceTax + dues;
   const paidAmount = Number(paid) || 0;
   const arrears = grandTotal - paidAmount;
@@ -389,7 +387,6 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      5️⃣ PROFIT (SALE ONLY)
   -------------------------------------------------- */
-
   let profit = 0;
   if (!isPurchase) {
     cart.forEach(item => {
@@ -408,7 +405,6 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      6️⃣ PREPARE ITEMS
   -------------------------------------------------- */
-
   const transactionItems = cart.map(ci => {
     const line = calcLine(ci);
     return {
@@ -427,7 +423,6 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      7️⃣ SAVE TRANSACTION
   -------------------------------------------------- */
-
   await salesRepository.addTransaction({
     invoiceNo,
     date: new Date().toISOString(),
@@ -455,7 +450,6 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      8️⃣ UPDATE CUSTOMER (SALE)
   -------------------------------------------------- */
-
   if (!isPurchase && customerId) {
     const customer = await customersRepository.getById(customerId);
     if (customer) {
@@ -487,42 +481,47 @@ async function handleCompleteTransaction() {
   }
 
   /* --------------------------------------------------
-     9️⃣ UPDATE SUPPLIER (PURCHASE) — MIRROR CUSTOMER LOGIC
+     9️⃣ UPDATE SUPPLIER (PURCHASE)
   -------------------------------------------------- */
+  if (isPurchase && supplierId) {
+    const supplier = await supplierRepo.getById(supplierId);
+    if (supplier) {
+      const newPayable = (supplier.payable ?? 0) + grandTotal - dues;
+      const newPaid = (supplier.paid ?? 0) + paidAmount;
+      const newBalance = newPayable - newPaid;
 
- if (isPurchase && supplierId) {
-  const supplier = await SupplierRepository.getById(supplierId);
-  if (supplier) {
-    const newPayable = (supplier.payable ?? 0) + grandTotal - dues;
-    const newPaid = (supplier.paid ?? 0) + paidAmount;
-    const newBalance = newPayable - newPaid;
+      await supplierRepo.update({
+        ...supplier,
+        payable: newPayable,
+        paid: newPaid,
+        balance: newBalance,
+        invoices: (supplier.invoices ?? 0) + 1,
+      });
 
-    await SupplierRepository.update({
-      ...supplier,
-      payable: newPayable,
-      paid: newPaid,
-      balance: newBalance,
-      invoices: (supplier.invoices ?? 0) + 1,
-    });
+      if (paidAmount > 0) {
+        // ✅ SAFETY CHECK: supplierId must exist
+        if (!supplier.id) {
+          console.error("Cannot add payment: supplier ID is missing", supplier);
+        } else {
+          await supplierPaymentRepository.add({
+          supplierId: supplier.id,
+          supplierName: supplier.name,     // 🔹 required
+          invoiceNo: invoiceNo,            // 🔹 required
+          amount: paidAmount,
+          paymentDate: new Date().toISOString(),
+          remarks: `Payment for ${invoiceNo}`, // optional note
+          payableSnapshot: newPayable,
+          balanceSnapshot: newBalance,
+        });
 
-    if (paidAmount > 0) {
-      await SupplierRepository.addPayment(
-        supplier.id!,
-        paidAmount,
-        new Date().toISOString(),
-        invoiceNo,
-        newPayable,
-        newBalance
-      );
+        }
+      }
     }
   }
-}
-
 
   /* --------------------------------------------------
      🔟 UPDATE STOCK
   -------------------------------------------------- */
-
   for (const ci of cart) {
     const item = await itemsRepository.getById(ci.originalItemId);
     if (!item) continue;
@@ -538,7 +537,6 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      1️⃣1️⃣ RESET UI
   -------------------------------------------------- */
-
   setCart([]);
   setPaid(0);
   setDiscountValue(0);
@@ -553,7 +551,6 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      1️⃣2️⃣ NEXT INVOICE
   -------------------------------------------------- */
-
   const prefix =
     transactionType === "Sale"
       ? "SAL"
@@ -568,7 +565,6 @@ async function handleCompleteTransaction() {
 
   alert(`${transactionType} completed successfully. Invoice #${invoiceNo}`);
 }
-
 
 interface UnitPriceContext {
   unit: UnitType;        // which unit the entered price belongs to
@@ -742,7 +738,7 @@ useEffect(() => {
 }, [transactionType]);
 
 useEffect(() => {
-  SupplierRepository.getAll().then(data =>
+  supplierRepo.getAll().then(data =>
     setSuppliers(
       data.map(s => ({
         id: s.id!,
@@ -1920,7 +1916,7 @@ const setSelectedId = isPurchase ? setSelectedSupplierId : setSelectedCustomerId
             }
 
             // 1️⃣ Duplicate check
-            const allSuppliers = await SupplierRepository.getAll();
+            const allSuppliers = await supplierRepo.getAll();
             const exists = allSuppliers.some(
               s =>
                 s.name.trim().toLowerCase() ===
@@ -1934,7 +1930,7 @@ const setSelectedId = isPurchase ? setSelectedSupplierId : setSelectedCustomerId
             }
 
             // 2️⃣ Save to DB
-            const id = await SupplierRepository.add({
+            const id = await supplierRepo.create({
               name: newSupplier.name,
               mobile: newSupplier.mobile,
               cnic: newSupplier.cnic,
@@ -1943,7 +1939,7 @@ const setSelectedId = isPurchase ? setSelectedSupplierId : setSelectedCustomerId
             });
 
             // 3️⃣ Reload suppliers
-            const dbSuppliers = await SupplierRepository.getAll();
+            const dbSuppliers = await supplierRepo.getAll();
             setSuppliers(dbSuppliers.map(s => ({ ...s, id: s.id! })));
 
             // 4️⃣ Auto-select

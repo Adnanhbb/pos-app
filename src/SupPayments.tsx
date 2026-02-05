@@ -1,13 +1,8 @@
+// src/SuppPayment.tsx
 import React, { useEffect, useState } from "react";
-import {
-  getAllSuppliers,
-  Supplier,
-  getAllSupplierPayments,
-  addSupplierPayment,
-  updateSupplierPayment,
-  deleteSupplierPayment,
-  SupplierPayment,
-} from "./db";
+import { indexedDbSupplierPaymentRepository as supplierPayRepo } from "./repositories/indexedDbSupplierPaymentRepository";
+import { indexedDbSupplierRepository as supplierRepo } from "./repositories/indexedDbSupplierRepository";
+import { SupplierPayment, Supplier } from "./db";
 
 import {
   FaPlus,
@@ -55,17 +50,17 @@ export default function SupPayments() {
   }, [page, query]);
 
   async function loadSuppliers() {
-    const all = await getAllSuppliers();
+    const all = await supplierRepo.getAll();
     setSuppliers(all);
   }
 
   async function loadPage() {
-    let data = await getAllSupplierPayments();
+    let data = await supplierPayRepo.getAll();
 
     if (query.trim()) {
       const q = query.toLowerCase();
-      data = data.filter(p => {
-        const s = suppliers.find(x => x.id === p.supplierId);
+      data = data.filter((p: SupplierPayment) => {
+        const s = suppliers.find((x: Supplier) => x.id === p.supplierId);
         return s?.name.toLowerCase().includes(q);
       });
     }
@@ -102,38 +97,62 @@ export default function SupPayments() {
     setFormOpen(false);
   }
 
- async function handleSave() {
+async function handleSave() {
   if (!form.supplierId) return alert("Select supplier");
   if (form.amount <= 0) return alert("Enter valid amount");
 
+  const supplier = suppliers.find(s => s.id === form.supplierId);
+  if (!supplier) return;
+
+  // Compute current payable
+  const alreadyPaid = supplier.paid ?? 0;
+  const totalPayable = supplier.payable ?? 0;
+  const currentPayable = totalPayable - alreadyPaid;
+
   if (editingPayment) {
-    await updateSupplierPayment(
-      editingPayment.id!,
-      form.supplierId,
-      form.amount,
-      form.paymentDate,
-      form.remarks,
-      form.payableSnapshot
-    );
+    // Update existing payment
+    const updatedPayment: SupplierPayment = {
+      id: editingPayment.id!,
+      supplierId: form.supplierId,
+      amount: form.amount,
+      paymentDate: form.paymentDate,
+      remarks: form.remarks,
+      payableSnapshot: currentPayable,
+      balanceSnapshot: currentPayable - form.amount,
+      supplierName: supplier.name,
+      invoiceNo: editingPayment.invoiceNo || "",
+    };
+    await supplierPayRepo.update(updatedPayment);
   } else {
-    await addSupplierPayment(
-      form.supplierId,
-      form.amount,
-      form.paymentDate,
-      form.remarks,
-      form.payableSnapshot
-    );
+    // Add new payment
+    const newPayment: Omit<SupplierPayment, "id"> = {
+      supplierId: form.supplierId,
+      amount: form.amount,
+      paymentDate: form.paymentDate,
+      remarks: form.remarks,
+      payableSnapshot: currentPayable,
+      balanceSnapshot: currentPayable - form.amount,
+      supplierName: supplier.name,
+      invoiceNo: "", // default or generate if needed
+    };
+    await supplierPayRepo.add(newPayment);
   }
+
+  // Update supplier totals
+  await supplierRepo.update({
+    ...supplier,
+    paid: (supplier.paid ?? 0) + form.amount,
+    balance: (supplier.payable ?? 0) - ((supplier.paid ?? 0) + form.amount),
+  });
 
   await loadPage();
   await loadSuppliers();
   closeForm();
 }
 
-
   async function handleDelete(id: number) {
     if (!confirm("Delete this payment?")) return;
-    await deleteSupplierPayment(id);
+    await supplierPayRepo.delete(id);
     await loadPage();
     await loadSuppliers();
   }
@@ -241,13 +260,18 @@ export default function SupPayments() {
               onChange={e => {
                 const id = Number(e.target.value);
                 const s = suppliers.find(x => x.id === id);
+                if (!s) return;
+                const alreadyPaid = s.paid ?? 0;
+                const totalPayable = s.payable ?? 0;
+                const currentPayable = totalPayable - alreadyPaid; // ✅ current payable
                 setForm({
                   ...form,
                   supplierId: id,
-                  payableSnapshot: s?.balance ?? 0,
+                  payableSnapshot: currentPayable,
                 });
               }}
-            >
+>
+
               <option value={0}>Select Supplier</option>
               {suppliers.map(s => (
                 <option key={s.id} value={s.id}>{s.name}</option>

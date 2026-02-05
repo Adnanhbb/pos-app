@@ -1,3 +1,4 @@
+//src/customerPaymentRepository.ts
 import { initDB } from "../db"; // whatever your modern idb init function is
 import type { CustomerPayment } from "../db";
 

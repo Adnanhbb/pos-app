@@ -211,9 +211,9 @@ export default function CustPayments() {
                     <td className="p-3">{p.balanceSnapshot}</td>
                     <td className="p-3">{p.remarks}</td>
                     <td className="p-3 flex justify-center gap-2">
-                      <button onClick={() => openEdit(p)} className="p-2 bg-blue-500 text-white rounded">
+                      {/* <button onClick={() => openEdit(p)} className="p-2 bg-blue-500 text-white rounded">
                         <FaEdit />
-                      </button>
+                      </button> */}
                       <button onClick={() => handleDelete(p.id!)} className="p-2 bg-red-500 text-white rounded">
                         <FaTrash />
                       </button>

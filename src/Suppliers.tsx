@@ -57,7 +57,7 @@ export default function Suppliers() {
 
   /** Load paged & filtered suppliers */
   async function loadPage() {
-    let allData = await suppliersRepo.getAll();
+  let allData: Supplier[] = await suppliersRepo.getAll();
 
     // Search filter
     if (query?.trim()) {
@@ -89,7 +89,7 @@ export default function Suppliers() {
 
   /** Load summary totals (based on showDueOnly toggle) */
   async function loadSummary() {
-    let all = await suppliersRepo.getAll();
+  let all: Supplier[] = await suppliersRepo.getAll();
 
     if (showDueOnly) {
       all = all.filter((c) => (c.balance ?? ((c.payable ?? 0) - (c.paid ?? 0))) > 0);
@@ -138,11 +138,12 @@ async function handleSave() {
   const payableNum = Number(form.payable) || 0;
 
   // Fetch all suppliers to check for duplicates
-  const allSuppliers = await suppliersRepo.getAll(); // make sure this function exists
+ const allSuppliers = await suppliersRepo.getAll();
+
   const nameExists = allSuppliers.some(
-    (s) =>
+    (s: Supplier) =>
       s.name.trim().toLowerCase() === form.name.trim().toLowerCase() &&
-      (!editingSupplier || s.id !== editingSupplier.id) // allow same name if editing self
+      (!editingSupplier || s.id !== editingSupplier.id)
   );
 
   if (nameExists) {
@@ -173,7 +174,7 @@ async function handleSave() {
       paid: 0,
       balance: payableNum, // initial balance = payable
     };
-    await suppliersRepo.add(newSupplier);
+    await suppliersRepo.create(newSupplier);
   }
 
   await loadPage(); // reload supplier table
@@ -184,7 +185,7 @@ async function handleSave() {
     if (!id) return;
     if (!confirm("Delete this supplier?")) return;
 
-    await suppliersRepo.delete(id);
+    await suppliersRepo.remove(id);
 
     const newTotal = Math.max(0, total - 1);
     const newPages = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
