@@ -765,12 +765,24 @@ useEffect(() => {
   // =====================
 
 function cancelSale() {
-  // restore only what was deducted in UI
   setItems(prev =>
     prev.map(i => {
       const ci = cart.find(c => c.originalItemId === i.id);
       if (!ci) return i;
-      return { ...i, availableStock: i.availableStock + ci.uiDeductedQty };
+
+      // SALE → restore only what was deducted
+      if (!isPurchase) {
+        return {
+          ...i,
+          availableStock: i.availableStock + ci.uiDeductedQty,
+        };
+      }
+
+      // PURCHASE → rollback added stock
+      return {
+        ...i,
+        availableStock: i.availableStock - ci.qty,
+      };
     })
   );
 
@@ -804,25 +816,34 @@ function addToCart(item: Item) {
   // ❌ Block only for SALE, not PURCHASE
   if (!isPurchase && item.availableStock <= 0) return;
 
-  // 1️⃣ Update UI stock ONLY for SALE
-  if (!isPurchase) {
-    setItems(prev =>
-      prev.map(i =>
-        i.id === item.id ? { ...i, availableStock: i.availableStock - 1 } : i
-      )
-    );
-  }
+  // 1️⃣ Update UI stock
+  setItems(prev =>
+    prev.map(i => {
+      if (i.id !== item.id) return i;
+
+      // SALE → decrease stock
+      if (!isPurchase) {
+        return { ...i, availableStock: i.availableStock - 1 };
+      }
+
+      // PURCHASE → increase stock
+      return { ...i, availableStock: i.availableStock + 1 };
+    })
+  );
 
   // 2️⃣ Add to cart
   setCart(prev => {
     const existing = prev.find(ci => ci.originalItemId === item.id);
+
     if (existing) {
       return prev.map(ci =>
         ci.originalItemId === item.id
           ? {
               ...ci,
               qty: ci.qty + 1,
-              uiDeductedQty: isPurchase ? 0 : ci.uiDeductedQty + 1,
+
+              // SALE tracks deducted qty, PURCHASE does not
+              uiDeductedQty: isPurchase ? ci.uiDeductedQty : ci.uiDeductedQty + 1,
             }
           : ci
       );
@@ -836,7 +857,7 @@ function addToCart(item: Item) {
         qty: 1,
         unit: "min",
 
-        // 🔴 IMPORTANT CHANGE
+        // Price logic unchanged
         minUnitPrice: isPurchase
           ? item.purchasePrice ?? 0
           : item.retailPrice,
@@ -854,6 +875,8 @@ function addToCart(item: Item) {
         taxValue: 0,
 
         originalItemId: item.id!,
+
+        // SALE deducts immediately, PURCHASE does not deduct
         uiDeductedQty: isPurchase ? 0 : 1,
       },
     ];
@@ -867,22 +890,39 @@ function updateItem(updated: CartItem) {
   const prevCartItem = cart.find(ci => ci.id === updated.id);
   if (!prevCartItem) return;
 
-  // 1️⃣ Compute new MIN unit qty
-  const newQtyMin = updated.unit === "max" ? updated.qty * originalItem.ConvQty : updated.qty;
+  /* --------------------------------------------------
+     1️⃣ Compute new MIN-unit qty
+  -------------------------------------------------- */
+  const newQtyMin =
+    updated.unit === "max"
+      ? updated.qty * originalItem.ConvQty
+      : updated.qty;
 
-  // 2️⃣ Compute difference in qty
+  /* --------------------------------------------------
+     2️⃣ Compute diff against previous qty
+         (+ve = increase, -ve = decrease)
+  -------------------------------------------------- */
   const diff = newQtyMin - prevCartItem.qty;
 
-  // 3️⃣ Update UI stock by subtracting or restoring based on diff
+  /* --------------------------------------------------
+     3️⃣ Update UI stock (direction depends on mode)
+  -------------------------------------------------- */
   setItems(prev =>
-    prev.map(i =>
-      i.id === originalItem.id
-        ? { ...i, availableStock: i.availableStock - diff }
-        : i
-    )
+    prev.map(i => {
+      if (i.id !== originalItem.id) return i;
+
+      return {
+        ...i,
+        availableStock: isPurchase
+          ? i.availableStock + diff   // 🟢 PURCHASE → increase stock
+          : i.availableStock - diff,  // 🔴 SALE → decrease stock
+      };
+    })
   );
 
-  // 4️⃣ Update cart item, include uiDeductedQty
+  /* --------------------------------------------------
+     4️⃣ Update cart item (PRICE FIX HERE ✅)
+  -------------------------------------------------- */
   setCart(prev =>
     prev.map(ci =>
       ci.id === updated.id
@@ -895,14 +935,22 @@ function updateItem(updated: CartItem) {
             discountValue: updated.discountValue,
             taxType: updated.taxType,
             taxValue: updated.taxValue,
-            minUnitPrice:
-              updated.priceCategory === "Discount"
+
+            // 🔑 KEY FIX: PURCHASE uses purchasePrice ONLY
+            minUnitPrice: isPurchase
+              ? originalItem.purchasePrice ?? 0
+              : updated.priceCategory === "Discount"
                 ? originalItem.discountPrice ?? originalItem.retailPrice
                 : updated.priceCategory === "Wholesale"
                 ? originalItem.wholesalePrice
                 : originalItem.retailPrice,
+
             convQty: originalItem.ConvQty,
-            uiDeductedQty: prevCartItem.uiDeductedQty + diff, // update UI deduction
+
+            // SALE only tracks UI deductions
+            uiDeductedQty: isPurchase
+              ? 0
+              : prevCartItem.uiDeductedQty + diff,
           }
         : ci
     )
@@ -911,6 +959,7 @@ function updateItem(updated: CartItem) {
   setEditing(null);
 }
 
+
  async function removeItem(cartItemId: number) {
   const cartItem = cart.find(ci => ci.id === cartItemId);
   if (!cartItem) return;
@@ -918,16 +967,25 @@ function updateItem(updated: CartItem) {
   const item = items.find(i => i.id === cartItem.originalItemId);
   if (!item) return;
 
-  // Restore stock (UI + DB)
-        setItems(prev =>
-          prev.map(i =>
-            i.id === item.id
-              ? { ...i, availableStock: i.availableStock + cartItem.uiDeductedQty }
-              : i
-          )
-        );
+  /* --------------------------------------------------
+     1️⃣ Restore / rollback UI stock (mode-aware)
+  -------------------------------------------------- */
+  setItems(prev =>
+    prev.map(i => {
+      if (i.id !== item.id) return i;
 
-  // Remove from cart
+      return {
+        ...i,
+        availableStock: isPurchase
+          ? i.availableStock - cartItem.qty        // 🟢 PURCHASE → rollback added stock
+          : i.availableStock + cartItem.uiDeductedQty, // 🔴 SALE → restore deducted stock
+      };
+    })
+  );
+
+  /* --------------------------------------------------
+     2️⃣ Remove from cart
+  -------------------------------------------------- */
   setCart(prev => prev.filter(ci => ci.id !== cartItemId));
 }
 

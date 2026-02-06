@@ -9,6 +9,9 @@ import {
   getBrands,
   getAllCategories,
   getUnits,
+  Brand,
+  Category,
+  Unit,
 } from "./db";
 import {
   FaPlus,
@@ -20,6 +23,9 @@ import {
   FaBoxes,
 } from "react-icons/fa";
 
+import { categoriesRepository } from "./repositories/categoriesRepository";
+import { brandsRepository } from "./repositories/brandsRepository";
+import { unitRepository } from "./repositories/unitRepository";
 const PAGE_SIZE = 8;
 
 export default function ItemsPage() {
@@ -29,28 +35,31 @@ export default function ItemsPage() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
 
-  const [brands, setBrands] = useState<string[]>([]);
-  const [categories, setCategories] = useState<string[]>([]);
-  const [units, setUnits] = useState<string[]>([]);
+  const [brands, setBrands] = useState<Brand[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+
+
 
   const [isFormOpen, setFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
 
-  const emptyForm: Omit<Item, "id"> = {
-    name: "",
-    barcode: "",
-    brand: "",
-    category: "",
-    minunit: "",
-    maxunit: "",
-    ConvQty: 1,
-    purchasePrice: 0,
-    retailPrice: 0,
-    discountPrice: 0,
-    wholesalePrice: 0,
-    description: "",
-    availableStock: 0
-  };
+ const emptyForm: Omit<Item, "id"> = {
+  name: "",
+  barcode: "",
+  brand: "",      // string name
+  category: "",   // string name
+  minunit: "",    // string name
+  maxunit: "",    // string name
+  ConvQty: 1,
+  purchasePrice: 0,
+  retailPrice: 0,
+  discountPrice: 0,
+  wholesalePrice: 0,
+  description: "",
+  availableStock: 0,
+};
+
 
   const [form, setForm] = useState<Omit<Item, "id">>(emptyForm);
 
@@ -73,9 +82,11 @@ export default function ItemsPage() {
       const b = await getBrands();
       const c = await getAllCategories();
       const u = await getUnits();
-      setBrands(b.map((x) => x.name));
-      setCategories(c.map((x) => x.name));
-      setUnits(u.map((x) => x.name));
+
+      setBrands(b);
+      setCategories(c);
+      setUnits(u);
+
     }
     loadDropdowns();
   }, []);
@@ -116,25 +127,26 @@ export default function ItemsPage() {
     setFormOpen(true);
   }
 
-  function openEdit(it: Item) {
-    setEditingItem(it);
-    setForm({
-      name: it.name,
-      barcode: it.barcode,
-      brand: it.brand,
-      category: it.category,
-      minunit: it.minunit,
-      maxunit:it.maxunit,
-      ConvQty:it.ConvQty,
-      purchasePrice: it.purchasePrice,
-      retailPrice: it.retailPrice,
-      discountPrice: it.discountPrice || 0,
-      wholesalePrice: it.wholesalePrice,
-      description: it.description || "",
-      availableStock: it.availableStock
-    });
-    setFormOpen(true);
-  }
+  // --- openEdit ---
+function openEdit(it: Item) {
+  setEditingItem(it);
+  setForm({
+    name: it.name,
+    barcode: it.barcode,
+    brand: it.brand,
+    category: it.category,
+    minunit: it.minunit,
+    maxunit: it.maxunit,
+    ConvQty: it.ConvQty,
+    purchasePrice: it.purchasePrice,
+    retailPrice: it.retailPrice,
+    discountPrice: it.discountPrice || 0,
+    wholesalePrice: it.wholesalePrice,
+    description: it.description || "",
+    availableStock: it.availableStock
+  });
+  setFormOpen(true);
+}
 
   function closeForm() {
     setEditingItem(null);
@@ -142,40 +154,116 @@ export default function ItemsPage() {
     setFormOpen(false);
   }
 
-  async function handleSave() {
-    if (!form.name.trim()) return alert("Name is required");
-    if (!form.barcode.trim()) return alert("Barcode is required");
+  function getCategoryIdByName(name: string) {
+  return categories.find(c => c.name === name)?.id;
+}
 
-    if (editingItem) {
-      await updateItem({ ...editingItem, ...form });
-    } else {
-      await addItem(form as Item);
-      setPage(1);
+function getBrandIdByName(name: string) {
+  return brands.find(b => b.name === name)?.id;
+}
+
+function getUnitIdByName(name: string) {
+  return units.find(u => u.name === name)?.id;
+}
+
+// --- handleSave ---
+async function handleSave() {
+  if (!form.name.trim()) return alert("Name is required");
+  if (!form.barcode.trim()) return alert("Barcode is required");
+
+  // Convert names to IDs for usage tracking
+  const brandId = brands.find(b => b.name === form.brand)?.id;
+  const categoryId = categories.find(c => c.name === form.category)?.id;
+  const minunitId = units.find(u => u.name === form.minunit)?.id;
+  const maxunitId = units.find(u => u.name === form.maxunit)?.id; // <-- added
+
+  if (editingItem) {
+    const oldBrandId = brands.find(b => b.name === editingItem.brand)?.id;
+    const oldCategoryId = categories.find(c => c.name === editingItem.category)?.id;
+    const oldMinUnitId = units.find(u => u.name === editingItem.minunit)?.id;
+    const oldMaxUnitId = units.find(u => u.name === editingItem.maxunit)?.id; // <-- added
+
+    // Category
+    if (oldCategoryId !== categoryId) {
+      if (oldCategoryId) await categoriesRepository.decrementItemCount(oldCategoryId);
+      if (categoryId) await categoriesRepository.incrementItemCount(categoryId);
     }
-    await loadPage();
-    closeForm();
+
+    // Brand
+    if (oldBrandId !== brandId) {
+      if (oldBrandId) await brandsRepository.decrementItemCount(oldBrandId);
+      if (brandId) await brandsRepository.incrementItemCount(brandId);
+    }
+
+    // Min Unit
+    if (oldMinUnitId !== minunitId) {
+      if (oldMinUnitId) await unitRepository.decrementItemCount(oldMinUnitId);
+      if (minunitId) await unitRepository.incrementItemCount(minunitId);
+    }
+
+    // Max Unit
+    if (oldMaxUnitId !== maxunitId) {
+      if (oldMaxUnitId) await unitRepository.decrementItemCount(oldMaxUnitId);
+      if (maxunitId) await unitRepository.incrementItemCount(maxunitId);
+    }
+
+    await updateItem({ ...editingItem, ...form });
+  } else {
+    await addItem(form as Item);
+
+    if (categoryId) await categoriesRepository.incrementItemCount(categoryId);
+    if (brandId) await brandsRepository.incrementItemCount(brandId);
+    if (minunitId) await unitRepository.incrementItemCount(minunitId);
+    if (maxunitId) await unitRepository.incrementItemCount(maxunitId); // <-- added
+
+    setPage(1);
   }
 
-  async function handleDelete(id?: number) {
-    if (!id) return;
-    if (!confirm("Delete this item?")) return;
-    await deleteItem(id);
-    const newTotal = Math.max(0, total - 1);
-    const newPages = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
-    if (page > newPages) setPage(newPages);
-    await loadPage();
-  }
+  await loadPage();
+  closeForm();
+}
 
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+async function handleDelete(id?: number) {
+  if (!id) return;
+  if (!confirm("Delete this item?")) return;
 
-  const conversionLabel =
-              form.minunit && form.maxunit
-                ? `No. of ${form.minunit} per ${form.maxunit}`
-                : "Unit Conversion Qty";
+  // Find the item to know its category, brand, and units
+  const item = items.find(it => it.id === id);
+  if (!item) return alert("Item not found");
 
-  function splitStock(
-  totalMinUnits: number,
-  convQty: number
+  // Get IDs for decrementing usage
+  const brandId = brands.find(b => b.name === item.brand)?.id;
+  const categoryId = categories.find(c => c.name === item.category)?.id;
+  const minunitId = units.find(u => u.name === item.minunit)?.id;
+  const maxunitId = units.find(u => u.name === item.maxunit)?.id;
+
+  // Decrement counts
+  if (categoryId) await categoriesRepository.decrementItemCount(categoryId);
+  if (brandId) await brandsRepository.decrementItemCount(brandId);
+  if (minunitId) await unitRepository.decrementItemCount(minunitId);
+  if (maxunitId) await unitRepository.decrementItemCount(maxunitId);
+
+  // Now delete the item
+  await deleteItem(id);
+
+  // Adjust pagination
+  const newTotal = Math.max(0, total - 1);
+  const newPages = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
+  if (page > newPages) setPage(newPages);
+
+  await loadPage();
+}
+
+const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+const conversionLabel =
+            form.minunit && form.maxunit
+              ? `No. of ${form.minunit} per ${form.maxunit}`
+              : "Unit Conversion Qty";
+
+function splitStock(
+totalMinUnits: number,
+convQty: number
 ) {
   if (!convQty || convQty <= 0) {
     return { maxQty: 0, minQty: totalMinUnits };
@@ -337,12 +425,19 @@ export default function ItemsPage() {
                     aria-hidden
                   />
                 </div>
-                <div className="text-sm text-gray-600">Barcode: {it.barcode}</div>
-                <div className="text-sm text-gray-600">Brand: {it.brand}</div>
-                <div className="text-sm text-gray-600">Category: {it.category}</div>
-                <div className="text-sm text-gray-600">Retail: {it.retailPrice}</div>
-                <div className="text-sm text-gray-600">Disc: {it.discountPrice || 0}</div>
-                <div className="text-sm text-gray-600">Stock: {it.availableStock}</div>
+                <div className="text-sm text-gray-600">
+                  Brand: {brands.find(b => b.name === it.brand)?.name || "-"}
+                </div>
+                <div className="text-sm text-gray-600">
+                  Category: {categories.find(c => c.name === it.category)?.name || "-"}
+                </div>
+                <div className="text-sm text-gray-600">
+                  Min Unit: {units.find(u => u.name === it.minunit)?.name || "-"}
+                </div>
+                <div className="text-sm text-gray-600">
+                  Max Unit: {units.find(u => u.name === it.maxunit)?.name || "-"}
+                </div>
+
               </div>
 
               <div className="flex gap-2 mt-3">
@@ -395,34 +490,62 @@ export default function ItemsPage() {
               {/* Dropdowns for Brand / Category / Unit */}
               <div>
                 {/* <label className="block text-xs font-medium mb-1">Brand</label> */}
-                <select className="w-full p-2 border rounded" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })}>
+                {/* Brand */}
+                <select
+                  className="w-full p-2 border rounded"
+                  value={form.brand}
+                  onChange={(e) => setForm({ ...form, brand: e.target.value })}
+                >
                   <option value="">Select Brand</option>
-                  {brands.map((b) => <option key={b} value={b}>{b}</option>)}
+                  {brands.map((b) => (
+                    <option key={b.id} value={b.name}>{b.name}</option>
+                  ))}
                 </select>
               </div>
 
               <div>
                 {/* <label className="block text-xs font-medium mb-1">Category</label> */}
-                <select className="w-full p-2 border rounded" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-                  <option value="">Select Category</option>
-                  {categories.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
+                {/* Category */}
+                <select
+                className="w-full p-2 border rounded"
+                value={form.category}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+              >
+                <option value="">Select Category</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
+              </select>
               </div>
 
               <div>
                 {/* <label className="block text-xs font-medium mb-1"> Minimum Unit</label> */}
-                <select className="w-full p-2 border rounded" value={form.minunit} onChange={(e) => setForm({ ...form, minunit: e.target.value })}>
-                  <option value="">Select Min Unit</option>
-                  {units.map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
+                {/* Min Unit */}
+                <select
+                className="w-full p-2 border rounded"
+                value={form.minunit}
+                onChange={(e) => setForm({ ...form, minunit: e.target.value })}
+              >
+                <option value="">Select Min Unit</option>
+                {units.map((u) => (
+                  <option key={u.id} value={u.name}>{u.name}</option>
+                ))}
+              </select>
               </div>
 
               <div>
                 {/* <label className="block text-xs font-medium mb-1">Maximum Unit</label> */}
-                <select className="w-full p-2 border rounded" value={form.maxunit} onChange={(e) => setForm({ ...form, maxunit: e.target.value })}>
-                  <option value="">Select Max Unit</option>
-                  {units.map((u) => <option key={u} value={u}>{u}</option>)}
-                </select>
+                {/* Max Unit */}
+                <select
+                className="w-full p-2 border rounded"
+                value={form.maxunit}
+                onChange={(e) => setForm({ ...form, maxunit: e.target.value })}
+              >
+                <option value="">Select Max Unit</option>
+                {units.map((u) => (
+                  <option key={u.id} value={u.name}>{u.name}</option>
+                ))}
+              </select>
               </div>
               
                <div className="sm:col-span-2">
@@ -431,22 +554,22 @@ export default function ItemsPage() {
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1">Purchase Price</label>
+                <label className="block text-xs font-medium mb-1">{form.minunit} Purchase Price</label>
                 <input type="number" className="w-full p-2 border rounded" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: Number(e.target.value) })} />
               </div>
               
               <div>
-                <label className="block text-xs font-medium mb-1">Retail Price</label>
+                <label className="block text-xs font-medium mb-1">{form.minunit} Retail Price</label>
                 <input type="number" className="w-full p-2 border rounded" value={form.retailPrice} onChange={(e) => setForm({ ...form, retailPrice: Number(e.target.value) })} />
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1">Discount Price</label>
+                <label className="block text-xs font-medium mb-1">{form.minunit} Discount Price</label>
                 <input type="number" className="w-full p-2 border rounded" value={form.discountPrice} onChange={(e) => setForm({ ...form, discountPrice: Number(e.target.value) })} />
               </div>
 
               <div>
-                <label className="block text-xs font-medium mb-1">Wholesale Price</label>
+                <label className="block text-xs font-medium mb-1">{form.minunit} Wholesale Price</label>
                 <input type="number" className="w-full p-2 border rounded" value={form.wholesalePrice} onChange={(e) => setForm({ ...form, wholesalePrice: Number(e.target.value) })} />
               </div>
 

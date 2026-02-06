@@ -128,20 +128,27 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
   if (!invoice.id) return;
 
   const confirmDelete = window.confirm(
-    `Are you sure you want to delete Invoice #${invoice.invoiceNo}?\n\nThis will restore stock automatically.`
+    `Are you sure you want to delete Invoice #${invoice.invoiceNo}?`
   );
   if (!confirmDelete) return;
 
   try {
-    // 1️⃣ RESTORE STOCK AND DELETE SALE/ITEMS
-    await salesRepository.deleteSaleAndRestoreStock(invoice.id);
+    // 1️⃣ FIXED STOCK LOGIC
+    if (invoice.transactionType === "Sale") {
+      // Customer invoice → restore stock
+      await salesRepository.deleteSaleAndRestoreStock(invoice.id);
+    } else if (invoice.transactionType === "Purchase") {
+      // Supplier invoice → REMOVE stock
+      await salesRepository.deletePurchaseAndReduceStock(invoice.id);
+    }
 
-    // 2️⃣ UPDATE CUSTOMER OR SUPPLIER ARREARS / PAYABLE / PAID / BALANCE
+    // 2️⃣ UPDATE CUSTOMER OR SUPPLIER ACCOUNTS (unchanged)
     if (invoice.transactionType === "Sale" && invoice.customerId) {
-      // Customer logic
       const customer = await customersRepository.getById(invoice.customerId);
       if (customer) {
-        const newTotalPayable = (customer.payable ?? 0) - (invoice.grandTotal - (invoice.dues ?? 0));
+        const newTotalPayable =
+          (customer.payable ?? 0) -
+          (invoice.grandTotal - (invoice.dues ?? 0));
         const newTotalPaid = (customer.paid ?? 0) - (invoice.paid ?? 0);
         const newBalance = newTotalPayable - newTotalPaid;
         const newInvoices = (customer.invoices ?? 1) - 1;
@@ -151,7 +158,7 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
           payable: newTotalPayable,
           paid: newTotalPaid,
           balance: newBalance,
-          invoices: newInvoices >= 0 ? newInvoices : 0,
+          invoices: Math.max(0, newInvoices),
         });
 
         if (invoice.paid && invoice.paid > 0) {
@@ -159,36 +166,33 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
         }
       }
     } else if (invoice.transactionType === "Purchase" && invoice.supplierId) {
-  const supplier = await suppliersRepository.getById(invoice.supplierId);
-  if (supplier) {
-    const newTotalPayable =
-      (supplier.payable ?? 0) - (invoice.grandTotal - (invoice.dues ?? 0));
-    const newTotalPaid =
-      (supplier.paid ?? 0) - (invoice.paid ?? 0);
-    const newBalance = newTotalPayable - newTotalPaid;
-    const newInvoices = (supplier.invoices ?? 1) - 1;
+      const supplier = await suppliersRepository.getById(invoice.supplierId);
+      if (supplier) {
+        const newTotalPayable =
+          (supplier.payable ?? 0) -
+          (invoice.grandTotal - (invoice.dues ?? 0));
+        const newTotalPaid = (supplier.paid ?? 0) - (invoice.paid ?? 0);
+        const newBalance = newTotalPayable - newTotalPaid;
+        const newInvoices = (supplier.invoices ?? 1) - 1;
 
-    await suppliersRepository.update({
-      ...supplier,
-      payable: Math.max(0, newTotalPayable),
-      paid: Math.max(0, newTotalPaid),
-      balance: Math.max(0, newBalance),
-      invoices: Math.max(0, newInvoices),
-    });
+        await suppliersRepository.update({
+          ...supplier,
+          payable: Math.max(0, newTotalPayable),
+          paid: Math.max(0, newTotalPaid),
+          balance: Math.max(0, newBalance),
+          invoices: Math.max(0, newInvoices),
+        });
 
-    if (invoice.paid && invoice.paid > 0) {
-      await supplierPaymentRepository.deleteByInvoiceNo(
-        String(invoice.invoiceNo)
-      );
+        if (invoice.paid && invoice.paid > 0) {
+          await supplierPaymentRepository.deleteByInvoiceNo(
+            String(invoice.invoiceNo)
+          );
+        }
+      }
     }
-  }
-}
 
-
-    // 3️⃣ UPDATE UI LIST
+    // 3️⃣ UPDATE UI
     setSales(prev => prev.filter(s => s.id !== invoice.id));
-
-    // 4️⃣ CLEAR RIGHT PANEL IF SAME INVOICE SELECTED
     setSelectedInvoice(prev => (prev?.id === invoice.id ? null : prev));
 
     alert(`Invoice #${invoice.invoiceNo} deleted successfully.`);

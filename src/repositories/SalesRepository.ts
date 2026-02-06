@@ -161,7 +161,7 @@ async addTransaction(
   },
 
   /**
-   * 🔴 DELETE SALE/PURCHASE + RESTORE STOCK (MIN UNITS)
+   * 🔴 DELETE SALE + RESTORE STOCK (MIN UNITS)
    */
   async deleteSaleAndRestoreStock(saleId: number): Promise<void> {
     const conn = await db.open();
@@ -208,4 +208,60 @@ async addTransaction(
       tx.onerror = () => reject(tx.error);
     });
   },
+
+  /**
+   * 🔴 DELETE PURCHASE + RESTORE STOCK (MIN UNITS)
+   */
+  async deletePurchaseAndReduceStock(purchaseId: number): Promise<void> {
+  const conn = await db.open();
+
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction(
+      ["sales", "sale_items", "items"],
+      "readwrite"
+    );
+
+    const salesStore = tx.objectStore("sales");
+    const saleItemsStore = tx.objectStore("sale_items");
+    const itemsStore = tx.objectStore("items");
+
+    const saleItemsReq = saleItemsStore.getAll();
+
+    saleItemsReq.onsuccess = () => {
+      const purchaseItems = (saleItemsReq.result as DBSaleItem[]).filter(
+        i => i.saleId === purchaseId
+      );
+
+      // 1️⃣ REDUCE stock (MIN units)
+      for (const pi of purchaseItems) {
+        const itemReq = itemsStore.get(pi.originalItemId);
+        itemReq.onsuccess = () => {
+          const item = itemReq.result as Item;
+          if (!item) return;
+
+          item.availableStock -= pi.qty;
+
+          // Safety guard: never allow negative stock
+          if (item.availableStock < 0) {
+            item.availableStock = 0;
+          }
+
+          itemsStore.put(item);
+        };
+      }
+
+      // 2️⃣ Delete purchase items
+      for (const pi of purchaseItems) {
+        if (pi.id != null) saleItemsStore.delete(pi.id);
+      }
+
+      // 3️⃣ Delete purchase invoice
+      salesStore.delete(purchaseId);
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
 };
