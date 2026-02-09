@@ -1,5 +1,5 @@
 // src/POS.tsx
-import React, { useEffect, useMemo, useState,useRef } from "react";
+import { useEffect, useMemo, useState,useRef } from "react";
 import { FaBarcode, FaEdit, FaTrash, FaTimes, FaCheck, FaPlus } from "react-icons/fa";
 
 // 🔹 DB INTEGRATION
@@ -61,6 +61,10 @@ type Customer = {
   arrears: number;
   invoices?: number;
 };
+
+type ReturnMode = "customer" | "supplier" | null;
+
+type ReturnParty = "customer" | "supplier" | null;
 
 interface InvoiceAdjustmentModalProps {
   type: "discount" | "tax";
@@ -276,6 +280,7 @@ export default function SalesPOS() {
   const [customerInput, setCustomerInput] = useState("Walk-in Customer");
   const [isCustomerOpen, setIsCustomerOpen] = useState(false);
   const [filteredCustomers, setFilteredCustomers] = useState(customers);
+  const [filteredSuppliers, setFilteredSuppliers] = useState<Supplier[]>([]);
 
   type Supplier = {
   id: number;
@@ -287,10 +292,6 @@ export default function SalesPOS() {
   const [selectedSupplierId, setSelectedSupplierId] = useState<number | null>(null);
   const [supplierInput, setSupplierInput] = useState("Direct Purchase");
   const [isSupplierOpen, setIsSupplierOpen] = useState(false);
-
-  const filteredSuppliers = suppliers.filter(s =>
-  s.name.toLowerCase().includes(supplierInput.toLowerCase())
-  );
 
   const [Categories, setCategories] = useState<Category[]>([]);
   const [Brands, setBrands] = useState<Brand[]>([]);
@@ -311,18 +312,74 @@ export default function SalesPOS() {
   const [selectedDiscount, setSelectedDiscount] = useState<Discount | null>(null);
   const [selectedTax, setSelectedTax] = useState<Tax | null>(null);
 
+  const [returnMode, setReturnMode] = useState<ReturnMode>(null);
 
   const PRICE_CATEGORIES = ["Retail", "Discount", "Wholesale"] as const;
   type PriceCategory = typeof PRICE_CATEGORIES[number];
 
   const salesRepo = salesRepository;
 
+  const isSale = transactionType === "Sale";
   const isPurchase = transactionType === "Purchase";
+  const isReturn = transactionType === "Return";
+  const isQuotation = transactionType === "Quotation";
+
+  const isCustomerReturn = isReturn && returnMode === "customer";
+  const isSupplierReturn = isReturn && returnMode === "supplier";
+
+  const stockIncreases = isPurchase || isCustomerReturn;
+  const stockDecreases = isSale || isSupplierReturn;
+  const stockUnaffected = isQuotation;
+
+  const [returnParty, setReturnParty] = useState<ReturnParty>(null);
 
   const selectedSupplier =
   suppliers.find(s => s.id === selectedSupplierId) || null;
 
   const [supplierBalance, setSupplierBalance] = useState(0);
+
+  const showSupplierDropdown = isPurchase || (transactionType === "Return" && returnMode === "supplier");
+  const showCustomerDropdown = !isPurchase && !(transactionType === "Return" && returnMode === "supplier");
+
+  
+useEffect(() => {
+  if (transactionType !== "Return") return;
+  if (!selectedCustomerId) return;
+
+  const customer = customers.find(c => c.id === selectedCustomerId);
+  if (!customer) return;
+
+  // Customer arrears (balance)
+  const arrears = customer.arrears ?? 0;
+  setCustomerArrears(arrears);
+
+  // Force PAID to be negative in RETURN
+  setPaid(prev => (prev > 0 ? -prev : prev));
+}, [transactionType, selectedCustomerId, customers]);
+
+ useEffect(() => {
+  if (transactionType !== "Return") {
+    setReturnMode(null);
+  }
+}, [transactionType]);
+
+useEffect(() => {
+  if (returnMode === "customer") {
+    setSelectedSupplierId(null);
+    setSupplierInput("Direct Purchase");
+  }
+
+  if (returnMode === "supplier") {
+    setSelectedCustomerId(null);
+    setCustomerInput("Walk-in Customer");
+  }
+}, [returnMode]);
+
+useEffect(() => {
+  if (transactionType === "Return" && !returnMode) {
+    setReturnMode("customer");
+  }
+}, [transactionType]);
 
 async function handleCompleteTransaction() {
   if (cart.length === 0) {
@@ -333,18 +390,30 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      1️⃣ PREPARE PARTY (CUSTOMER / SUPPLIER)
   -------------------------------------------------- */
-  const customerId = !isPurchase ? selectedCustomerId ?? null : null;
-  const supplierId = isPurchase ? selectedSupplierId ?? null : null;
+  const customerId =
+  (isSale || isCustomerReturn || isQuotation)
+    ? selectedCustomerId ?? null
+    : null;
+
+const supplierId =
+  (isPurchase || isSupplierReturn)
+    ? selectedSupplierId ?? null
+    : null;
+
 
   const customerName =
-    !isPurchase && selectedCustomer
+  !isPurchase
+    ? selectedCustomer
       ? selectedCustomer.name
-      : "Walk-in Customer";
+      : customerInput?.trim() || "Walk-in Customer"
+    : "";
 
   const supplierName =
-    isPurchase && selectedSupplier
+  isPurchase
+    ? selectedSupplier
       ? selectedSupplier.name
-      : "Direct Purchase";
+      : supplierInput?.trim() || "Direct Purchase"
+    : "";
 
   const dues = isPurchase ? supplierBalance : customerArrears;
 
@@ -380,27 +449,52 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      4️⃣ GRAND TOTAL
   -------------------------------------------------- */
-  const grandTotal = subtotalAfterDiscount + invoiceTax + dues;
-  const paidAmount = Number(paid) || 0;
-  const arrears = grandTotal - paidAmount;
+  /* --------------------------------------------------
+   4️⃣ GRAND TOTAL (MODE-AWARE)
+-------------------------------------------------- */
+const baseAmount = subtotalAfterDiscount + invoiceTax;
+const invoicePayable = dues-baseAmount; // SAME for Sale & Return
+
+let grandTotal = 0;
+
+if (isReturn) {
+  // 🔁 Return reduces customer arrears
+  grandTotal = dues - baseAmount;
+} else if (isSale || isPurchase) {
+  grandTotal = baseAmount + dues;
+} else {
+  // Quotation
+  grandTotal = baseAmount;
+}
+
+const paidAmountRaw = Number(paid) || 0;
+const paidAmount = isReturn ? -Math.abs(paidAmountRaw) : paidAmountRaw;
+
+const arrears = grandTotal - paidAmount;
 
   /* --------------------------------------------------
      5️⃣ PROFIT (SALE ONLY)
   -------------------------------------------------- */
-  let profit = 0;
-  if (!isPurchase) {
-    cart.forEach(item => {
-      const lineBase = item.qty * item.minUnitPrice;
-      const costBase = item.qty * item.costPrice;
+  /* --------------------------------------------------
+   5️⃣ PROFIT (SALE & RETURN)
+-------------------------------------------------- */
+let profit = 0;
 
-      const discountAmt =
-        item.discountType === "%"
-          ? (lineBase * item.discountValue) / 100
-          : item.discountValue;
+if (isSale || isCustomerReturn) {
+  cart.forEach(item => {
+    const lineBase = item.qty * item.minUnitPrice;
+    const costBase = item.qty * item.costPrice;
 
-      profit += lineBase - discountAmt - costBase;
-    });
-  }
+    const discountAmt =
+      item.discountType === "%"
+        ? (lineBase * item.discountValue) / 100
+        : item.discountValue;
+
+    const lineProfit = lineBase - discountAmt - costBase;
+
+    profit += isSale ? lineProfit : -lineProfit;
+  });
+}
 
   /* --------------------------------------------------
      6️⃣ PREPARE ITEMS
@@ -448,37 +542,51 @@ async function handleCompleteTransaction() {
   });
 
   /* --------------------------------------------------
-     8️⃣ UPDATE CUSTOMER (SALE)
-  -------------------------------------------------- */
-  if (!isPurchase && customerId) {
-    const customer = await customersRepository.getById(customerId);
-    if (customer) {
-      const newPayable = (customer.payable ?? 0) + grandTotal - dues;
-      const newPaid = (customer.paid ?? 0) + paidAmount;
-      const newBalance = newPayable - newPaid;
+   8️⃣ UPDATE CUSTOMER (SALE & RETURN)
+-------------------------------------------------- */
+if ((isSale || isReturn) && customerId) {
+  const customer = await customersRepository.getById(customerId);
+  if (customer) {
 
-      await customersRepository.update({
-        ...customer,
-        payable: newPayable,
-        paid: newPaid,
-        balance: newBalance,
-        invoices: (customer.invoices ?? 0) + 1,
+    const effectivePaid = isReturn
+      ? -Math.abs(paidAmountRaw)
+      : paidAmountRaw;
+
+    const newPayable =
+      isReturn
+        ? (customer.payable ?? 0) - baseAmount
+        : (customer.payable ?? 0) + baseAmount;
+
+    const newPaid = (customer.paid ?? 0) + effectivePaid;
+    const newBalance = newPayable - newPaid;
+
+    await customersRepository.update({
+      ...customer,
+      payable: newPayable,
+      paid: newPaid,
+      balance: newBalance,
+      invoices: (customer.invoices ?? 0) + 1,
+    });
+
+    // 🔁 Payment entry (negative for Return)
+    if (effectivePaid !== 0) {
+      await customerPaymentRepository.add({
+        customerId: customer.id!,
+        customerName: customer.name,
+        invoiceNo,
+        amount: effectivePaid, // NEGATIVE for Return
+        paymentDate: new Date().toISOString(),
+        remarks: isReturn
+          ? `Return adjustment ${invoiceNo}`
+          : invoiceNo,
+
+        // ✅ FIXED
+        payableSnapshot: invoicePayable,
+        balanceSnapshot: newBalance,
       });
-
-      if (paidAmount > 0) {
-        await customerPaymentRepository.add({
-          customerId: customer.id!,
-          customerName: customer.name,
-          invoiceNo,
-          amount: paidAmount,
-          paymentDate: new Date().toISOString(),
-          remarks: invoiceNo,
-          payableSnapshot: grandTotal,
-          balanceSnapshot: newBalance,
-        });
-      }
-    }
+}
   }
+}
 
   /* --------------------------------------------------
      9️⃣ UPDATE SUPPLIER (PURCHASE)
@@ -520,19 +628,69 @@ async function handleCompleteTransaction() {
   }
 
   /* --------------------------------------------------
-     🔟 UPDATE STOCK
-  -------------------------------------------------- */
-  for (const ci of cart) {
-    const item = await itemsRepository.getById(ci.originalItemId);
-    if (!item) continue;
+   SUPPLIER RETURN ACCOUNTING
+-------------------------------------------------- */
+if (isSupplierReturn && supplierId) {
+  const supplier = await supplierRepo.getById(supplierId);
+  if (supplier) {
+    const returnAmount = baseAmount;
 
-    await itemsRepository.update({
-      ...item,
-      availableStock: isPurchase
-        ? item.availableStock + ci.qty
-        : item.availableStock - ci.qty,
+    const newPayable =
+      (supplier.payable ?? 0) - returnAmount;
+
+    const newBalance =
+      newPayable - (supplier.paid ?? 0);
+
+    await supplierRepo.update({
+      ...supplier,
+      payable: newPayable,
+      balance: newBalance,
+      invoices: (supplier.invoices ?? 0) + 1,
     });
+
+    // Optional supplier refund entry
+    if (paidAmount !== 0) {
+      await supplierPaymentRepository.add({
+        supplierId: supplier.id!,
+        supplierName: supplier.name,
+        invoiceNo,
+        amount: -Math.abs(paidAmount), // money received back
+        paymentDate: new Date().toISOString(),
+        remarks: `Supplier Return ${invoiceNo}`,
+        payableSnapshot: newPayable,
+        balanceSnapshot: newBalance,
+      });
+    }
   }
+}
+
+  /* --------------------------------------------------
+   🔟 UPDATE STOCK
+-------------------------------------------------- */
+for (const ci of cart) {
+  const item = await itemsRepository.getById(ci.originalItemId);
+  if (!item) continue;
+
+  let newStock = item.availableStock;
+
+  if (transactionType === "Sale") {
+    newStock -= ci.qty;
+  } else if (transactionType === "Purchase") {
+    newStock += ci.qty;
+  } else if (isSale || isSupplierReturn) {
+  newStock -= ci.qty;
+}
+else if (isPurchase || isCustomerReturn) {
+  newStock += ci.qty;
+}
+
+  // Quotation → no stock change
+
+  await itemsRepository.update({
+    ...item,
+    availableStock: newStock,
+  });
+}
 
   /* --------------------------------------------------
      1️⃣1️⃣ RESET UI
@@ -760,6 +918,22 @@ useEffect(() => {
   setSupplierBalance(supplier?.balance ?? 0);
 }, [selectedSupplierId, suppliers, isPurchase]);
 
+
+useEffect(() => {
+  if (returnMode === "customer") {
+    setFilteredCustomers(customers);
+    setCustomerInput("Walk-in Customer");
+    setSelectedCustomerId(null);
+    setIsCustomerOpen(false);
+  } else {
+    setFilteredSuppliers(suppliers);
+    setSupplierInput("Direct Purchase");
+    setSelectedSupplierId(null);
+    setIsSupplierOpen(false);
+  }
+}, [returnMode, customers, suppliers]);
+
+
   // =====================
   // CART LOGIC
   // =====================
@@ -770,28 +944,54 @@ function cancelSale() {
       const ci = cart.find(c => c.originalItemId === i.id);
       if (!ci) return i;
 
-      // SALE → restore only what was deducted
-      if (!isPurchase) {
+      // SALE → restore all deducted stock
+      if (!isPurchase && !isReturn) {
         return {
           ...i,
-          availableStock: i.availableStock + ci.uiDeductedQty,
+          availableStock: i.availableStock + ci.qty, // use total qty in cart, not uiDeductedQty
         };
       }
 
       // PURCHASE → rollback added stock
-      return {
-        ...i,
-        availableStock: i.availableStock - ci.qty,
-      };
+      if (isPurchase) {
+        return {
+          ...i,
+          availableStock: i.availableStock - ci.qty,
+        };
+      }
+
+      // RETURN → rollback stock based on return type
+      if (isReturn) {
+        if (returnMode === "customer") {
+          // Customer return → stock increases
+          return {
+            ...i,
+            availableStock: i.availableStock - ci.qty,
+          };
+        }
+        if (returnMode === "supplier") {
+          // Supplier return → stock decreases
+          return {
+            ...i,
+            availableStock: i.availableStock + ci.qty,
+          };
+        }
+      }
+
+      return i;
     })
   );
 
+  // Reset POS state
   setCart([]);
   setPaid(0);
   setDiscountValue(0);
   setTaxValue(0);
   setSelectedCustomerId(null);
   setCustomerInput("Walk-in Customer");
+  setSelectedSupplierId(null);
+  setSupplierInput("Direct Purchase");
+  setReturnMode(null);
 }
 
 function handleTransactionTypeChange(
@@ -810,24 +1010,27 @@ function handleTransactionTypeChange(
       alert("Item not found for barcode: " + code);
     }
   }
-
+  
 function addToCart(item: Item) {
 
-  // ❌ Block only for SALE, not PURCHASE
-  if (!isPurchase && item.availableStock <= 0) return;
+  // ❌ Block ONLY when stock must decrease
+  if (stockDecreases && item.availableStock <= 0) return;
 
   // 1️⃣ Update UI stock
   setItems(prev =>
     prev.map(i => {
       if (i.id !== item.id) return i;
 
-      // SALE → decrease stock
-      if (!isPurchase) {
+      if (stockDecreases) {
         return { ...i, availableStock: i.availableStock - 1 };
       }
 
-      // PURCHASE → increase stock
-      return { ...i, availableStock: i.availableStock + 1 };
+      if (stockIncreases) {
+        return { ...i, availableStock: i.availableStock + 1 };
+      }
+
+      // Quotation → no stock change
+      return i;
     })
   );
 
@@ -841,9 +1044,9 @@ function addToCart(item: Item) {
           ? {
               ...ci,
               qty: ci.qty + 1,
-
-              // SALE tracks deducted qty, PURCHASE does not
-              uiDeductedQty: isPurchase ? ci.uiDeductedQty : ci.uiDeductedQty + 1,
+              uiDeductedQty: stockDecreases
+                ? ci.uiDeductedQty + 1
+                : ci.uiDeductedQty,
             }
           : ci
       );
@@ -857,10 +1060,10 @@ function addToCart(item: Item) {
         qty: 1,
         unit: "min",
 
-        // Price logic unchanged
-        minUnitPrice: isPurchase
-          ? item.purchasePrice ?? 0
-          : item.retailPrice,
+        minUnitPrice:
+          transactionType === "Purchase"
+            ? item.purchasePrice ?? 0
+            : item.retailPrice,
 
         convQty: item.ConvQty,
         minunit: item.minunit,
@@ -875,13 +1078,12 @@ function addToCart(item: Item) {
         taxValue: 0,
 
         originalItemId: item.id!,
-
-        // SALE deducts immediately, PURCHASE does not deduct
-        uiDeductedQty: isPurchase ? 0 : 1,
+        uiDeductedQty: stockDecreases ? 1 : 0,
       },
     ];
   });
 }
+
 
 function updateItem(updated: CartItem) {
   const originalItem = items.find(i => i.id === updated.originalItemId);
@@ -911,17 +1113,22 @@ function updateItem(updated: CartItem) {
     prev.map(i => {
       if (i.id !== originalItem.id) return i;
 
-      return {
-        ...i,
-        availableStock: isPurchase
-          ? i.availableStock + diff   // 🟢 PURCHASE → increase stock
-          : i.availableStock - diff,  // 🔴 SALE → decrease stock
-      };
+      if (stockDecreases) {
+        // SALE → stock decreases
+        return { ...i, availableStock: i.availableStock - diff };
+      }
+
+      if (stockIncreases) {
+        // PURCHASE or RETURN → stock increases
+        return { ...i, availableStock: i.availableStock + diff };
+      }
+
+      return i; // Quotation or no stock change
     })
   );
 
   /* --------------------------------------------------
-     4️⃣ Update cart item (PRICE FIX HERE ✅)
+     4️⃣ Update cart item
   -------------------------------------------------- */
   setCart(prev =>
     prev.map(ci =>
@@ -940,17 +1147,15 @@ function updateItem(updated: CartItem) {
             minUnitPrice: isPurchase
               ? originalItem.purchasePrice ?? 0
               : updated.priceCategory === "Discount"
-                ? originalItem.discountPrice ?? originalItem.retailPrice
-                : updated.priceCategory === "Wholesale"
-                ? originalItem.wholesalePrice
-                : originalItem.retailPrice,
+              ? originalItem.discountPrice ?? originalItem.retailPrice
+              : updated.priceCategory === "Wholesale"
+              ? originalItem.wholesalePrice
+              : originalItem.retailPrice,
 
             convQty: originalItem.ConvQty,
 
-            // SALE only tracks UI deductions
-            uiDeductedQty: isPurchase
-              ? 0
-              : prevCartItem.uiDeductedQty + diff,
+            // SALE only tracks UI deductions as total qty in cart
+            uiDeductedQty: !isPurchase && !isReturn ? newQtyMin : 0,
           }
         : ci
     )
@@ -959,8 +1164,7 @@ function updateItem(updated: CartItem) {
   setEditing(null);
 }
 
-
- async function removeItem(cartItemId: number) {
+async function removeItem(cartItemId: number) {
   const cartItem = cart.find(ci => ci.id === cartItemId);
   if (!cartItem) return;
 
@@ -974,12 +1178,17 @@ function updateItem(updated: CartItem) {
     prev.map(i => {
       if (i.id !== item.id) return i;
 
-      return {
-        ...i,
-        availableStock: isPurchase
-          ? i.availableStock - cartItem.qty        // 🟢 PURCHASE → rollback added stock
-          : i.availableStock + cartItem.uiDeductedQty, // 🔴 SALE → restore deducted stock
-      };
+      if (!isPurchase && !isReturn) {
+        // SALE → restore deducted stock
+        return { ...i, availableStock: i.availableStock + cartItem.qty };
+      }
+
+      if (isPurchase || isReturn) {
+        // PURCHASE or RETURN → rollback added stock
+        return { ...i, availableStock: i.availableStock - cartItem.qty };
+      }
+
+      return i; // Quotation
     })
   );
 
@@ -1065,46 +1274,56 @@ function formatStock(
   );
 
 const totals = useMemo(() => {
-  let subtotal = 0;      // includes cart item taxes
-  let cartItemDiscount = 0; // info only
+  let subtotal = 0;
+  let cartItemDiscount = 0;
 
   cart.forEach(i => {
     const r = calcLine(i);
-    subtotal += r.total;   // ✅ total already includes cart item discount & tax
-    cartItemDiscount += r.discount; // just for info
+    subtotal += r.total;
+    cartItemDiscount += r.discount;
   });
 
-  // Apply invoice-level adjustments (on subtotal)
-  const invoiceDiscountAmount = applyAdjustment(subtotal, selectedDiscount ? { type: discountMode, value: discountValue } : null);
-  const invoiceTaxAmount = applyAdjustment(subtotal - invoiceDiscountAmount, selectedTax ? { type: taxMode, value: taxValue } : null);
+  const invoiceDiscountAmount = applyAdjustment(
+    subtotal,
+    selectedDiscount ? { type: discountMode, value: discountValue } : null
+  );
 
-  const dues = isPurchase ? supplierBalance : customerArrears;
+  const invoiceTaxAmount = applyAdjustment(
+    subtotal - invoiceDiscountAmount,
+    selectedTax ? { type: taxMode, value: taxValue } : null
+  );
 
-  const grandTotal =
-  subtotal - invoiceDiscountAmount + invoiceTaxAmount + dues;
+  const invoiceTotal = subtotal - invoiceDiscountAmount + invoiceTaxAmount;
+
+  // 🔹 Previous arrears
+  const previousArrears = selectedCustomerId ? customerArrears : 0;
+
+  // 🔹 Total payable BEFORE considering paid amount
+  const totalPayable = isReturn
+    ? previousArrears - invoiceTotal
+    : previousArrears + invoiceTotal;
 
   return {
-  subtotal,
-  cartItemDiscount,
-  discount: invoiceDiscountAmount,
-  tax: invoiceTaxAmount,
-  arrears: dues, // 👈 unified
-  grandTotal,
-};
-
+    subtotal,
+    cartItemDiscount,
+    discount: invoiceDiscountAmount,
+    tax: invoiceTaxAmount,
+    arrears: previousArrears,
+    invoiceTotal,
+    grandTotal: totalPayable, // total payable before paid
+  };
 }, [
   cart,
   customerArrears,
-  supplierBalance,
   selectedDiscount,
   discountMode,
   discountValue,
   selectedTax,
   taxMode,
   taxValue,
-  isPurchase
+  selectedCustomerId,
+  isReturn,
 ]);
-
 
   const filteredItems = useMemo(() => {
   return items.filter((item) => {
@@ -1122,8 +1341,10 @@ const totals = useMemo(() => {
 }, [items, selectedCategory, selectedBrand, search]);
 
 const balance = useMemo(() => {
-  return Math.max(0, totals.grandTotal - paid);
+  const paidValue = paid || 0; // on UI for return, paid is already negative
+  return totals.grandTotal - paidValue;
 }, [totals.grandTotal, paid]);
+
 
 function normalizeToMinUnit(
   price: number,
@@ -1196,15 +1417,22 @@ function formatStockDisplay(
   return `${min}${minUnit}`;
 }
 
-const dropdownList = isPurchase ? suppliers : customers;
+const isCustomerContext =
+  isSale ||
+  isQuotation ||
+  (isReturn && returnMode === "customer");
 
-const selectedName = isPurchase ? supplierInput : customerInput;
+const isSupplierContext =
+  isPurchase ||
+  (isReturn && returnMode === "supplier");
 
-const setSelectedName = isPurchase ? setSupplierInput : setCustomerInput;
+const dropdownList = isSupplierContext ? filteredSuppliers : filteredCustomers;
+const selectedId = isSupplierContext ? selectedSupplierId : selectedCustomerId;
+const inputValue = isSupplierContext ? supplierInput : customerInput;
+const setInputValue = isSupplierContext ? setSupplierInput : setCustomerInput;
+const setSelectedId = isSupplierContext ? setSelectedSupplierId : setSelectedCustomerId;
 
-const setSelectedId = isPurchase ? setSelectedSupplierId : setSelectedCustomerId;
-
-  return (
+return (
     <div className="h-full flex bg-gray-100">
 
       {/* LEFT – ITEMS */}
@@ -1342,140 +1570,169 @@ const setSelectedId = isPurchase ? setSelectedSupplierId : setSelectedCustomerId
       Invoice #: {invoiceNo}
     </div>
 
-    <div className="text-sm text-gray-700">
-      Total Items: <span className="font-semibold">{cart.length}</span>
-    </div>
-  </div>
-
-  {/* Row 2: Date + Customer */}
-  <div className="flex justify-between items-center">
-    {/* Date */}
-    <div className="flex items-center gap-2 text-sm">
-      <span>Date:</span>
+ {transactionType === "Return" ? (
+  <div className="flex gap-4 text-sm font-semibold text-blue-500">
+    <label className="flex items-center gap-1 cursor-pointer">
       <input
-        type="date"
-        className="border px-2 py-1 rounded text-sm"
-        value={selectedDate}
-        onChange={(e) => setSelectedDate(e.target.value)}
+        type="radio"
+        name="returnMode"
+        value="customer"
+        checked={returnMode === "customer"}
+        onChange={() => setReturnMode("customer")}
       />
-    </div>
+      Customer Return
+    </label>
 
-    {/* Customer + Quick Add */}
-    <div className="flex items-center gap-2">
-  {/* Customer Input */}
-{/* Customer / Supplier Input */}
-<div className="relative w-56">
-  <input
-    type="text"
-    value={isPurchase ? supplierInput : customerInput}
-    className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-    onFocus={() => {
-      if (isPurchase) {
-        setIsSupplierOpen(true);
-        // show all suppliers when focused
-        if (supplierInput === "Direct Purchase") {
-          setSupplierInput("");
-        }
-      } else {
-        setIsCustomerOpen(true);
-        // show all customers when focused
-        if (customerInput === "Walk-in Customer") {
-          setCustomerInput("");
-          setFilteredCustomers(customers);
-        }
-      }
-    }}
-    onChange={(e) => {
-      const val = e.target.value;
-      if (isPurchase) {
-        setSupplierInput(val);
-        setSelectedSupplierId(null);
-        setIsSupplierOpen(true);
-      } else {
-        setCustomerInput(val);
-        setSelectedCustomerId(null);
-        setIsCustomerOpen(true);
-
-        const q = val.toLowerCase();
-        setFilteredCustomers(
-          customers.filter(c => c.name.toLowerCase().includes(q))
-        );
-      }
-    }}
-    onBlur={() => {
-      setTimeout(() => {
-        if (isPurchase) {
-          setIsSupplierOpen(false);
-          if (!supplierInput.trim()) {
-            setSupplierInput("Direct Purchase");
-            setSelectedSupplierId(null);
-          }
-        } else {
-          setIsCustomerOpen(false);
-          if (!customerInput.trim()) {
-            setCustomerInput("Walk-in Customer");
-            setSelectedCustomerId(null);
-          }
-        }
-      }, 150);
-    }}
-  />
-
-  {/* Dropdown */}
-  {isPurchase ? (
-    isSupplierOpen && filteredSuppliers.length > 0 && (
-      <div className="absolute z-20 mt-1 w-full bg-white border rounded shadow max-h-48 overflow-y-auto">
-        {filteredSuppliers.map(s => (
-          <div
-            key={s.id}
-            className="px-2 py-1 text-sm cursor-pointer hover:bg-indigo-100"
-            onMouseDown={() => {
-              setSelectedSupplierId(s.id!);
-              setSupplierInput(s.name);
-              setIsSupplierOpen(false);
-            }}
-          >
-            {s.name}
-          </div>
-        ))}
-      </div>
-    )
-  ) : (
-    isCustomerOpen && filteredCustomers.length > 0 && (
-      <div className="absolute z-20 mt-1 w-full bg-white border rounded shadow max-h-48 overflow-y-auto">
-        {filteredCustomers.map(c => (
-          <div
-            key={c.id}
-            className="px-2 py-1 text-sm cursor-pointer hover:bg-indigo-100"
-            onMouseDown={() => {
-              setSelectedCustomerId(c.id);
-              setCustomerInput(c.name);
-              setIsCustomerOpen(false);
-            }}
-          >
-            {c.name}
-          </div>
-        ))}
-      </div>
-    )
-  )}
+    <label className="flex items-center gap-1 cursor-pointer">
+      <input
+        type="radio"
+        name="returnMode"
+        value="supplier"
+        checked={returnMode === "supplier"}
+        onChange={() => setReturnMode("supplier")}
+      />
+      Supplier Return
+    </label>
+  </div>
+) : (
+  <div className="text-sm text-gray-700">
+    Total Items: <span className="font-semibold">{cart.length}</span>
+  </div>
+)}
 </div>
 
-  <button
-    onClick={() =>
-      isPurchase
-        ? setShowSupplierModal(true)
-        : setShowCustomerModal(true)
-    }
-    className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-    title={isPurchase ? "Add New Supplier" : "Add New Customer"}
-  >
-    <FaPlus size={12} />
-  </button>
+{/* Row 2: Date + Customer / Supplier */}
+<div className="flex justify-between items-center">
+  {/* Date */}
+  <div className="flex items-center gap-2 text-sm">
+    <span>Date:</span>
+    <input
+      type="date"
+      className="border px-2 py-1 rounded text-sm"
+      value={selectedDate}
+      onChange={(e) => setSelectedDate(e.target.value)}
+    />
+  </div>
+
+  {/* Customer / Supplier */}
+  <div className="flex items-center gap-2">
+    <div className="relative w-56">
+      {(() => {
+        const showSupplier =
+          isPurchase || (transactionType === "Return" && returnMode === "supplier");
+
+        return (
+          <>
+            <input
+              type="text"
+              className="w-full border rounded px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={showSupplier ? supplierInput : customerInput}
+              onFocus={() =>
+                showSupplier
+                  ? setIsSupplierOpen(true)
+                  : setIsCustomerOpen(true)
+              }
+              onChange={(e) => {
+                const val = e.target.value;
+
+                if (showSupplier) {
+                  setSupplierInput(val);
+                  setSelectedSupplierId(null);
+                  setIsSupplierOpen(true);
+                } else {
+                  setCustomerInput(val);
+                  setSelectedCustomerId(null);
+                  setFilteredCustomers(
+                    customers.filter(c =>
+                      c.name.toLowerCase().includes(val.toLowerCase())
+                    )
+                  );
+                  setIsCustomerOpen(true);
+                }
+              }}
+              onBlur={() => {
+                setTimeout(() => {
+                  if (showSupplier) {
+                    setIsSupplierOpen(false);
+                    if (!supplierInput.trim()) {
+                      setSupplierInput("Direct Purchase");
+                      setSelectedSupplierId(null);
+                    }
+                  } else {
+                    setIsCustomerOpen(false);
+                    if (!customerInput.trim()) {
+                      setCustomerInput("Walk-in Customer");
+                      setSelectedCustomerId(null);
+                    }
+                  }
+                }, 150);
+              }}
+            />
+
+            {/* Supplier Dropdown */}
+            {showSupplier && isSupplierOpen && filteredSuppliers.length > 0 && (
+              <div className="absolute z-20 mt-1 w-full bg-white border rounded shadow max-h-48 overflow-y-auto">
+                {filteredSuppliers.map(s => (
+                  <div
+                    key={s.id}
+                    className="px-2 py-1 text-sm cursor-pointer hover:bg-indigo-100"
+                    onMouseDown={() => {
+                      setSelectedSupplierId(s.id!);
+                      setSupplierInput(s.name);
+                      setIsSupplierOpen(false);
+                    }}
+                  >
+                    {s.name}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Customer Dropdown */}
+            {!showSupplier && isCustomerOpen && filteredCustomers.length > 0 && (
+              <div className="absolute z-20 mt-1 w-full bg-white border rounded shadow max-h-48 overflow-y-auto">
+                {filteredCustomers.map(c => (
+                  <div
+                    key={c.id}
+                    className="px-2 py-1 text-sm cursor-pointer hover:bg-indigo-100"
+                    onMouseDown={() => {
+                      setSelectedCustomerId(c.id);
+                      setCustomerInput(c.name);
+                      setIsCustomerOpen(false);
+                    }}
+                  >
+                    {c.name}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        );
+      })()}
     </div>
+
+    <button
+  onClick={() => {
+    const showSupplier =
+      isPurchase || (transactionType === "Return" && returnMode === "supplier");
+
+    showSupplier
+      ? setShowSupplierModal(true)
+      : setShowCustomerModal(true);
+  }}
+  className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+  title={
+    isPurchase || (transactionType === "Return" && returnMode === "supplier")
+      ? "Add New Supplier"
+      : "Add New Customer"
+  }
+>
+  <FaPlus size={12} />
+</button>
 
   </div>
 </div>
+  </div>
 
 
   {/* CART ITEMS */}
@@ -1590,12 +1847,20 @@ const setSelectedId = isPurchase ? setSelectedSupplierId : setSelectedCustomerId
           </label>
 
           <input
-            type="number"
-            min="0"
-            value={paid}
-            onChange={(e) => setPaid(Number(e.target.value) || 0)}
-            className="flex-1 p-2 border w-full rounded text-center text-xl text-green-500"
-          />
+              type="number"
+              value={paid}
+              onChange={(e) => {
+                let val = Number(e.target.value) || 0;
+
+                if (transactionType === "Return") {
+                  val = -Math.abs(val); // 🔴 force negative
+                }
+
+                setPaid(val);
+              }}
+              className="flex-1 p-2 border w-full rounded text-center text-xl text-green-500"
+            />
+
         </div>
 
       <div className="flex justify-between items-center bg-gray-50 p-3 rounded">
@@ -1625,7 +1890,7 @@ const setSelectedId = isPurchase ? setSelectedSupplierId : setSelectedCustomerId
   </div>
 </div>
 
-</div>
+        </div>
 
 
      {/* EDIT MODAL */}

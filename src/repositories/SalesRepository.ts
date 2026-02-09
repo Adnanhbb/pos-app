@@ -262,6 +262,44 @@ async addTransaction(
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });
+},
+
+/**
+ * 🔵 DELETE QUOTATION (NO STOCK / NO ACCOUNTS)
+ */
+async deleteQuotation(quotationId: number): Promise<void> {
+  const conn = await db.open();
+
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction(
+      ["sales", "sale_items"],
+      "readwrite"
+    );
+
+    const salesStore = tx.objectStore("sales");
+    const saleItemsStore = tx.objectStore("sale_items");
+
+    const saleItemsReq = saleItemsStore.getAll();
+
+    saleItemsReq.onsuccess = () => {
+      const quotationItems = (saleItemsReq.result as DBSaleItem[]).filter(
+        i => i.saleId === quotationId
+      );
+
+      // 1️⃣ Delete quotation items
+      for (const qi of quotationItems) {
+        if (qi.id != null) {
+          saleItemsStore.delete(qi.id);
+        }
+      }
+
+      // 2️⃣ Delete quotation invoice
+      salesStore.delete(quotationId);
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
 }
 
 };

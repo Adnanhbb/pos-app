@@ -133,54 +133,94 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
   if (!confirmDelete) return;
 
   try {
-    // 1️⃣ FIXED STOCK LOGIC
-    if (invoice.transactionType === "Sale") {
-      // Customer invoice → restore stock
-      await salesRepository.deleteSaleAndRestoreStock(invoice.id);
-    } else if (invoice.transactionType === "Purchase") {
-      // Supplier invoice → REMOVE stock
-      await salesRepository.deletePurchaseAndReduceStock(invoice.id);
-    }
+    /* --------------------------------------------------
+   1️⃣ STOCK REVERSAL + DELETE
+-------------------------------------------------- */
+      if (invoice.transactionType === "Sale") {
+        await salesRepository.deleteSaleAndRestoreStock(invoice.id);
+      }
+      else if (
+        invoice.transactionType === "Purchase" ||
+        invoice.transactionType === "Return"
+      ) {
+        // Purchase & Return both ADD stock originally → reduce on delete
+        await salesRepository.deletePurchaseAndReduceStock(invoice.id);
+      }
+      else if (invoice.transactionType === "Quotation") {
+        // 🧾 Quotation has no stock, no accounts → just delete
+        await salesRepository.deleteQuotation(invoice.id);
+      }
 
-    // 2️⃣ UPDATE CUSTOMER OR SUPPLIER ACCOUNTS (unchanged)
-    if (invoice.transactionType === "Sale" && invoice.customerId) {
+    /* --------------------------------------------------
+       2️⃣ CUSTOMER ACCOUNT REVERSAL
+    -------------------------------------------------- */
+    if (
+      (invoice.transactionType === "Sale" ||
+       invoice.transactionType === "Return") &&
+      invoice.customerId
+    ) {
       const customer = await customersRepository.getById(invoice.customerId);
       if (customer) {
-        const newTotalPayable =
-          (customer.payable ?? 0) -
-          (invoice.grandTotal - (invoice.dues ?? 0));
-        const newTotalPaid = (customer.paid ?? 0) - (invoice.paid ?? 0);
-        const newBalance = newTotalPayable - newTotalPaid;
-        const newInvoices = (customer.invoices ?? 1) - 1;
+
+        const invoiceBase =
+          (invoice.subtotal ?? 0) -
+          (invoice.discount ?? 0) +
+          (invoice.tax ?? 0);
+
+        let newPayable = customer.payable ?? 0;
+        let newPaid = customer.paid ?? 0;
+
+        if (invoice.transactionType === "Sale") {
+          newPayable -= invoiceBase;
+          newPaid -= invoice.paid ?? 0;
+        }
+
+        if (invoice.transactionType === "Return") {
+          newPayable += invoiceBase;
+          newPaid -= invoice.paid ?? 0; // invoice.paid is NEGATIVE
+        }
+
+        const newBalance = newPayable - newPaid;
+        const newInvoices = Math.max(0, (customer.invoices ?? 1) - 1);
 
         await customersRepository.update({
           ...customer,
-          payable: newTotalPayable,
-          paid: newTotalPaid,
+          payable: newPayable,
+          paid: newPaid,
           balance: newBalance,
-          invoices: Math.max(0, newInvoices),
+          invoices: newInvoices,
         });
 
-        if (invoice.paid && invoice.paid > 0) {
+        // Remove payment entry (both Sale & Return)
+        if (invoice.paid && invoice.paid !== 0) {
           await customerPaymentRepository.deleteByInvoiceNo(invoice.invoiceNo);
         }
       }
-    } else if (invoice.transactionType === "Purchase" && invoice.supplierId) {
+    }
+
+    /* --------------------------------------------------
+       3️⃣ SUPPLIER ACCOUNT REVERSAL
+    -------------------------------------------------- */
+    if (invoice.transactionType === "Purchase" && invoice.supplierId) {
       const supplier = await suppliersRepository.getById(invoice.supplierId);
       if (supplier) {
-        const newTotalPayable =
-          (supplier.payable ?? 0) -
-          (invoice.grandTotal - (invoice.dues ?? 0));
-        const newTotalPaid = (supplier.paid ?? 0) - (invoice.paid ?? 0);
-        const newBalance = newTotalPayable - newTotalPaid;
-        const newInvoices = (supplier.invoices ?? 1) - 1;
+
+        const invoiceBase =
+          (invoice.subtotal ?? 0) -
+          (invoice.discount ?? 0) +
+          (invoice.tax ?? 0);
+
+        const newPayable = (supplier.payable ?? 0) - invoiceBase;
+        const newPaid = (supplier.paid ?? 0) - (invoice.paid ?? 0);
+        const newBalance = newPayable - newPaid;
+        const newInvoices = Math.max(0, (supplier.invoices ?? 1) - 1);
 
         await suppliersRepository.update({
           ...supplier,
-          payable: Math.max(0, newTotalPayable),
-          paid: Math.max(0, newTotalPaid),
-          balance: Math.max(0, newBalance),
-          invoices: Math.max(0, newInvoices),
+          payable: newPayable,
+          paid: newPaid,
+          balance: newBalance,
+          invoices: newInvoices,
         });
 
         if (invoice.paid && invoice.paid > 0) {
@@ -191,9 +231,13 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
       }
     }
 
-    // 3️⃣ UPDATE UI
+    /* --------------------------------------------------
+       4️⃣ UI CLEANUP
+    -------------------------------------------------- */
     setSales(prev => prev.filter(s => s.id !== invoice.id));
-    setSelectedInvoice(prev => (prev?.id === invoice.id ? null : prev));
+    setSelectedInvoice(prev =>
+      prev?.id === invoice.id ? null : prev
+    );
 
     alert(`Invoice #${invoice.invoiceNo} deleted successfully.`);
   } catch (err) {
@@ -201,7 +245,6 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
     alert("Failed to delete invoice. Check console for details.");
   }
 };
-
 
   return (
     <div className="p-4 flex flex-col lg:flex-row gap-4">
@@ -249,7 +292,7 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
           <table className="w-full border-collapse border mt-2 text-sm">
             <thead>
               <tr className="bg-gray-100">
-                <th className="border p-2">Invoice #: </th>
+                <th className="border p-2">Invoice # </th>
                 <th className="border p-2">Cust/Supp Name</th>
                 <th className="border p-2">Date</th>
                 <th className="border p-2">Payable</th>
