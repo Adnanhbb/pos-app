@@ -145,7 +145,8 @@ function InvoiceAdjustmentModal({
   isOpen,
   onClose,
   onApply,
-}: InvoiceAdjustmentModalProps) {
+}: InvoiceAdjustmentModalProps)
+ {
   const [list, setList] = useState<any[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mode, setMode] = useState<"percentage" | "Fixed Amount">("percentage");
@@ -323,6 +324,9 @@ export default function SalesPOS() {
   const isPurchase = transactionType === "Purchase";
   const isReturn = transactionType === "Return";
   const isQuotation = transactionType === "Quotation";
+  const treatAsPurchase =
+  isPurchase || (isReturn && returnMode === "supplier");
+
 
   const isCustomerReturn = isReturn && returnMode === "customer";
   const isSupplierReturn = isReturn && returnMode === "supplier";
@@ -390,32 +394,35 @@ async function handleCompleteTransaction() {
   /* --------------------------------------------------
      1️⃣ PREPARE PARTY (CUSTOMER / SUPPLIER)
   -------------------------------------------------- */
-  const customerId =
-  (isSale || isCustomerReturn || isQuotation)
-    ? selectedCustomerId ?? null
-    : null;
+  const isCustomerContext =
+  isSale || isQuotation || isCustomerReturn;
 
-const supplierId =
-  (isPurchase || isSupplierReturn)
-    ? selectedSupplierId ?? null
-    : null;
+const isSupplierContext =
+  isPurchase || isSupplierReturn;
 
+const customerId = isCustomerContext
+  ? selectedCustomerId ?? null
+  : null;
 
-  const customerName =
-  !isPurchase
-    ? selectedCustomer
-      ? selectedCustomer.name
-      : customerInput?.trim() || "Walk-in Customer"
-    : "";
+const supplierId = isSupplierContext
+  ? selectedSupplierId ?? null
+  : null;
 
-  const supplierName =
-  isPurchase
-    ? selectedSupplier
-      ? selectedSupplier.name
-      : supplierInput?.trim() || "Direct Purchase"
-    : "";
+const customerName = isCustomerContext
+  ? selectedCustomer?.name ||
+    customerInput?.trim() ||
+    "Walk-in Customer"
+  : "";
 
-  const dues = isPurchase ? supplierBalance : customerArrears;
+const supplierName = isSupplierContext
+  ? selectedSupplier?.name ||
+    supplierInput?.trim() ||
+    "Direct Purchase"
+  : "";
+
+const dues = isSupplierContext
+  ? supplierBalance
+  : customerArrears;
 
   /* --------------------------------------------------
      2️⃣ ITEM SUBTOTAL
@@ -447,13 +454,22 @@ const supplierId =
   }
 
   /* --------------------------------------------------
-     4️⃣ GRAND TOTAL
-  -------------------------------------------------- */
-  /* --------------------------------------------------
    4️⃣ GRAND TOTAL (MODE-AWARE)
 -------------------------------------------------- */
 const baseAmount = subtotalAfterDiscount + invoiceTax;
-const invoicePayable = dues-baseAmount; // SAME for Sale & Return
+
+let invoicePayable = 0;
+
+// 🔹 dues should already be either customerArrears or supplierBalance
+// 🔹 baseAmount should be your invoiceTotal (subtotal - discount + tax)
+
+if (isSale || isPurchase) {
+  invoicePayable = dues + baseAmount;
+}
+else if (isCustomerReturn || isSupplierReturn) {
+  invoicePayable = dues - baseAmount;
+}
+
 
 let grandTotal = 0;
 
@@ -472,9 +488,6 @@ const paidAmount = isReturn ? -Math.abs(paidAmountRaw) : paidAmountRaw;
 
 const arrears = grandTotal - paidAmount;
 
-  /* --------------------------------------------------
-     5️⃣ PROFIT (SALE ONLY)
-  -------------------------------------------------- */
   /* --------------------------------------------------
    5️⃣ PROFIT (SALE & RETURN)
 -------------------------------------------------- */
@@ -495,6 +508,7 @@ if (isSale || isCustomerReturn) {
     profit += isSale ? lineProfit : -lineProfit;
   });
 }
+
 
   /* --------------------------------------------------
      6️⃣ PREPARE ITEMS
@@ -523,10 +537,10 @@ if (isSale || isCustomerReturn) {
     transactionType,
 
     customerId,
-    customerName: !isPurchase ? customerName : "",
+    customerName: isCustomerContext ? customerName : "",
 
     supplierId,
-    supplierName: isPurchase ? supplierName : "",
+    supplierName: isSupplierContext ? supplierName : "",
 
     subtotal: invoiceSubtotal,
     discount: invoiceDiscount,
@@ -591,73 +605,44 @@ if ((isSale || isReturn) && customerId) {
   /* --------------------------------------------------
      9️⃣ UPDATE SUPPLIER (PURCHASE)
   -------------------------------------------------- */
-  if (isPurchase && supplierId) {
-    const supplier = await supplierRepo.getById(supplierId);
-    if (supplier) {
-      const newPayable = (supplier.payable ?? 0) + grandTotal - dues;
-      const newPaid = (supplier.paid ?? 0) + paidAmount;
-      const newBalance = newPayable - newPaid;
-
-      await supplierRepo.update({
-        ...supplier,
-        payable: newPayable,
-        paid: newPaid,
-        balance: newBalance,
-        invoices: (supplier.invoices ?? 0) + 1,
-      });
-
-      if (paidAmount > 0) {
-        // ✅ SAFETY CHECK: supplierId must exist
-        if (!supplier.id) {
-          console.error("Cannot add payment: supplier ID is missing", supplier);
-        } else {
-          await supplierPaymentRepository.add({
-          supplierId: supplier.id,
-          supplierName: supplier.name,     // 🔹 required
-          invoiceNo: invoiceNo,            // 🔹 required
-          amount: paidAmount,
-          paymentDate: new Date().toISOString(),
-          remarks: `Payment for ${invoiceNo}`, // optional note
-          payableSnapshot: newPayable,
-          balanceSnapshot: newBalance,
-        });
-
-        }
-      }
-    }
-  }
-
-  /* --------------------------------------------------
-   SUPPLIER RETURN ACCOUNTING
--------------------------------------------------- */
-if (isSupplierReturn && supplierId) {
+  if ((isPurchase || isSupplierReturn) && supplierId) {
   const supplier = await supplierRepo.getById(supplierId);
   if (supplier) {
-    const returnAmount = baseAmount;
+
+    const effectivePaid = isSupplierReturn
+      ? -Math.abs(paidAmount)
+      : paidAmount;
 
     const newPayable =
-      (supplier.payable ?? 0) - returnAmount;
+      isSupplierReturn
+        ? (supplier.payable ?? 0) - baseAmount
+        : (supplier.payable ?? 0) + baseAmount;
 
-    const newBalance =
-      newPayable - (supplier.paid ?? 0);
+    const newPaid = (supplier.paid ?? 0) + effectivePaid;
+
+    const newBalance = newPayable - newPaid;
 
     await supplierRepo.update({
       ...supplier,
       payable: newPayable,
+      paid: newPaid,
       balance: newBalance,
       invoices: (supplier.invoices ?? 0) + 1,
     });
 
-    // Optional supplier refund entry
-    if (paidAmount !== 0) {
+    // 🔁 Payment entry (negative for Supplier Return)
+    if (effectivePaid !== 0) {
       await supplierPaymentRepository.add({
         supplierId: supplier.id!,
         supplierName: supplier.name,
         invoiceNo,
-        amount: -Math.abs(paidAmount), // money received back
+        amount: effectivePaid, // NEGATIVE for Supplier Return
         paymentDate: new Date().toISOString(),
-        remarks: `Supplier Return ${invoiceNo}`,
-        payableSnapshot: newPayable,
+        remarks: isSupplierReturn
+          ? `Supplier Return adjustment ${invoiceNo}`
+          : invoiceNo,
+
+        payableSnapshot: invoicePayable,
         balanceSnapshot: newBalance,
       });
     }
@@ -673,24 +658,28 @@ for (const ci of cart) {
 
   let newStock = item.availableStock;
 
-  if (transactionType === "Sale") {
+  if (isSale) {
     newStock -= ci.qty;
-  } else if (transactionType === "Purchase") {
-    newStock += ci.qty;
-  } else if (isSale || isSupplierReturn) {
-  newStock -= ci.qty;
-}
-else if (isPurchase || isCustomerReturn) {
-  newStock += ci.qty;
-}
+  }
 
-  // Quotation → no stock change
+  if (isPurchase) {
+    newStock += ci.qty;
+  }
+
+  if (isCustomerReturn) {
+    newStock += ci.qty;
+  }
+
+  if (isSupplierReturn) {
+    newStock -= ci.qty;
+  }
 
   await itemsRepository.update({
     ...item,
     availableStock: newStock,
   });
 }
+
 
   /* --------------------------------------------------
      1️⃣1️⃣ RESET UI
@@ -706,17 +695,22 @@ else if (isPurchase || isCustomerReturn) {
   setSelectedSupplierId(null);
   setSupplierInput("Direct Purchase");
 
+  setReturnMode("customer"); // ✅ IMPORTANT
+
+
   /* --------------------------------------------------
      1️⃣2️⃣ NEXT INVOICE
   -------------------------------------------------- */
-  const prefix =
-    transactionType === "Sale"
-      ? "SAL"
-      : transactionType === "Purchase"
-      ? "PUR"
-      : transactionType === "Return"
-      ? "RET"
-      : "QTN";
+ const prefix =
+  transactionType === "Sale"
+    ? "SAL"
+    : transactionType === "Purchase"
+    ? "PUR"
+    : transactionType === "Return"
+    ? returnMode === "supplier"
+      ? "RET-S"
+      : "RET-C"
+    : "QTN";
 
   const nextInvoice = await getNextInvoiceNoFromDB(prefix);
   setInvoiceNo(nextInvoice);
@@ -882,18 +876,24 @@ useEffect(() => {
 
 useEffect(() => {
   async function refreshInvoiceNo() {
-    const prefix =
-      transactionType === "Sale" ? "SAL" :
-      transactionType === "Purchase" ? "PUR" :
-      transactionType === "Return" ? "RET" :
-      "QTN";
+    let prefix: string;
+
+    if (transactionType === "Return") {
+      prefix = returnMode === "supplier" ? "RET-S" : "RET-C";
+    } else if (transactionType === "Purchase") {
+      prefix = "PUR";
+    } else if (transactionType === "Sale") {
+      prefix = "SAL";
+    } else {
+      prefix = "QTN";
+    }
 
     const nextInvoice = await getNextInvoiceNoFromDB(prefix);
     setInvoiceNo(nextInvoice);
   }
 
   refreshInvoiceNo();
-}, [transactionType]);
+}, [transactionType, returnMode]);
 
 useEffect(() => {
   supplierRepo.getAll().then(data =>
@@ -909,15 +909,18 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
-  if (!isPurchase) {
-    setSupplierBalance(0);
-    return;
-  }
+  if (!isReturn || returnMode !== "supplier") return;
+  if (!selectedSupplierId) return;
 
   const supplier = suppliers.find(s => s.id === selectedSupplierId);
-  setSupplierBalance(supplier?.balance ?? 0);
-}, [selectedSupplierId, suppliers, isPurchase]);
+  if (!supplier) return;
 
+  // Supplier arrears (balance)
+  setSupplierBalance(supplier.balance ?? 0);
+
+  // Force PAID to be negative for Supplier Return (if applicable)
+  setPaid(prev => (prev > 0 ? -prev : prev));
+}, [isReturn, returnMode, selectedSupplierId, suppliers]);
 
 useEffect(() => {
   if (returnMode === "customer") {
@@ -933,6 +936,25 @@ useEffect(() => {
   }
 }, [returnMode, customers, suppliers]);
 
+useEffect(() => {
+  if (transactionType !== "Return") return;
+
+  const treatAsPurchase = returnMode === "supplier";
+
+  setCart(prev =>
+    prev.map(ci => {
+      const item = items.find(i => i.id === ci.originalItemId);
+      if (!item) return ci;
+
+      return {
+        ...ci,
+        minUnitPrice: treatAsPurchase
+          ? item.purchasePrice ?? 0
+          : item.retailPrice,
+      };
+    })
+  );
+}, [returnMode, transactionType, items]);
 
   // =====================
   // CART LOGIC
@@ -983,15 +1005,23 @@ function cancelSale() {
   );
 
   // Reset POS state
-  setCart([]);
-  setPaid(0);
-  setDiscountValue(0);
-  setTaxValue(0);
-  setSelectedCustomerId(null);
-  setCustomerInput("Walk-in Customer");
-  setSelectedSupplierId(null);
-  setSupplierInput("Direct Purchase");
-  setReturnMode(null);
+setCart([]);
+setPaid(0);
+setDiscountValue(0);
+setTaxValue(0);
+
+// Reset parties
+setSelectedCustomerId(null);
+setCustomerInput("Walk-in Customer");
+
+setSelectedSupplierId(null);
+setSupplierInput("Direct Purchase");
+
+// Reset return mode safely
+if (isReturn) {
+  setReturnMode("customer"); // default return
+}
+
 }
 
 function handleTransactionTypeChange(
@@ -1013,10 +1043,16 @@ function handleTransactionTypeChange(
   
 function addToCart(item: Item) {
 
+  const isSupplierReturn =
+    transactionType === "Return" && returnMode === "supplier";
+
+  const treatAsPurchase =
+    transactionType === "Purchase" || isSupplierReturn;
+
   // ❌ Block ONLY when stock must decrease
   if (stockDecreases && item.availableStock <= 0) return;
 
-  // 1️⃣ Update UI stock
+  // 1️⃣ Update UI stock (UNCHANGED)
   setItems(prev =>
     prev.map(i => {
       if (i.id !== item.id) return i;
@@ -1029,7 +1065,6 @@ function addToCart(item: Item) {
         return { ...i, availableStock: i.availableStock + 1 };
       }
 
-      // Quotation → no stock change
       return i;
     })
   );
@@ -1053,37 +1088,37 @@ function addToCart(item: Item) {
     }
 
     return [
-      ...prev,
-      {
-        id: Date.now(),
-        name: item.name,
-        qty: 1,
-        unit: "min",
+  ...prev,
+  {
+    id: Date.now(),
+    name: item.name,
+    qty: 1,
+    unit: "min",
 
-        minUnitPrice:
-          transactionType === "Purchase"
-            ? item.purchasePrice ?? 0
-            : item.retailPrice,
+    minUnitPrice: treatAsPurchase
+      ? item.purchasePrice ?? 0
+      : item.retailPrice,
 
-        convQty: item.ConvQty,
-        minunit: item.minunit,
-        maxunit: item.maxunit,
+    convQty: item.ConvQty,
+    minunit: item.minunit,
+    maxunit: item.maxunit,
 
-        costPrice: item.purchasePrice ?? 0,
-        priceCategory: "Retail",
+    costPrice: item.purchasePrice ?? 0,
 
-        discountType: "%",
-        discountValue: 0,
-        taxType: "%",
-        taxValue: 0,
+    priceCategory: "Retail", // ✅ VALID CartItem type
 
-        originalItemId: item.id!,
-        uiDeductedQty: stockDecreases ? 1 : 0,
-      },
-    ];
+    discountType: "%",
+    discountValue: 0,
+    taxType: "%",
+    taxValue: 0,
+
+    originalItemId: item.id!,
+    uiDeductedQty: stockDecreases ? 1 : 0,
+  },
+];
+
   });
 }
-
 
 function updateItem(updated: CartItem) {
   const originalItem = items.find(i => i.id === updated.originalItemId);
@@ -1218,7 +1253,7 @@ async function getNextInvoiceNoFromDB(
 ): Promise<string> {
   const allSales = await salesRepository.getAllSales();
 
-  // filter only invoices of the same prefix
+  // Only invoices of this prefix
   const sameTypeSales = allSales.filter(s =>
     s.invoiceNo?.startsWith(`${prefix}-`)
   );
@@ -1227,17 +1262,19 @@ async function getNextInvoiceNoFromDB(
     return `${prefix}-0001`;
   }
 
-  // Extract numeric part and find the maximum
-  const latestNumber = sameTypeSales
-    .map(s => {
-      const parts = s.invoiceNo.split("-");
-      return parseInt(parts[1], 10);
-    })
-    .filter(n => !isNaN(n))
-    .sort((a, b) => b - a)[0];
+  const latestNumber =
+    Math.max(
+      ...sameTypeSales
+        .map(s => {
+          const match = s.invoiceNo?.match(/(\d+)$/);
+          return match ? Number(match[1]) : 0;
+        })
+        .filter(n => !isNaN(n))
+    ) || 0;
 
   return `${prefix}-${String(latestNumber + 1).padStart(4, "0")}`;
 }
+
 
 function formatStock(
   stockMin: number,
@@ -1296,12 +1333,27 @@ const totals = useMemo(() => {
   const invoiceTotal = subtotal - invoiceDiscountAmount + invoiceTaxAmount;
 
   // 🔹 Previous arrears
-  const previousArrears = selectedCustomerId ? customerArrears : 0;
+  let previousArrears = 0;
+  if (!isPurchase && returnMode !== "supplier") {
+    // Customer or Sale
+    previousArrears = selectedCustomerId ? customerArrears : 0;
+  } else if (isPurchase || (isReturn && returnMode === "supplier")) {
+    // Supplier / Supplier Return
+    previousArrears = selectedSupplierId ? supplierBalance : 0;
+  }
 
   // 🔹 Total payable BEFORE considering paid amount
-  const totalPayable = isReturn
-    ? previousArrears - invoiceTotal
-    : previousArrears + invoiceTotal;
+  let totalPayable = 0;
+  if (isReturn && returnMode === "customer") {
+    // Customer Return: reduce invoice from arrears
+    totalPayable = previousArrears - invoiceTotal;
+  } else if (isReturn && returnMode === "supplier") {
+    // Supplier Return: reduce what we owe to supplier
+    totalPayable = previousArrears - invoiceTotal;
+  } else {
+    // Sale / Purchase
+    totalPayable = previousArrears + invoiceTotal;
+  }
 
   return {
     subtotal,
@@ -1315,6 +1367,7 @@ const totals = useMemo(() => {
 }, [
   cart,
   customerArrears,
+  supplierBalance,
   selectedDiscount,
   discountMode,
   discountValue,
@@ -1322,7 +1375,10 @@ const totals = useMemo(() => {
   taxMode,
   taxValue,
   selectedCustomerId,
+  selectedSupplierId,
   isReturn,
+  isPurchase,
+  returnMode,
 ]);
 
   const filteredItems = useMemo(() => {
@@ -1338,7 +1394,7 @@ const totals = useMemo(() => {
 
     return matchesCategory && matchesBrand && matchesSearch;
   });
-}, [items, selectedCategory, selectedBrand, search]);
+}, [items, selectedCategory, selectedBrand, search, treatAsPurchase]);
 
 const balance = useMemo(() => {
   const paidValue = paid || 0; // on UI for return, paid is already negative
@@ -1356,12 +1412,17 @@ function normalizeToMinUnit(
 
   type UnitType = "min" | "max";
 
-  function getPriceByCategory(
+function getPriceByCategory(
   item: Item,
   category: "Retail" | "Discount" | "Wholesale"
 ) {
-  if (category === "Discount") return item.discountPrice ?? 0;
-  if (category === "Wholesale") return item.wholesalePrice ?? 0;
+  // 🔁 Purchase & Supplier Return use purchase price
+  if (treatAsPurchase) {
+    return item.purchasePrice ?? 0;
+  }
+
+  if (category === "Discount") return item.discountPrice ?? item.retailPrice;
+  if (category === "Wholesale") return item.wholesalePrice ?? item.retailPrice;
   return item.retailPrice ?? 0;
 }
 
@@ -1520,7 +1581,14 @@ return (
   ) : (
     filteredItems.map(item => {
       // 🔹 Dynamic display price based on mode
-      const displayPrice = isPurchase ? item.purchasePrice : item.retailPrice;
+      const treatAsPurchase =
+      transactionType === "Purchase" ||
+      (transactionType === "Return" && returnMode === "supplier");
+
+      const displayPrice = treatAsPurchase
+      ? item.purchasePrice ?? 0
+      : item.retailPrice;
+
 
       return (
         <div
@@ -1571,7 +1639,7 @@ return (
     </div>
 
  {transactionType === "Return" ? (
-  <div className="flex gap-4 text-sm font-semibold text-blue-500">
+  <div className="flex gap-4 text-sm font-semibold text-gray-400">
     <label className="flex items-center gap-1 cursor-pointer">
       <input
         type="radio"
@@ -1657,7 +1725,9 @@ return (
                     if (!supplierInput.trim()) {
                       setSupplierInput("Direct Purchase");
                       setSelectedSupplierId(null);
+                      setSupplierBalance(0); // ✅ reset arrears
                     }
+
                   } else {
                     setIsCustomerOpen(false);
                     if (!customerInput.trim()) {
@@ -1676,11 +1746,15 @@ return (
                   <div
                     key={s.id}
                     className="px-2 py-1 text-sm cursor-pointer hover:bg-indigo-100"
-                    onMouseDown={() => {
-                      setSelectedSupplierId(s.id!);
-                      setSupplierInput(s.name);
-                      setIsSupplierOpen(false);
-                    }}
+                   onMouseDown={() => {
+                  setSelectedSupplierId(s.id!);
+                  setSupplierInput(s.name);
+
+                  // ✅ LOAD PREVIOUS ARREARS
+                  setSupplierBalance(s.balance ?? 0);
+
+                  setIsSupplierOpen(false);
+                      }}
                   >
                     {s.name}
                   </div>
@@ -1824,7 +1898,7 @@ return (
     </div>
 )}
 
-{isPurchase &&
+{(isPurchase || isSupplierReturn) &&
   selectedSupplierId !== null &&
   supplierBalance > 0 && (
     <div className="flex justify-between text-red-600 font-medium">
@@ -1938,7 +2012,7 @@ return (
       />
 
       {/* Price Category / Buy Price */}
-      {isPurchase ? (
+      {treatAsPurchase ? (
         <>
           <label className="text-sm font-medium block mb-1">Buy Price</label>
           <input

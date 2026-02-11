@@ -30,12 +30,33 @@ export default function Invoices() {
 
   const [search, setSearch] = useState("");
 
+const [returnSubFilter, setReturnSubFilter] = useState<"All" | "Cus" | "Sup">("All");
+
   // Helper to get the correct party name (customer or supplier)
-  const getPartyName = (inv: DBSale) =>
-  inv.transactionType === "Purchase" ? inv.supplierName ?? "N/A" : inv.customerName ?? "N/A";
+  const getPartyName = (inv: DBSale) => {
+  if (inv.transactionType === "Purchase") {
+    return inv.supplierName || "Direct Purchase";
+  }
+
+  if (inv.transactionType === "Return") {
+    // Supplier Return invoices have RET-S prefix
+    if (inv.invoiceNo?.startsWith("RET-S")) {
+      return inv.supplierName || "Direct Purchase";
+    }
+    // Customer Return
+    return inv.customerName || "Walk-in Customer";
+  }
+
+  // Sale & Quotation
+  return inv.customerName || "Walk-in Customer";
+};
 
   // Load total count on mount or filter change
   useEffect(() => {
+    // Reset return sub-filter when switching type
+    if (transactionTypeFilter !== "Return") {
+      setReturnSubFilter("Cus");
+    }
     async function loadCount() {
       if (transactionTypeFilter === "All") {
         const count = await salesRepository.getSalesCount();
@@ -107,17 +128,34 @@ export default function Invoices() {
 
   // 🔽 AFTER all useEffect / useMemo blocks
 const filteredInvoices = sales.filter(inv => {
-  // Radio filter
-  if (transactionTypeFilter !== "All" && inv.transactionType !== transactionTypeFilter) {
-    return false;
+
+  // Transaction type filter
+  if (transactionTypeFilter !== "All") {
+    if (inv.transactionType !== transactionTypeFilter) return false;
+  }
+
+  // Return sub-filter (RET-C / RET-S)
+  if (transactionTypeFilter === "Return") {
+
+    if (returnSubFilter === "Cus" && !inv.invoiceNo?.startsWith("RET-C")) {
+      return false;
+    }
+
+    if (returnSubFilter === "Sup" && !inv.invoiceNo?.startsWith("RET-S")) {
+      return false;
+    }
+
+    // "All" = show both
   }
 
   // Search filter
   if (search.trim()) {
     const q = search.toLowerCase();
+
     return (
-      inv.invoiceNo.toLowerCase().includes(q) ||
-      inv.customerName.toLowerCase().includes(q)
+      inv.invoiceNo?.toLowerCase().includes(q) ||
+      inv.customerName?.toLowerCase().includes(q) ||
+      inv.supplierName?.toLowerCase().includes(q)
     );
   }
 
@@ -133,23 +171,33 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
   if (!confirmDelete) return;
 
   try {
-    /* --------------------------------------------------
+   /* --------------------------------------------------
    1️⃣ STOCK REVERSAL + DELETE
 -------------------------------------------------- */
-      if (invoice.transactionType === "Sale") {
-        await salesRepository.deleteSaleAndRestoreStock(invoice.id);
-      }
-      else if (
-        invoice.transactionType === "Purchase" ||
-        invoice.transactionType === "Return"
-      ) {
-        // Purchase & Return both ADD stock originally → reduce on delete
-        await salesRepository.deletePurchaseAndReduceStock(invoice.id);
-      }
-      else if (invoice.transactionType === "Quotation") {
-        // 🧾 Quotation has no stock, no accounts → just delete
-        await salesRepository.deleteQuotation(invoice.id);
-      }
+if (invoice.transactionType === "Sale") {
+  // Sale originally reduced stock → restore it
+  await salesRepository.deleteSaleAndRestoreStock(invoice.id);
+}
+else if (invoice.transactionType === "Purchase") {
+  // Purchase originally increased stock → reduce it
+  await salesRepository.deletePurchaseAndReduceStock(invoice.id);
+}
+else if (invoice.transactionType === "Return") {
+
+  // 🔹 Determine return type by prefix
+  const isSupplierReturn = invoice.invoiceNo?.startsWith("RET-S");
+
+  if (isSupplierReturn) {
+    // Supplier Return originally reduced stock → restore it
+    await salesRepository.deleteSaleAndRestoreStock(invoice.id);
+  } else {
+    // Customer Return originally increased stock → reduce it
+    await salesRepository.deletePurchaseAndReduceStock(invoice.id);
+  }
+}
+else if (invoice.transactionType === "Quotation") {
+  await salesRepository.deleteQuotation(invoice.id);
+}
 
     /* --------------------------------------------------
        2️⃣ CUSTOMER ACCOUNT REVERSAL
@@ -198,38 +246,57 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
       }
     }
 
-    /* --------------------------------------------------
-       3️⃣ SUPPLIER ACCOUNT REVERSAL
-    -------------------------------------------------- */
-    if (invoice.transactionType === "Purchase" && invoice.supplierId) {
-      const supplier = await suppliersRepository.getById(invoice.supplierId);
-      if (supplier) {
+   /* --------------------------------------------------
+   3️⃣ SUPPLIER ACCOUNT REVERSAL (PURCHASE & RETURN)
+-------------------------------------------------- */
+if (
+  (invoice.transactionType === "Purchase" ||
+   invoice.transactionType === "Return") &&
+  invoice.supplierId
+) {
+  const supplier = await suppliersRepository.getById(invoice.supplierId);
+  if (supplier) {
 
-        const invoiceBase =
-          (invoice.subtotal ?? 0) -
-          (invoice.discount ?? 0) +
-          (invoice.tax ?? 0);
+    const invoiceBase =
+      (invoice.subtotal ?? 0) -
+      (invoice.discount ?? 0) +
+      (invoice.tax ?? 0);
 
-        const newPayable = (supplier.payable ?? 0) - invoiceBase;
-        const newPaid = (supplier.paid ?? 0) - (invoice.paid ?? 0);
-        const newBalance = newPayable - newPaid;
-        const newInvoices = Math.max(0, (supplier.invoices ?? 1) - 1);
+    let newPayable = supplier.payable ?? 0;
+    let newPaid = supplier.paid ?? 0;
 
-        await suppliersRepository.update({
-          ...supplier,
-          payable: newPayable,
-          paid: newPaid,
-          balance: newBalance,
-          invoices: newInvoices,
-        });
-
-        if (invoice.paid && invoice.paid > 0) {
-          await supplierPaymentRepository.deleteByInvoiceNo(
-            String(invoice.invoiceNo)
-          );
-        }
-      }
+    // 🔹 Reverse Purchase
+    if (invoice.transactionType === "Purchase") {
+      newPayable -= invoiceBase;
+      newPaid -= invoice.paid ?? 0;
     }
+
+    // 🔹 Reverse Supplier Return
+    if (invoice.transactionType === "Return") {
+      newPayable += invoiceBase;
+      newPaid -= invoice.paid ?? 0; 
+      // invoice.paid is NEGATIVE in return
+    }
+
+    const newBalance = newPayable - newPaid;
+    const newInvoices = Math.max(0, (supplier.invoices ?? 1) - 1);
+
+    await suppliersRepository.update({
+      ...supplier,
+      payable: newPayable,
+      paid: newPaid,
+      balance: newBalance,
+      invoices: newInvoices,
+    });
+
+    // 🔁 Remove supplier payment entry (Purchase & Return)
+    if (invoice.paid && invoice.paid !== 0) {
+      await supplierPaymentRepository.deleteByInvoiceNo(
+        String(invoice.invoiceNo)
+      );
+    }
+  }
+}
 
     /* --------------------------------------------------
        4️⃣ UI CLEANUP
@@ -254,39 +321,80 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
         <h1 className="text-xl font-semibold">View Invoices</h1>
 
         <div className="flex items-center justify-between gap-4">
-          {/* Transaction type filter */}
-        <div className="flex gap-3 mt-2">
-          {TRANSACTION_TYPES.map(type => (
-            <label
-              key={type}
-              className={`flex items-center gap-2 px-3 py-1 rounded cursor-pointer transition
-                ${transactionTypeFilter === type
-                  ? "bg-indigo-600 text-white"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"}
-              `}
-            >
-              <input
-                type="radio"
-                name="transactionType"
-                value={type}
-                checked={transactionTypeFilter === type}
-                onChange={() => setTransactionTypeFilter(type)}
-                className="mr-1 hidden"
-              />
-              {type}
-            </label>
-          ))}
-        </div>
 
-        {/* Right: Search input */}
-          <input
-            type="text"
-            placeholder="Search invoice or customer..."
-            className="border rounded px-2 py-1 text-sm w-64"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-        </div>
+  {/* LEFT: Transaction Type */}
+  <div className="flex gap-3 mt-2">
+    {TRANSACTION_TYPES.map(type => (
+      <label
+        key={type}
+        className={`flex items-center gap-2 px-3 py-1 rounded cursor-pointer transition
+          ${transactionTypeFilter === type
+            ? "bg-indigo-600 text-white"
+            : "bg-gray-200 text-gray-700 hover:bg-gray-300"}
+        `}
+      >
+        <input
+          type="radio"
+          name="transactionType"
+          value={type}
+          checked={transactionTypeFilter === type}
+          onChange={() => {
+            setTransactionTypeFilter(type);
+            if (type !== "Return") {
+              setReturnSubFilter("All");
+            }
+          }}
+          className="hidden"
+        />
+        {type}
+      </label>
+    ))}
+  </div>
+
+<input
+      type="text"
+      placeholder="Search Inv/Cus/Sup ..."
+      className={`border rounded px-2 py-1 text-sm transition-all duration-200
+        ${transactionTypeFilter === "Return" ? "w-40" : "w-64"}
+      `}
+      value={search}
+      onChange={(e) => setSearch(e.target.value)}
+    />
+
+  {/* RIGHT: Return radios + Search */}
+  <div className="flex items-center gap-2">
+
+    {transactionTypeFilter === "Return" && (
+      <div className="flex gap-2 text-xs">
+
+        {["All", "Cus", "Sup"].map(type => (
+          <label
+            key={type}
+            className={`px-1 py-1 rounded cursor-pointer
+              ${returnSubFilter === type
+                ? "bg-green-600 text-white"
+                : "bg-gray-200 text-gray-700 hover:bg-gray-300"}
+            `}
+          >
+            <input
+              type="radio"
+              name="returnSub"
+              value={type}
+              checked={returnSubFilter === type}
+              onChange={() => setReturnSubFilter(type as any)}
+              className="hidden"
+            />
+            {type}
+          </label>
+        ))}
+
+      </div>
+    )}
+
+  </div>
+
+</div>
+
 
         {loading ? <div>Loading invoices...</div> : (
           <table className="w-full border-collapse border mt-2 text-sm">
