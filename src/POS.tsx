@@ -92,11 +92,11 @@ export function normalizeToMinUnit(
 /**
  * Convert normalized min-unit price to display unit
  */
-export function priceForDisplay(
+function priceForDisplay(
   minUnitPrice: number,
   unit: UnitType,
   convQty: number
-): number {
+) {
   return unit === "max" ? minUnitPrice * convQty : minUnitPrice;
 }
 
@@ -109,6 +109,11 @@ export function calculateTotal(
 ): number {
   return qty * minUnitPrice;
 }
+
+//round off function
+export const roundTo = (num: number, decimals = 2) => {
+  return Number(num.toFixed(decimals));
+};
 
 // =====================
 // Helpers
@@ -1135,62 +1140,63 @@ function updateItem(updated: CartItem) {
       ? updated.qty * originalItem.ConvQty
       : updated.qty;
 
-  /* --------------------------------------------------
-     2️⃣ Compute diff against previous qty
-         (+ve = increase, -ve = decrease)
-  -------------------------------------------------- */
-  const diff = newQtyMin - prevCartItem.qty;
+  const roundedQty = roundTo(newQtyMin, 2);
 
   /* --------------------------------------------------
-     3️⃣ Update UI stock (direction depends on mode)
+     2️⃣ Compute diff against previous qty
+  -------------------------------------------------- */
+  const diff = roundedQty - prevCartItem.qty;
+
+  /* --------------------------------------------------
+     3️⃣ Update UI stock
   -------------------------------------------------- */
   setItems(prev =>
     prev.map(i => {
       if (i.id !== originalItem.id) return i;
 
       if (stockDecreases) {
-        // SALE → stock decreases
-        return { ...i, availableStock: i.availableStock - diff };
+        return {
+          ...i,
+          availableStock: roundTo(i.availableStock - diff, 2),
+        };
       }
 
       if (stockIncreases) {
-        // PURCHASE or RETURN → stock increases
-        return { ...i, availableStock: i.availableStock + diff };
+        return {
+          ...i,
+          availableStock: roundTo(i.availableStock + diff, 2),
+        };
       }
 
-      return i; // Quotation or no stock change
+      return i;
     })
   );
 
   /* --------------------------------------------------
-     4️⃣ Update cart item
+     4️⃣ PRICE — DO NOT RECALCULATE
+     Use the edited price from modal
+     (already MIN UNIT price)
+  -------------------------------------------------- */
+  const roundedMinUnitPrice = roundTo(updated.minUnitPrice, 2);
+
+  /* --------------------------------------------------
+     5️⃣ Update cart item
   -------------------------------------------------- */
   setCart(prev =>
     prev.map(ci =>
       ci.id === updated.id
         ? {
             ...ci,
-            qty: newQtyMin,
+            qty: roundedQty,
             unit: updated.unit,
             priceCategory: updated.priceCategory,
             discountType: updated.discountType,
             discountValue: updated.discountValue,
             taxType: updated.taxType,
             taxValue: updated.taxValue,
-
-            // 🔑 KEY FIX: PURCHASE uses purchasePrice ONLY
-            minUnitPrice: isPurchase
-              ? originalItem.purchasePrice ?? 0
-              : updated.priceCategory === "Discount"
-              ? originalItem.discountPrice ?? originalItem.retailPrice
-              : updated.priceCategory === "Wholesale"
-              ? originalItem.wholesalePrice
-              : originalItem.retailPrice,
-
+            minUnitPrice: roundedMinUnitPrice, // 🔥 use edited price
             convQty: originalItem.ConvQty,
-
-            // SALE only tracks UI deductions as total qty in cart
-            uiDeductedQty: !isPurchase && !isReturn ? newQtyMin : 0,
+            uiDeductedQty: !isPurchase && !isReturn ? roundedQty : 0,
           }
         : ci
     )
@@ -1282,14 +1288,20 @@ function formatStock(
   minUnit: string,
   maxUnit: string
 ) {
+  const roundedStock = +stockMin.toFixed(2);
+
   if (convQty <= 0) {
-    return `${stockMin} ${minUnit}`;
+    return `${roundedStock} ${minUnit}`;
   }
 
-  const max = Math.floor(stockMin / convQty);
-  const min = stockMin % convQty;
+  const max = Math.floor(roundedStock / convQty);
+
+  // Avoid floating precision issues
+  const remainderRaw = roundedStock - max * convQty;
+  const min = +remainderRaw.toFixed(2);
 
   const parts: string[] = [];
+
   if (max > 0) parts.push(`${max} ${maxUnit}`);
   if (min > 0) parts.push(`${min} ${minUnit}`);
 
@@ -1446,13 +1458,18 @@ function getBaseMinUnitPrice(
   return item.retailPrice;
 }
 
-function priceForDisplay(
-  minUnitPrice: number,
+const priceForDisplay = (
+  minPrice: number,
   unit: UnitType,
   convQty: number
-) {
-  return unit === "max" ? minUnitPrice * convQty : minUnitPrice;
-}
+) => {
+  const value =
+    unit === "min"
+      ? minPrice
+      : minPrice * convQty;
+
+  return parseFloat(value.toFixed(2));
+};
 
 function formatStockDisplay(
   minQty: number,
@@ -1468,7 +1485,7 @@ function formatStockDisplay(
   const min = minQty % convQty;
 
   if (max > 0 && min > 0) {
-    return `${max}${maxUnit} ${min}${minUnit}`;
+    return `${max}${maxUnit} ${min.toFixed(1)}${minUnit}`;
   }
 
   if (max > 0) {
@@ -1603,7 +1620,7 @@ return (
           <div className="font-medium text-blue-400">{item.name}</div>
 
           <div className="text-xs text-green-500">
-            <span className="text-yellow-500">Rs {displayPrice.toFixed(2)}</span> |{" "}
+            <span className="text-yellow-500">Rs {displayPrice.toFixed(1)}</span> |{" "}
             {item.availableStock > 0
               ? formatStockDisplay(
                   item.availableStock,
@@ -2018,7 +2035,13 @@ return (
           <input
             type="number"
             className="w-full p-2 border rounded mb-2"
-            value={editing.minUnitPrice}
+            value={Number(
+            priceForDisplay(
+              editing.minUnitPrice,
+              editing.unit,
+              editing.convQty
+            ).toFixed(2)
+                        )}
             onChange={(e) => {
               const price = Number(e.target.value) || 0;
               setEditing({
@@ -2058,7 +2081,7 @@ return (
           <input
             type="number"
             className="w-full p-2 border rounded mb-2"
-            value={priceForDisplay(editing.minUnitPrice, editing.unit, editing.convQty)}
+            value={Number(priceForDisplay(editing.minUnitPrice, editing.unit, editing.convQty).toFixed(2))}
             onChange={(e) => {
               const price = Number(e.target.value) || 0;
               setEditing({

@@ -30,7 +30,7 @@ export default function Invoices() {
 
   const [search, setSearch] = useState("");
 
-const [returnSubFilter, setReturnSubFilter] = useState<"All" | "Cus" | "Sup">("All");
+  const [returnSubFilter, setReturnSubFilter] = useState<"All" | "Cus" | "Sup">("All");
 
   // Helper to get the correct party name (customer or supplier)
   const getPartyName = (inv: DBSale) => {
@@ -55,7 +55,7 @@ const [returnSubFilter, setReturnSubFilter] = useState<"All" | "Cus" | "Sup">("A
   useEffect(() => {
     // Reset return sub-filter when switching type
     if (transactionTypeFilter !== "Return") {
-      setReturnSubFilter("Cus");
+      setReturnSubFilter("All");
     }
     async function loadCount() {
       if (transactionTypeFilter === "All") {
@@ -419,7 +419,7 @@ if (
                   <td className="border p-2">
                     {new Date(filteredInvoices.date).toLocaleDateString()}
                   </td>
-                  <td className="border p-2 text-right">{filteredInvoices.grandTotal}</td>
+                  <td className="border p-2 text-right">{filteredInvoices.grandTotal.toFixed()}</td>
                    <td className="border p-2 text-center">
                     <button
                       onClick={e => {
@@ -496,7 +496,7 @@ if (
                             const base = item.qty * item.price;
                             const discount = item.discountType === "%" ? (base * item.discountValue) / 100 : item.discountValue;
                             const taxed = item.taxType === "%" ? ((base - discount) * item.taxValue) / 100 : item.taxValue;
-                            return base - discount + taxed;
+                            return (base - discount + taxed).toFixed();
                         })()}
                         </td>
                       </tr>
@@ -510,7 +510,7 @@ if (
            <div className="border-t pt-2 mt-2 grid grid-cols-2 gap-4 text-sm">
                 {/* Left column */}
                 <div className="flex flex-col gap-1">
-                  <p><strong>Subtotal:</strong> {selectedInvoice.subtotal}</p>
+                  <p><strong>Subtotal:</strong> {selectedInvoice.subtotal.toFixed()}</p>
                   <p><strong>Discount:</strong> {selectedInvoice.discount}</p>
                   <p><strong>Tax:</strong> {selectedInvoice.tax}</p>
                   <p><strong>Prev. Dues:</strong> {selectedInvoice.dues}</p>
@@ -518,9 +518,9 @@ if (
 
                 {/* Right column */}
                 <div className="flex flex-col gap-1 text-right">
-                  <p className="text-blue-500"><strong>Grand Total:</strong> {selectedInvoice.grandTotal}</p>
+                  <p className="text-blue-500"><strong>Grand Total:</strong> {selectedInvoice.grandTotal.toFixed()}</p>
                   <p className="text-green-500"><strong>Paid:</strong> {selectedInvoice.paid}</p>
-                  <p className="text-red-500"><strong>Balance:</strong> {selectedInvoice.arrears}</p>
+                  <p className="text-red-500"><strong>Balance:</strong> {selectedInvoice.arrears.toFixed()}</p>
                 </div>
               </div>
 

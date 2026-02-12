@@ -1,5 +1,6 @@
 // src/db.ts
 import { openDB, DBSchema, IDBPDatabase } from "idb";
+import { StackId } from "recharts/types/util/ChartUtils";
 
 /* ==========================================================
    DATA TYPES
@@ -105,6 +106,10 @@ export interface Settings {
   contact: string;
   address: string;
   logo?: string; // base64 image
+  cylBPrice: string;
+  cylSPrice: string
+  cylDPrice: string,   
+  cylWPrice: string,
 }
 
 export interface CustomerPayment {

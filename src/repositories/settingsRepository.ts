@@ -7,6 +7,10 @@ const DEFAULT_SETTINGS: Omit<Settings, "id"> = {
   contact: "",
   address: "",
   logo: "/images/logo.png", // fallback logo path
+  cylBPrice: "",
+  cylSPrice: "",
+  cylDPrice: "",   
+  cylWPrice: "",
 };
 
 export const settingsRepository = {

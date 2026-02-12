@@ -23,6 +23,7 @@ import {
   FaBoxes,
 } from "react-icons/fa";
 
+import { settingsRepository } from "./repositories/settingsRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
 import { unitRepository } from "./repositories/unitRepository";
@@ -64,6 +65,10 @@ export default function ItemsPage() {
   const [form, setForm] = useState<Omit<Item, "id">>(emptyForm);
 
   const svgRefs = useRef<Record<number | string, SVGSVGElement | null>>({});
+
+  const [gasBuyPrice, setGasBuyPrice] = useState<number>(0);
+  const [gasSellPrice, setGasSellPrice] = useState<number>(0);
+  const [showGasFields, setShowGasFields] = useState(false);
 
   // Load items for table/cards
   async function loadPage() {
@@ -127,32 +132,74 @@ export default function ItemsPage() {
     setFormOpen(true);
   }
 
-  // --- openEdit ---
-function openEdit(it: Item) {
+// --- Open Edit ---
+async function openEdit(it: Item) {
   setEditingItem(it);
-  setForm({
-    name: it.name,
-    barcode: it.barcode,
-    brand: it.brand,
-    category: it.category,
-    minunit: it.minunit,
-    maxunit: it.maxunit,
-    ConvQty: it.ConvQty,
-    purchasePrice: it.purchasePrice,
-    retailPrice: it.retailPrice,
-    discountPrice: it.discountPrice || 0,
-    wholesalePrice: it.wholesalePrice,
-    description: it.description || "",
-    availableStock: it.availableStock
-  });
+
+  const isGas = it.category?.trim().toLowerCase() === "gas";
+
+  if (isGas) {
+    // Fetch saved 11.8kg prices from settings
+    const settings = await settingsRepository.get();
+
+    const buy112 = Number(settings?.cylBPrice) || 0;
+    const sell112 = Number(settings?.cylSPrice) || 0;
+    const discount112 = Number(settings?.cylDPrice) || 0;
+    const wholesale112 = Number(settings?.cylWPrice) || 0;
+
+    // Calculate 1kg prices
+    const perKgBuy = +(buy112 / 11.8).toFixed(2);
+    const perKgSell = +(sell112 / 11.8).toFixed(2);
+    const perKgDiscount = +(discount112 / 11.8).toFixed(2);
+    const perKgWholesale = +(wholesale112 / 11.8).toFixed(2);
+
+    setForm({
+      name: it.name,
+      barcode: it.barcode,
+      brand: it.brand,
+      category: it.category,
+      minunit: it.minunit,
+      maxunit: it.maxunit,
+      ConvQty: it.ConvQty,
+      purchasePrice: perKgBuy,
+      retailPrice: perKgSell,
+      discountPrice: perKgDiscount,
+      wholesalePrice: perKgWholesale,
+      description: it.description || "",
+      availableStock: it.availableStock
+    });
+  } else {
+    // Non-Gas items, use existing item values
+    setForm({
+      name: it.name,
+      barcode: it.barcode,
+      brand: it.brand,
+      category: it.category,
+      minunit: it.minunit,
+      maxunit: it.maxunit,
+      ConvQty: it.ConvQty,
+      purchasePrice: it.purchasePrice,
+      retailPrice: it.retailPrice,
+      discountPrice: it.discountPrice || 0,
+      wholesalePrice: it.wholesalePrice,
+      description: it.description || "",
+      availableStock: it.availableStock
+    });
+  }
+
   setFormOpen(true);
 }
 
-  function closeForm() {
-    setEditingItem(null);
-    setForm(emptyForm);
-    setFormOpen(false);
-  }
+ // --- Close Form ---
+function closeForm() {
+  setEditingItem(null);
+
+  // Reset main form
+  setForm(emptyForm);
+
+  // Close modal
+  setFormOpen(false);
+}
 
   function getCategoryIdByName(name: string) {
   return categories.find(c => c.name === name)?.id;
@@ -377,7 +424,7 @@ convQty: number
 
                             {minQty > 0 && (
                               <div className="text-green-600 text-xs">
-                                {minQty} {it.minunit}s
+                                {minQty.toFixed(1)} {it.minunit}s
                               </div>
                             )}
 
@@ -507,15 +554,54 @@ convQty: number
                 {/* <label className="block text-xs font-medium mb-1">Category</label> */}
                 {/* Category */}
                 <select
-                className="w-full p-2 border rounded"
-                value={form.category}
-                onChange={(e) => setForm({ ...form, category: e.target.value })}
-              >
-                <option value="">Select Category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.name}>{c.name}</option>
-                ))}
-              </select>
+                  className="w-full p-2 border rounded"
+                  value={form.category}
+                  onChange={async (e) => {
+                    const selectedCategory = e.target.value;
+                    setForm(prev => ({ ...prev, category: selectedCategory }));
+
+                    if (selectedCategory.trim().toLowerCase() === "gas") {
+                      // Fetch the 11.8kg prices from settings
+                      const settings = await settingsRepository.get();
+                      if (settings) {
+                        const buy112 = Number(settings.cylBPrice) || 0;
+                        const sell112 = Number(settings.cylSPrice) || 0;
+                        const discount112 = Number(settings.cylDPrice) || 0;
+                        const wholesale112 = Number(settings.cylWPrice) || 0;
+
+                        // Calculate 1kg prices
+                        const perKgBuy = +(buy112 / 11.8).toFixed(2);
+                        const perKgSell = +(sell112 / 11.8).toFixed(2);
+                        const perKgDiscount = +(discount112 / 11.8).toFixed(2);
+                        const perKgWholesale = +(wholesale112 / 11.8).toFixed(2);
+
+                        // Update form values
+                        setForm(prev => ({
+                          ...prev,
+                          purchasePrice: perKgBuy,
+                          retailPrice: perKgSell,
+                          discountPrice: perKgDiscount,
+                          wholesalePrice: perKgWholesale
+                        }));
+                      }
+                    } else {
+                      // Non-Gas category: reset all 1kg prices to zero
+                      setForm(prev => ({
+                        ...prev,
+                        purchasePrice: 0,
+                        retailPrice: 0,
+                        discountPrice: 0,
+                        wholesalePrice: 0
+                      }));
+                    }
+                  }}
+                >
+                  <option value="">Select Category</option>
+                  {categories.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+
               </div>
 
               <div>
