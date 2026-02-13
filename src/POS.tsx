@@ -972,7 +972,7 @@ function cancelSale() {
       if (!ci) return i;
 
       // SALE → restore all deducted stock
-      if (!isPurchase && !isReturn) {
+      if (!isPurchase && !isReturn && !isQuotation) {
         return {
           ...i,
           availableStock: i.availableStock + ci.qty, // use total qty in cart, not uiDeductedQty

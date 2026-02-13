@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from "react";
-import { getSettings, saveSettings, Settings } from "./db";
+import { getSettings, saveSettings, Settings, updateItem } from "./db";
 import { categoriesRepository } from "./repositories/categoriesRepository";
+import { itemsRepository } from "./repositories/itemsRepository";
 
 const placeholderImg = "https://via.placeholder.com/150?text=No+Logo";
 
@@ -92,22 +93,38 @@ const saveGeneralSettings = async () => {
   alert("General settings saved!");
 };
 
-// --- Save Gas Prices (tab 2) ---
 const saveGasPrices = async () => {
   if (!hasGasCategory) return;
 
-  const currentSettings = await getSettings(); // fetch existing saved settings
+  const currentSettings = await getSettings();
   if (!currentSettings) return;
 
   await saveSettings({
-    ...currentSettings, // keep all existing general settings
+    ...currentSettings,
     cylBPrice: formData.cylBPrice,
     cylSPrice: formData.cylSPrice,
     cylDPrice: formData.cylDPrice,
     cylWPrice: formData.cylWPrice
   });
 
-  alert("Gas cylinder prices saved!");
+  // 🔹 UPDATE ALL GAS ITEMS
+  const items = await itemsRepository.getAll();
+
+  const gasItems = items.filter(
+    item => item.category === "Gas"
+  );
+
+  for (const item of gasItems) {
+    await updateItem({
+      ...item,
+      purchasePrice: Number((Number(formData.cylBPrice)/11.8).toFixed(2)),   //Purchase price
+      retailPrice: Number((Number(formData.cylSPrice)/11.8).toFixed(2)),     // retail price
+      discountPrice: Number((Number(formData.cylDPrice)/11.8).toFixed(2)),   // discount
+      wholesalePrice: Number((Number(formData.cylWPrice)/11.8).toFixed(2))   // wholesale
+    });
+  }
+
+  alert("Gas cylinder prices saved and applied to all Gas items!");
 };
 
   if (loading) return <p>Loading...</p>;
