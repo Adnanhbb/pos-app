@@ -538,7 +538,7 @@ if (isSale || isCustomerReturn) {
   -------------------------------------------------- */
   await salesRepository.addTransaction({
     invoiceNo,
-    date: new Date().toISOString(),
+    date: selectedDate ? new Date(selectedDate).toISOString() : new Date().toISOString(),
     transactionType,
 
     customerId,

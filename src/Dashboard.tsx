@@ -65,6 +65,10 @@ import Invoices from "./Invoices";
 import { authRepository } from "./repositories/authRepository";
 import { settingsRepository } from "./repositories/settingsRepository";
 import { staffRepository } from "./repositories/staffRepository";
+import { salesRepository } from "./repositories/salesRepository";
+import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
+import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
+import { expenseRepository } from "./repositories/expenseRepository";
 
 import type { User } from "./db";
 
@@ -107,7 +111,8 @@ export default function Dashboard() {
   Password: "",
 });
 
-
+  const [customStart, setCustomStart] = useState<string>("");
+  const [customEnd, setCustomEnd] = useState<string>("");
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   const menuItems = [
@@ -126,10 +131,196 @@ export default function Dashboard() {
 
   const timeFilters = ["Today", "Weekly", "Monthly", "Custom"] as const;
 
-  const handleMenuClick = (itemName: string) => {
-    setActiveItem(itemName);
-    if (sidebarOpen) setSidebarOpen(false);
+  const [salesChartData, setSalesChartData] = useState<{ month: string; sales: number }[]>([]);
+
+  const isWithinRange = (dateStr: string, start: Date, end: Date) => {
+  const d = new Date(dateStr);
+  return d >= start && d <= end;
   };
+
+const getDateRange = (filter: string): { start: Date; end: Date } => {
+  const now = new Date();
+  let start: Date;
+  let end: Date = new Date();
+  end.setHours(23, 59, 59, 999); // ensure end of day
+
+  switch (filter) {
+    case "Daily":
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      break;
+
+    case "Weekly":
+      start = new Date();
+      start.setDate(now.getDate() - 7);
+      break;
+
+    case "Monthly":
+      start = new Date(now.getFullYear(), now.getMonth(), 1);
+      break;
+
+    case "Custom":
+      start = new Date(customStart);
+      end = new Date(customEnd);
+      end.setHours(23, 59, 59, 999); // include full day
+      break;
+
+    default:
+      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  }
+
+  return { start, end };
+};
+
+const [kpis, setKpis] = useState({
+  sales: 0,
+  purchases: 0,
+  customerReturns: 0,
+  supplierReturns: 0,
+  customerPayments: 0,
+  supplierPayments: 0,
+  expenses: 0,
+  profit: 0,
+});
+
+const loadDashboardData = async () => {
+  const { start, end } = getDateRange(timeFilter);
+
+  const transactions = await salesRepository.getAllSales();
+  const customerPayments = await customerPaymentRepository.getAll();
+  const supplierPayments = await supplierPaymentRepository.getAll();
+  const expenses = await expenseRepository.getAll();
+
+  // ---- FILTER BY DATE ----
+  const filteredTx = transactions.filter(t =>
+    isWithinRange(t.date, start, end)
+  );
+
+  const filteredCustomerPayments = customerPayments.filter(p =>
+    isWithinRange(p.paymentDate, start, end)
+  );
+
+  const filteredSupplierPayments = supplierPayments.filter(p =>
+    isWithinRange(p.paymentDate, start, end)
+  );
+
+  const filteredExpenses = expenses.filter(e =>
+    isWithinRange(e.date, start, end)
+  );
+
+  // ---- SALES ----
+  const sales = filteredTx
+    .filter(t => t.transactionType === "Sale")
+    .reduce((sum, t) => sum + (t.subtotal - t.discount + t.tax), 0);
+
+  // ---- PURCHASES ----
+  const purchases = filteredTx
+    .filter(t => t.transactionType === "Purchase")
+    .reduce((sum, t) => sum + (t.subtotal - t.discount + t.tax), 0);
+
+  // ---- RETURNS ----
+  const customerReturns = filteredTx
+    .filter(t =>
+      t.transactionType === "Return" &&
+      t.invoiceNo.startsWith("RET-C-")
+    )
+    .reduce((sum, t) => sum + (t.subtotal - t.discount + t.tax), 0);
+
+  const supplierReturns = filteredTx
+    .filter(t =>
+      t.transactionType === "Return" &&
+      t.invoiceNo.startsWith("RET-S-")
+    )
+    .reduce((sum, t) => sum + (t.subtotal - t.discount + t.tax), 0);
+
+  // ---- PAYMENTS ----
+  const totalCustomerPayments = filteredCustomerPayments
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  const totalSupplierPayments = filteredSupplierPayments
+    .reduce((sum, p) => sum + p.amount, 0);
+
+  // ---- EXPENSES ----
+  const totalExpenses = filteredExpenses
+    .reduce((sum, e) => sum + e.amount, 0);
+
+ // ---- PROFIT ----
+const salesProfit = filteredTx
+  .filter(t => t.transactionType === "Sale")
+  .reduce((sum, t) => sum + t.profit, 0);
+
+const customerReturnProfit = filteredTx
+  .filter(t => t.transactionType === "Return" && t.invoiceNo.startsWith("RET-C-"))
+  .reduce((sum, t) => sum + t.profit, 0);
+
+const totalProfit = salesProfit + customerReturnProfit;
+
+  setKpis({
+    sales,
+    purchases,
+    customerReturns,
+    supplierReturns,
+    customerPayments: totalCustomerPayments,
+    supplierPayments: totalSupplierPayments,
+    expenses: totalExpenses,
+    profit: totalProfit,
+  });
+
+  // ---- SALES CHART (CURRENT YEAR ONLY - INDEPENDENT) ----
+const currentYear = new Date().getFullYear();
+
+const months = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+];
+
+const salesByMonth: { month: string; sales: number }[] = months.map((m, i) => {
+  const total = transactions   // 👈 IMPORTANT: use ALL transactions
+    .filter(t => t.transactionType === "Sale")
+    .filter(t => {
+      const d = new Date(t.date);
+      return d.getFullYear() === currentYear && d.getMonth() === i;
+    })
+    .reduce((sum, t) => sum + (t.subtotal - t.discount + t.tax), 0);
+
+  return { month: m, sales: total };
+});
+
+setSalesChartData(salesByMonth);
+};
+
+const handleMenuClick = (itemName: string) => {
+  // Example: check if POS is active 
+  if (activeItem === "POS") {
+    const confirmLeave = window.confirm(
+      "Are you sure you want to leave the POS?"
+    );
+    if (!confirmLeave) {
+      return; // abort navigation
+    }
+  }
+
+  // Proceed with normal navigation
+  setActiveItem(itemName);
+  if (sidebarOpen) setSidebarOpen(false);
+
+  if (itemName === "Dashboard") {
+    loadDashboardData(); // refresh KPI data immediately
+  }
+};
+
+// ----- STATE -----
+const [showCustomModal, setShowCustomModal] = useState(false);
+
+// ----- TRIGGER MODAL WHEN CUSTOM SELECTED -----
+useEffect(() => {
+  if (timeFilter === "Custom") {
+    setShowCustomModal(true);
+  }
+}, [timeFilter]);
+
+useEffect(() => {
+  loadDashboardData();
+}, [timeFilter, customStart, customEnd]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -451,28 +642,28 @@ const saveEditedUser = async () => {
                 <FaDollarSign size={28} className="text-green-500" />
                 <div>
                   <h3 className="text-sm font-medium">Sales</h3>
-                  <p className="text-xl font-bold mt-1">$12,345</p>
+                  <p className="text-xl font-bold mt-1">Rs.{kpis.sales.toFixed()}</p>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaWallet size={28} className="text-teal-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Payments</h3>
-                  <p className="text-xl font-bold mt-1">$3,200</p>
-                </div>
-              </div>
-              <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
-                <FaShoppingBag size={28} className="text-yellow-500" />
-                <div>
                   <h3 className="text-sm font-medium">Purchases</h3>
-                  <p className="text-xl font-bold mt-1">567</p>
+                  <p className="text-xl font-bold mt-1">Rs.{kpis.purchases.toFixed()}</p>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
-                <FaMoneyBill size={28} className="text-red-500" />
+                <FaUndo size={28} className="text-yellow-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Expenses</h3>
-                  <p className="text-xl font-bold mt-1">$1,800</p>
+                  <h3 className="text-sm font-medium">Customer Returns</h3>
+                  <p className="text-xl font-bold mt-1">Rs.{kpis.customerReturns.toFixed()}</p>
+                </div>
+              </div>
+              <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
+                <FaUndo size={28} className="text-red-500" />
+                <div>
+                  <h3 className="text-sm font-medium">Supplier Returns</h3>
+                  <p className="text-xl font-bold mt-1">Rs.{kpis.supplierReturns.toFixed()}</p>
                 </div>
               </div>
             </div>
@@ -480,40 +671,42 @@ const saveEditedUser = async () => {
             {/* KPI ROW 2 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mt-6">
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
-                <FaUndo size={24} className="text-pink-500" />
+                <FaMoneyBill size={24} className="text-pink-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Returns</h3>
-                  <p className="text-xl font-bold mt-1">$1,200</p>
+                  <h3 className="text-sm font-medium">Dues Received</h3>
+                  <p className="text-xl font-bold mt-1">Rs.{kpis.customerPayments.toFixed()}</p>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaMoneyBill size={24} className="text-indigo-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Dues Payable</h3>
-                  <p className="text-xl font-bold mt-1">$5,000</p>
+                  <h3 className="text-sm font-medium">Dues Paid</h3>
+                  <p className="text-xl font-bold mt-1">Rs.{kpis.supplierPayments.toFixed()}</p>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaDollarSign size={24} className="text-teal-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Dues Received</h3>
-                  <p className="text-xl font-bold mt-1">$3,200</p>
+                  <h3 className="text-sm font-medium">Expenses</h3>
+                  <p className="text-xl font-bold mt-1">Rs.{kpis.expenses.toFixed()}</p>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaChartLine size={24} className="text-orange-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Profit</h3>
-                  <p className="text-xl font-bold mt-1">$4,500</p>
+                  <h3 className="text-sm font-medium">Net Profit</h3>
+                  <p className="text-xl font-bold mt-1">Rs.{kpis.profit.toFixed()}</p>
                 </div>
               </div>
             </div>
 
             {/* Sales Chart */}
             <div className="bg-white p-4 rounded-lg shadow-lg mt-6">
-              <h3 className="text-lg font-semibold mb-3">Sales Overview</h3>
+              <h3 className="text-lg font-semibold mb-3">
+                Sales Overview {new Date().getFullYear()}
+              </h3>
               <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={salesData}>
+                <LineChart data={salesChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" />
                   <YAxis />
@@ -523,7 +716,7 @@ const saveEditedUser = async () => {
               </ResponsiveContainer>
             </div>
 
-            {/* Recent Orders */}
+            {/* Recent Orders
             <div className="bg-white p-4 rounded-lg shadow-lg mt-6">
               <h3 className="text-lg font-semibold mb-3">Recent Orders</h3>
               <div className="overflow-x-auto">
@@ -548,10 +741,64 @@ const saveEditedUser = async () => {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </div> */}
           </>
         )}
       </main>
+
+      {/* ----- CUSTOM DATE MODAL ----- */}
+{/* ----- CUSTOM DATE MODAL ----- */}
+{showCustomModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
+    <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+      <h3 className="text-lg font-semibold mb-4">Select Date Range</h3>
+      <div className="grid grid-cols-1 gap-4">
+        <div>
+          <label className="block mb-1 font-medium">Start Date</label>
+          <input
+            type="date"
+            className="w-full border p-2 rounded"
+            value={customStart}
+            onChange={(e) => setCustomStart(e.target.value)}
+          />
+        </div>
+        <div>
+          <label className="block mb-1 font-medium">End Date</label>
+          <input
+            type="date"
+            className="w-full border p-2 rounded"
+            value={customEnd}
+            onChange={(e) => setCustomEnd(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="flex justify-end gap-3 mt-6">
+        <button
+          onClick={() => {
+            setShowCustomModal(false);
+            setTimeFilter("Today"); // optional reset
+          }}
+          className="px-4 py-2 bg-gray-300 rounded"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => {
+            if (!customStart || !customEnd) {
+              alert("Please select both start and end dates.");
+              return;
+            }
+            setShowCustomModal(false); // close modal
+            loadDashboardData();       // refresh dashboard
+          }}
+          className="px-4 py-2 bg-indigo-600 text-white rounded"
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }
