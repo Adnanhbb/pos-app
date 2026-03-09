@@ -60,6 +60,7 @@ import CustPayments from "./CustPayments";
 import SupPayments from "./SupPayments";
 import POS from "./POS";
 import Invoices from "./Invoices";
+import SalesReport from "./salesReport";
 
 // DB helpers
 import { authRepository } from "./repositories/authRepository";
@@ -100,7 +101,7 @@ export default function Dashboard() {
   const [paymentsOpen, setPaymentsOpen] = useState(false);
   const [businessName, setBusinessName] = useState<string>("");
   const [businessLogo, setBusinessLogo] = useState<string>("");
-
+  const [reportsOpen, setReportsOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [editUserOpen, setEditUserOpen] = useState(false);
   const [editForm, setEditForm] = useState<Omit<User, "id">>({
@@ -113,20 +114,21 @@ export default function Dashboard() {
 
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
-  const userMenuRef = useRef<HTMLDivElement>(null);
+  const desktopUserMenuRef = useRef<HTMLDivElement>(null);
+  const mobileUserMenuRef = useRef<HTMLDivElement>(null);
 
   const menuItems = [
-    { name: "Dashboard", icon: <FaTachometerAlt /> },
-    { name: "Staff", icon: <FaUserTie /> },
-    { name: "Customers", icon: <FaUsers /> },
-    { name: "Suppliers", icon: <FaTruck /> },
-    { name: "Entries", icon: <FaKeyboard /> },
-    { name: "Items", icon: <FaBoxes /> },
-    { name: "Sales", icon: <FaTruck /> },
-    { name: "Payments", icon: <FaMoneyBill /> },
-    { name: "Expenses", icon: <FaDollarSign /> },
-    { name: "Reports", icon: <FaChartBar /> },
-    { name: "Settings", icon: <FaCog /> },
+    { name: "Dashboard", icon: <FaTachometerAlt className="text-blue-500"/> },
+    { name: "Staff", icon: <FaUserTie className="text-yellow-500"/> },
+    { name: "Customers", icon: <FaUsers className="text-green-500"/> },
+    { name: "Suppliers", icon: <FaTruck className="text-red-500"/> },
+    { name: "Entries", icon: <FaKeyboard className="text-blue-300"/> },
+    { name: "Items", icon: <FaBoxes className="text-yellow-300"/> },
+    { name: "Sales", icon: <FaTruck className="text-green-300"/> },
+    { name: "Payments", icon: <FaMoneyBill className="text-red-300"/> },
+    { name: "Expenses", icon: <FaDollarSign className="text-blue-400"/> },
+    { name: "Reports", icon: <FaChartBar className="text-yellow-400"/> },
+    { name: "Settings", icon: <FaCog className="text-red-400"/> },
   ];
 
   const timeFilters = ["Today", "Weekly", "Monthly", "Custom"] as const;
@@ -322,15 +324,26 @@ useEffect(() => {
   loadDashboardData();
 }, [timeFilter, customStart, customEnd]);
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
-        setUserMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+ useEffect(() => {
+  const handleClickOutside = (event: MouseEvent) => {
+    const target = event.target as Node;
+
+    if (
+      desktopUserMenuRef.current &&
+      desktopUserMenuRef.current.contains(target)
+    ) return;
+
+    if (
+      mobileUserMenuRef.current &&
+      mobileUserMenuRef.current.contains(target)
+    ) return;
+
+    setUserMenuOpen(false);
+  };
+
+  document.addEventListener("mousedown", handleClickOutside);
+  return () => document.removeEventListener("mousedown", handleClickOutside);
+}, []);
 
   useEffect(() => {
   authRepository
@@ -418,7 +431,7 @@ const saveEditedUser = async () => {
       <div className="lg:hidden fixed top-0 left-0 right-0 flex items-center justify-between bg-white shadow p-4 z-50">
         <h2 className="text-xl font-bold">{activeItem}</h2>
         <div className="flex items-center gap-3">
-          <div className="relative" ref={userMenuRef}>
+          <div className="relative" ref={mobileUserMenuRef}>
             <div className="flex items-center gap-1 cursor-pointer" onClick={() => setUserMenuOpen(!userMenuOpen)}>
               <FaUserCircle size={28} className="text-gray-700" />
               <span className="text-gray-700 font-medium">{currentUser ? currentUser.Name : "Guest"}</span>
@@ -436,101 +449,184 @@ const saveEditedUser = async () => {
         </div>
       </div>
 
-      {/* SIDEBAR */}
-      <aside className={`w-64 bg-white shadow-lg p-4 lg:block fixed lg:static top-0 left-0 h-screen z-50 overflow-y-auto transform transition-transform ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}>
-        <div className="flex justify-between items-center mb-4 lg:hidden">
-          <h2 className="text-xl font-bold">Menu</h2>
-          <button onClick={() => setSidebarOpen(false)}><FaTimes size={24} /></button>
-        </div>
+     {/* SIDEBAR */}
+<aside className={`w-64 bg-white shadow-lg p-4 lg:block fixed lg:static top-0 left-0 h-screen z-50 overflow-y-auto transform transition-transform ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}>
+  <div className="flex justify-between items-center mb-4 lg:hidden">
+    <h2 className="text-xl font-bold">Menu</h2>
+    <button onClick={() => setSidebarOpen(false)}><FaTimes size={24} /></button>
+  </div>
 
-        <div className="flex items-center justify-between mb-4 hidden lg:flex">
-          <h2 className="text-xl font-bold">Menu</h2>
-        </div>
+  <div className="flex items-center justify-between mb-4 hidden lg:flex">
+    <h2 className="text-xl font-bold">Menu</h2>
+  </div>
 
-        {viewMode === "stack" ? (
-          <ul className="space-y-2">
-            {menuItems.map((item) =>
-              item.name === "Entries" ? (
-                <li key="Entries">
-                  <button onClick={() => setEntriesOpen(!entriesOpen)} className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100`}>
-                    <span className="flex items-center gap-3">{item.icon} {item.name}</span>
-                    {entriesOpen ? <FaChevronDown /> : <FaChevronRight />}
-                  </button>
-                  {entriesOpen && (
-                    <ul className="ml-6 mt-1 space-y-1">
-                      {[{ name: "Categories", icon: <FaListAlt /> }, { name: "Brands", icon: <FaTags /> }, { name: "Units", icon: <FaThLarge /> }, { name: "Discounts", icon: <FaPercentage /> }, { name: "Taxes", icon: <FaMoneyBillWave /> }].map((sub) => (
-                        <li key={sub.name}>
-                          <button onClick={() => handleMenuClick(sub.name)} className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${activeItem === sub.name ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""}`}>{sub.icon} {sub.name}</button>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              ) : item.name === "Sales" ? (
-                <li key="Sales">
-                  <button onClick={() => setPosOpen(!posOpen)} className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100`}>
-                    <span className="flex items-center gap-3">{item.icon} Sales</span>
-                    {posOpen ? <FaChevronDown /> : <FaChevronRight />}
-                  </button>
-                  {posOpen && (
-                    <ul className="ml-6 mt-1 space-y-1">
-                      {[{ name: "POS", icon: <FaReceipt /> }, { name: "POS Invoices", icon: <FaDatabase /> }].map((sub) => (
-                        <li key={sub.name}>
-                          <button
-                            onClick={() => handleMenuClick(sub.name === "POS Invoices" ? "Invoices" : sub.name)}
-                            className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
-                              activeItem === (sub.name === "POS Invoices" ? "Invoices" : sub.name)
-                                ? "bg-blue-100 text-blue-600 font-semibold shadow"
-                                : ""
-                            }`}
-                          >
-                            {sub.icon} {sub.name}
-                          </button>
-                        </li>
-                      ))}
-
-                    </ul>
-                  )}
-                </li>
-              ) : item.name === "Payments" ? (
-                <li key="Payments">
-                  <button onClick={() => setPaymentsOpen(!paymentsOpen)} className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100`}>
-                    <span className="flex items-center gap-3">{item.icon} {item.name}</span>
-                    {paymentsOpen ? <FaChevronDown /> : <FaChevronRight />}
-                  </button>
-                  {paymentsOpen && (
-                    <ul className="ml-6 mt-1 space-y-1">
-                      <li>
-                        <button onClick={() => handleMenuClick("CustPayments")} className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${activeItem === "CustPayments" ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""}`}><FaUsers /> Customer</button>
-                      </li>
-                      <li>
-                        <button onClick={() => handleMenuClick("SupPayments")} className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${activeItem === "SupPayments" ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""}`}><FaTruck /> Supplier</button>
-                      </li>
-                    </ul>
-                  )}
-                </li>
-              ) : (
-                <li key={item.name} onClick={() => handleMenuClick(item.name)} className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition ${activeItem === item.name ? "bg-blue-100 text-blue-600 font-semibold shadow" : "text-gray-700 hover:bg-gray-100"}`}>
-                  <span className="text-lg">{item.icon}</span>
-                  <span className="text-sm font-medium">{item.name}</span>
-                </li>
-              )
+  {viewMode === "stack" ? (
+    <ul className="space-y-2">
+      {menuItems.map((item) =>
+        item.name === "Entries" ? (
+          <li key="Entries">
+            <button
+              onClick={() => setEntriesOpen(!entriesOpen)}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100`}
+            >
+              <span className="flex items-center gap-3">{item.icon} {item.name}</span>
+              {entriesOpen ? <FaChevronDown /> : <FaChevronRight />}
+            </button>
+            {entriesOpen && (
+              <ul className="ml-6 mt-1 space-y-1">
+                {[{ name: "Categories", icon: <FaListAlt /> }, { name: "Brands", icon: <FaTags /> }, { name: "Units", icon: <FaThLarge /> }, { name: "Discounts", icon: <FaPercentage /> }, { name: "Taxes", icon: <FaMoneyBillWave /> }].map((sub) => (
+                  <li key={sub.name}>
+                    <button
+                      onClick={() => handleMenuClick(sub.name)}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
+                        activeItem === sub.name ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""
+                      }`}
+                    >
+                      {sub.icon} {sub.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
-          </ul>
+          </li>
+
+        ) : item.name === "Sales" ? (
+          <li key="Sales">
+            <button
+              onClick={() => setPosOpen(!posOpen)}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100`}
+            >
+              <span className="flex items-center gap-3">{item.icon} Sales</span>
+              {posOpen ? <FaChevronDown /> : <FaChevronRight />}
+            </button>
+            {posOpen && (
+              <ul className="ml-6 mt-1 space-y-1">
+                {[{ name: "POS", icon: <FaReceipt /> }, { name: "POS Invoices", icon: <FaDatabase /> }].map((sub) => (
+                  <li key={sub.name}>
+                    <button
+                      onClick={() => handleMenuClick(sub.name === "POS Invoices" ? "Invoices" : sub.name)}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
+                        activeItem === (sub.name === "POS Invoices" ? "Invoices" : sub.name)
+                          ? "bg-blue-100 text-blue-600 font-semibold shadow"
+                          : ""
+                      }`}
+                    >
+                      {sub.icon} {sub.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+
+        ) : item.name === "Payments" ? (
+          <li key="Payments">
+            <button
+              onClick={() => setPaymentsOpen(!paymentsOpen)}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100`}
+            >
+              <span className="flex items-center gap-3">{item.icon} {item.name}</span>
+              {paymentsOpen ? <FaChevronDown /> : <FaChevronRight />}
+            </button>
+            {paymentsOpen && (
+              <ul className="ml-6 mt-1 space-y-1">
+                <li>
+                  <button
+                    onClick={() => handleMenuClick("CustPayments")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
+                      activeItem === "CustPayments" ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""
+                    }`}
+                  >
+                    <FaUsers /> Customer
+                  </button>
+                </li>
+                <li>
+                  <button
+                    onClick={() => handleMenuClick("SupPayments")}
+                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
+                      activeItem === "SupPayments" ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""
+                    }`}
+                  >
+                    <FaTruck /> Supplier
+                  </button>
+                </li>
+              </ul>
+            )}
+          </li>
+
+        ) : item.name === "Reports" ? (
+          <li key="Reports">
+            <button
+              onClick={() => setReportsOpen(!reportsOpen)}
+              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100`}
+            >
+              <span className="flex items-center gap-3">{item.icon} {item.name}</span>
+              {reportsOpen ? <FaChevronDown /> : <FaChevronRight />}
+            </button>
+            {reportsOpen && (
+              <ul className="ml-6 mt-1 space-y-1">
+                {[{ name: "Sales Report", icon: <FaChartLine /> },
+                  { name: "Customer Report", icon: <FaUsers /> },
+                  { name: "Expenses Report", icon: <FaDollarSign /> }
+                ].map((sub) => (
+                  <li key={sub.name}>
+                    <button
+                      onClick={() => handleMenuClick(sub.name)}
+                      className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
+                        activeItem === sub.name ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""
+                      }`}
+                    >
+                      {sub.icon} {sub.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </li>
+
         ) : (
-          <div className="grid grid-cols-3 gap-3">
-            {menuItems.map((item) => (
-              <div key={item.name} onClick={() => handleMenuClick(item.name)} className={`flex flex-col items-center p-2 rounded-lg cursor-pointer transition ${activeItem === item.name ? "bg-blue-100 text-blue-600 shadow" : "text-gray-700 hover:bg-gray-100"}`}>
-                <span className="text-xl">{item.icon}</span>
-                <span className="text-xs text-center">{item.name}</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </aside>
+          <li
+            key={item.name}
+            onClick={() => handleMenuClick(item.name)}
+            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition ${
+              activeItem === item.name
+                ? "bg-blue-100 text-blue-600 font-semibold shadow"
+                : "text-gray-700 hover:bg-gray-100"
+            }`}
+          >
+            <span className="text-lg">{item.icon}</span>
+            <span className="text-sm font-medium">{item.name}</span>
+          </li>
+        )
+      )}
+    </ul>
 
-      {sidebarOpen && <div className="fixed inset-0 bg-black bg-opacity-30 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />}
+  ) : (
+    <div className="grid grid-cols-3 gap-3">
+      {menuItems.map((item) => (
+        <div
+          key={item.name}
+          onClick={() => handleMenuClick(item.name)}
+          className={`flex flex-col items-center p-2 rounded-lg cursor-pointer transition ${
+            activeItem === item.name
+              ? "bg-blue-100 text-blue-600 shadow"
+              : "text-gray-700 hover:bg-gray-100"
+          }`}
+        >
+          <span className="text-xl">{item.icon}</span>
+          <span className="text-xs text-center">{item.name}</span>
+        </div>
+      ))}
+    </div>
+  )}
+</aside>
 
+{sidebarOpen && (
+  <div
+    className="fixed inset-0 bg-black bg-opacity-30 z-40 lg:hidden"
+    onClick={() => setSidebarOpen(false)}
+  />
+)}
       {/* MAIN CONTENT */}
       <main className="flex-1 p-4 lg:p-4 flex-col gap-6 pt-20 lg:pt-6">
         {/* HEADER DESKTOP */}
@@ -540,7 +636,7 @@ const saveEditedUser = async () => {
             {businessLogo && <img src={businessLogo} alt="Logo" className="h-8 w-8 rounded-md object-cover" />}
             <span>{businessName}</span>
           </div>
-          <div className="relative" ref={userMenuRef}>
+          <div className="relative" ref={desktopUserMenuRef}>
             <div className="flex items-center gap-2 cursor-pointer" onClick={() => setUserMenuOpen(!userMenuOpen)}>
               <FaUserCircle size={32} className="text-gray-700" />
               <span className="font-medium text-gray-700">{currentUser ? currentUser.Name : "Guest"}</span>
@@ -627,6 +723,13 @@ const saveEditedUser = async () => {
         : activeItem === "Invoices" ? (
           <Invoices />
         )
+        : activeItem === "Sales Report" ? (
+          <SalesReport />
+        ) : activeItem === "Customer Report" ? (
+          <Customers />
+        ) : activeItem === "Expenses Report" ? (
+          <div>Expenses Report Page</div>
+        )
         :(
           <>
             {/* Dashboard KPIs */}
@@ -646,7 +749,7 @@ const saveEditedUser = async () => {
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
-                <FaWallet size={28} className="text-teal-500" />
+                <FaDollarSign size={28} className="text-red-500" />
                 <div>
                   <h3 className="text-sm font-medium">Purchases</h3>
                   <p className="text-xl font-bold mt-1">Rs.{kpis.purchases.toFixed()}</p>
@@ -685,7 +788,7 @@ const saveEditedUser = async () => {
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
-                <FaDollarSign size={24} className="text-teal-500" />
+                <FaDollarSign size={24} className="text-blue-500" />
                 <div>
                   <h3 className="text-sm font-medium">Expenses</h3>
                   <p className="text-xl font-bold mt-1">Rs.{kpis.expenses.toFixed()}</p>

@@ -16,6 +16,7 @@ import { supplierPaymentRepository } from "./repositories/supplierPaymentReposit
 import { discountRepository } from "./repositories/discountRepository";
 import { taxRepository } from "./repositories/taxRepository";
 import type { Discount, Tax } from "./db";
+import Dashboard from "Dashboard";
 
 // =====================
 // Types
