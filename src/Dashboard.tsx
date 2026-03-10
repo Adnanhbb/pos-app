@@ -61,6 +61,7 @@ import SupPayments from "./SupPayments";
 import POS from "./POS";
 import Invoices from "./Invoices";
 import SalesReport from "./salesReport";
+import ProdReport from "./prodReport";
 
 // DB helpers
 import { authRepository } from "./repositories/authRepository";
@@ -72,6 +73,7 @@ import { supplierPaymentRepository } from "./repositories/supplierPaymentReposit
 import { expenseRepository } from "./repositories/expenseRepository";
 
 import type { User } from "./db";
+// import ProdReport from "prodReport";
 
 // Sample Data
 const salesData = [
@@ -566,7 +568,7 @@ const saveEditedUser = async () => {
             {reportsOpen && (
               <ul className="ml-6 mt-1 space-y-1">
                 {[{ name: "Sales Report", icon: <FaChartLine /> },
-                  { name: "Customer Report", icon: <FaUsers /> },
+                  { name: "Products Report", icon: <FaUsers /> },
                   { name: "Expenses Report", icon: <FaDollarSign /> }
                 ].map((sub) => (
                   <li key={sub.name}>
@@ -725,8 +727,8 @@ const saveEditedUser = async () => {
         )
         : activeItem === "Sales Report" ? (
           <SalesReport />
-        ) : activeItem === "Customer Report" ? (
-          <Customers />
+        ) : activeItem === "Products Report" ? (
+          <ProdReport />
         ) : activeItem === "Expenses Report" ? (
           <div>Expenses Report Page</div>
         )
