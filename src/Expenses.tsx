@@ -99,195 +99,183 @@ export default function Expenses() {
   };
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-lg">
-      <h2 className="text-xl font-semibold mb-4">Expenses</h2>
+  <div className="bg-white p-4 sm:p-6 rounded-lg shadow-lg">
 
-      {/* Search + Add New */}
-      <div className="flex flex-col sm:flex-row gap-3 mb-4">
-        <input
-          type="text"
-          placeholder="Search expenses..."
-          className="flex-1 border rounded px-3 py-2"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
+    <h2 className="text-xl font-semibold mb-4">Expenses</h2>
 
-        <button
-          className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-500"
-          onClick={openAddModal}
-        >
-          <FaPlus /> Add New
-        </button>
-      </div>
+    {/* Search + Add */}
+    <div className="flex flex-col sm:flex-row gap-3 mb-4 flex-wrap">
+      <input
+        type="text"
+        placeholder="Search expenses..."
+        className="flex-1 border rounded px-3 py-2 min-w-[150px]"
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+      />
 
-      {/* Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-left border">
-          <thead className="bg-gray-100">
+      <button
+        className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-500 flex-none"
+        onClick={openAddModal}
+      >
+        <FaPlus /> Add New
+      </button>
+    </div>
+
+    {/* Table */}
+    <div className="overflow-x-auto">
+      <table className="w-full text-left border">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="px-4 py-2 border">#</th>
+            <th className="px-4 py-2 border">Date</th>
+            <th className="px-4 py-2 border">Category</th>
+            <th className="px-4 py-2 border hidden sm:table-cell">Amount</th>
+            <th className="px-4 py-2 border hidden md:table-cell">Remarks</th>
+            <th className="px-4 py-2 border">Actions</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {expenses.length === 0 ? (
             <tr>
-              <th className="px-4 py-2 border">#</th>
-              <th className="px-4 py-2 border">Date</th>
-              <th className="px-4 py-2 border">Category</th>
-              <th className="px-4 py-2 border">Amount</th>
-              <th className="px-4 py-2 border">Remarks</th>
-              <th className="px-4 py-2 border">Actions</th>
+              <td colSpan={6} className="px-4 py-2 text-center text-gray-500">
+                No expenses found.
+              </td>
             </tr>
-          </thead>
-
-          <tbody>
-            {expenses.map((exp, idx) => (
-              <tr key={exp.id} className="hover:bg-gray-50">
-                <td className="px-4 py-2 border">{idx + 1}</td>
-                <td className="px-4 py-2 border">{new Date(exp.date).toLocaleDateString()}</td>
-                <td className="px-4 py-2 border">{exp.category}</td>
-                <td className="px-4 py-2 border">{exp.amount}</td>
-                <td className="px-4 py-2 border">{exp.description || ""}</td>
-                <td className="px-4 py-2 border flex gap-2">
+          ) : (
+            expenses.map((exp, idx) => (
+              <tr key={exp.id} className="hover:bg-gray-50 border-b">
+                <td className="px-2 py-1 sm:px-4 sm:py-2">{idx + 1}</td>
+                <td className="px-2 py-1 sm:px-4 sm:py-2">{new Date(exp.date).toLocaleDateString()}</td>
+                <td className="px-2 py-1 sm:px-4 sm:py-2">{exp.category}</td>
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell">{exp.amount}</td>
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell">{exp.description || ""}</td>
+                <td className="px-2 py-1 sm:px-4 sm:py-2 flex gap-2">
                   <button
-                    className="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-400"
+                    className="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-400 flex-1 sm:flex-none"
                     onClick={() => openEditModal(exp)}
                   >
                     <FaEdit />
                   </button>
-
                   <button
-                    className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-400"
+                    className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-400 flex-1 sm:flex-none"
                     onClick={() => handleDelete(exp.id)}
                   >
                     <FaTrash />
                   </button>
                 </td>
-              </tr>
-            ))}
 
-            {expenses.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-2 text-center text-gray-500">
-                  No expenses found.
+                {/* Mobile stacked info */}
+                <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 mt-1 gap-1">
+                  <span>Amount: {exp.amount}</span>
+                  <span>Remarks: {exp.description || "-"}</span>
                 </td>
               </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
 
-      {/* Modal */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
-            <h3 className="text-lg font-semibold mb-4">
-              {editingExpense ? "Edit Expense" : "Add Expense"}
-            </h3>
+    {/* Modal */}
+    {showModal && (
+      <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
+          <h3 className="text-lg font-semibold mb-4">
+            {editingExpense ? "Edit Expense" : "Add Expense"}
+          </h3>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              
-              <div>
-                <label className="block mb-1 font-medium">Date</label>
-                <input
-                  type="date"
-                  className="border rounded px-3 py-2 w-full"
-                  value={formData.date}
-                  onChange={(e) =>
-                    setFormData((p) => ({ ...p, date: e.target.value }))
-                  }
+          <form onSubmit={handleSubmit} className="space-y-4">
+
+            {/* Date */}
+            <div>
+              <label className="block mb-1 font-medium">Date</label>
+              <input
+                type="date"
+                className="border rounded px-3 py-2 w-full"
+                value={formData.date}
+                onChange={(e) => setFormData((p) => ({ ...p, date: e.target.value }))}
+                required
+              />
+            </div>
+
+            {/* Category */}
+            <div>
+              <label className="block mb-1 font-medium">Category</label>
+              <div className="flex gap-2 flex-wrap">
+                <select
+                  className="border rounded px-3 py-2 flex-1 min-w-[120px]"
+                  value={formData.category}
+                  onChange={(e) => setFormData(p => ({ ...p, category: e.target.value }))}
                   required
-                />
-              </div>
+                >
+                  <option value="">Select category</option>
+                  {categories.map((c, i) => (
+                    <option key={i} value={c}>{c}</option>
+                  ))}
+                </select>
 
-                <div>
-                  <label className="block mb-1 font-medium">Category</label>
-
-                  <div className="flex gap-2">
-
-                    <select
-                      className="border rounded px-3 py-2 w-full"
-                      value={formData.category}
-                      onChange={(e) =>
-                        setFormData(p => ({ ...p, category: e.target.value }))
-                      }
-                      required
-                    >
-                      <option value="">Select category</option>
-
-                      {categories.map((c, i) => (
-                        <option key={i} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-
-                    {/* ADD CATEGORY BUTTON */}
-                    <button
-                type="button"
-                title="Add Category"
-                className="bg-blue-600 text-white px-3 rounded hover:bg-blue-500"
-                onClick={async () => {
-                  const name = prompt("Enter new category");
-                  if (!name?.trim()) return;
-
-                  // Add to DB
-                  await expenseRepository.addCategory(name.trim());
-
-                  // Reload categories from DB immediately
-                  await loadCategories();
-
-                  // Set the new category as selected in the form
-                  setFormData(p => ({ ...p, category: name.trim() }));
-                }}
-              >
-                <FaPlus />
-            </button>
-
-                  </div>
-                </div>
-              <div>
-                <label className="block mb-1 font-medium">Amount</label>
-                <input
-                  type="number"
-                  className="border rounded px-3 py-2 w-full"
-                  value={formData.amount}
-                  onChange={(e) =>
-                    setFormData((p) => ({
-                      ...p,
-                      amount: parseFloat(e.target.value),
-                    }))
-                  }
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block mb-1 font-medium">Remarks</label>
-                <textarea
-                  className="border rounded px-3 py-2 w-full"
-                  value={formData.description}
-                  onChange={(e) =>
-                    setFormData((p) => ({ ...p, description: e.target.value }))
-                  }
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 mt-4">
                 <button
                   type="button"
-                  className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500"
-                  onClick={() => setShowModal(false)}
+                  title="Add Category"
+                  className="bg-blue-600 text-white px-3 rounded hover:bg-blue-500 flex-none"
+                  onClick={async () => {
+                    const name = prompt("Enter new category");
+                    if (!name?.trim()) return;
+                    await expenseRepository.addCategory(name.trim());
+                    await loadCategories();
+                    setFormData(p => ({ ...p, category: name.trim() }));
+                  }}
                 >
-                  Cancel
-                </button>
-
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500"
-                >
-                  {editingExpense ? "Update" : "Save"}
+                  <FaPlus />
                 </button>
               </div>
+            </div>
 
-            </form>
-          </div>
+            {/* Amount */}
+            <div>
+              <label className="block mb-1 font-medium">Amount</label>
+              <input
+                type="number"
+                className="border rounded px-3 py-2 w-full"
+                value={formData.amount}
+                onChange={(e) => setFormData((p) => ({ ...p, amount: parseFloat(e.target.value) }))}
+                required
+              />
+            </div>
+
+            {/* Remarks */}
+            <div>
+              <label className="block mb-1 font-medium">Remarks</label>
+              <textarea
+                className="border rounded px-3 py-2 w-full"
+                value={formData.description}
+                onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
+              />
+            </div>
+
+            {/* Buttons */}
+            <div className="flex flex-col sm:flex-row justify-end gap-3 mt-4">
+              <button
+                type="button"
+                className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500 flex-1 sm:flex-none"
+                onClick={() => setShowModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 flex-1 sm:flex-none"
+              >
+                {editingExpense ? "Update" : "Save"}
+              </button>
+            </div>
+
+          </form>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    )}
+
+  </div>
+);
 }

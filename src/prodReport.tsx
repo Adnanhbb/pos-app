@@ -346,173 +346,180 @@ const exportExcel = () => {
   };
 
   return (
-    <div style={{ padding: 20 }}>
+  <div className="p-4 sm:p-6">
 
-      {/* SUMMARY CARDS */}
+    {/* SUMMARY CARDS */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
 
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(3,1fr)",
-        gap: 15,
-        marginBottom: 20
-      }}>
-
-        <div style={cardStyle}>
-          <FaArrowUp color="#10b981" size={24}/>
-          <div>
-            <div>Top Selling</div>
-            <strong>{summary.top}</strong>
-          </div>
+      <div style={cardStyle}>
+        <FaArrowUp color="#10b981" size={24}/>
+        <div>
+          <div>Top Selling</div>
+          <strong>{summary.top}</strong>
         </div>
-
-        <div style={cardStyle}>
-          <FaArrowDown color="#f59e0b" size={24}/>
-          <div>
-            <div>Least Selling</div>
-            <strong>{summary.least}</strong>
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <FaBan color="#ef4444" size={24}/>
-          <div>
-            <div>Dead Stock Items</div>
-            <strong>{summary.dead}</strong>
-          </div>
-        </div>
-
       </div>
 
-      {/* FILTER BAR */}
-
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        marginBottom: 15
-      }}>
-
-        From
-        <input type="date" value={fromDate}
-          onChange={e => setFromDate(e.target.value)} />
-
-        To
-        <input type="date" value={toDate}
-          onChange={e => setToDate(e.target.value)} />
-
-        {/* EXPORT ICONS — EXTREME RIGHT */}
-
-        <div style={{
-  marginLeft: "auto",
-  display: "flex",
-  alignItems: "center",
-  gap: 12
-}}>
-
-  {/* SEARCH */}
-  <input
-    type="text"
-    placeholder="Search product..."
-    value={search}
-    onChange={e => setSearch(e.target.value)}
-    style={{
-      padding: "6px 10px",
-      borderRadius: 6,
-      border: "1px solid #ccc",
-      width: 220
-    }}
-  />
-
-  <FaFilePdf
-    size={22}
-    color="#dc2626"
-    title="Export PDF"
-    style={{ cursor: "pointer" }}
-    onClick={exportPDF}
-  />
-
-  <FaFileExcel
-    size={22}
-    color="#16a34a"
-    title="Export Excel"
-    style={{ cursor: "pointer" }}
-    onClick={exportExcel}
-  />
-
-</div>
+      <div style={cardStyle}>
+        <FaArrowDown color="#f59e0b" size={24}/>
+        <div>
+          <div>Least Selling</div>
+          <strong>{summary.least}</strong>
+        </div>
       </div>
 
-      {/* TABLE */}
+      <div style={cardStyle}>
+        <FaBan color="#ef4444" size={24}/>
+        <div>
+          <div>Dead Stock Items</div>
+          <strong>{summary.dead}</strong>
+        </div>
+      </div>
 
-      <table style={{
-        width: "100%",
-        borderCollapse: "collapse",
-      }}>
-        <thead>
-          <tr style={{ background:"#f3f4f6",textAlign:"left" }}>
-            <th>Product</th>
-            <th>Net Qty Sold</th>
-            <th>Net Sales</th>
+    </div>
+
+    {/* FILTER BAR */}
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4 flex-wrap">
+
+      {/* DATE FILTERS */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span>From</span>
+        <input
+          type="date"
+          value={fromDate}
+          onChange={e => setFromDate(e.target.value)}
+          className="border rounded px-2 py-1"
+        />
+
+        <span>To</span>
+        <input
+          type="date"
+          value={toDate}
+          onChange={e => setToDate(e.target.value)}
+          className="border rounded px-2 py-1"
+        />
+      </div>
+
+      {/* RIGHT SIDE CONTROLS */}
+      <div className="flex flex-wrap items-center gap-3 sm:ml-auto">
+
+        <input
+          type="text"
+          placeholder="Search product..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="border rounded px-3 py-1 w-full sm:w-56"
+        />
+
+        <FaFilePdf
+          size={22}
+          color="#dc2626"
+          title="Export PDF"
+          className="cursor-pointer"
+          onClick={exportPDF}
+        />
+
+        <FaFileExcel
+          size={22}
+          color="#16a34a"
+          title="Export Excel"
+          className="cursor-pointer"
+          onClick={exportExcel}
+        />
+
+      </div>
+    </div>
+
+    {/* TABLE */}
+    <div className="overflow-x-auto">
+      <table className="w-full text-left border">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="px-4 py-2 border">Product</th>
+            <th className="px-4 py-2 border hidden sm:table-cell">Net Qty Sold</th>
+            <th className="px-4 py-2 border hidden md:table-cell">Net Sales</th>
           </tr>
         </thead>
 
         <tbody>
-          {paginatedRows.map(r => (
-            <tr key={r.product}
-                style={{
-                  borderBottom:"1px solid #eee",
-                  opacity: r.dead ? 0.6 : 1
-                }}>
-              <td>{r.product}</td>
-              <td>{r.qty}</td>
-              <td>{r.sales.toFixed(0)}</td>
+          {paginatedRows.length === 0 ? (
+            <tr>
+              <td colSpan={3} className="px-4 py-2 text-center text-gray-500">
+                No records found.
+              </td>
             </tr>
-          ))}
+          ) : (
+            paginatedRows.map(r => (
+              <tr
+                key={r.product}
+                className="border-b hover:bg-gray-50"
+                style={{ opacity: r.dead ? 0.6 : 1 }}
+              >
+                <td className="px-2 py-1 sm:px-4 sm:py-2 font-medium">
+                  {r.product}
+                </td>
+
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell">
+                  {r.qty}
+                </td>
+
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell">
+                  {r.sales.toFixed(0)}
+                </td>
+
+                {/* MOBILE STACKED DETAILS */}
+                <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1">
+                  <span>Qty Sold: {r.qty}</span>
+                  <span>Sales: {r.sales.toFixed(0)}</span>
+                  {r.dead && <span className="text-red-500">Dead Stock</span>}
+                </td>
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
+    </div>
 
-<div style={{
-  marginTop: 20,
-  display: "flex",
-  justifyContent: "center",
-  alignItems: "center",
-  gap: 12
-}}>
+    {/* PAGINATION */}
+    <div className="mt-5 flex justify-center items-center gap-2 flex-wrap">
 
-  <button
-    disabled={page === 1}
-    onClick={() => setPage(1)}
-  >
-    First
-  </button>
+      <button
+        disabled={page === 1}
+        onClick={() => setPage(1)}
+        className="px-3 py-1 border rounded"
+      >
+        First
+      </button>
 
-  <button
-    disabled={page === 1}
-    onClick={() => setPage(p => p - 1)}
-  >
-    Prev
-  </button>
+      <button
+        disabled={page === 1}
+        onClick={() => setPage(p => p - 1)}
+        className="px-3 py-1 border rounded"
+      >
+        Prev
+      </button>
 
-  <span>
-    Page {page} / {totalPages || 1}
-  </span>
+      <span>
+        Page {page} / {totalPages || 1}
+      </span>
 
-  <button
-    disabled={page === totalPages || totalPages === 0}
-    onClick={() => setPage(p => p + 1)}
-  >
-    Next
-  </button>
+      <button
+        disabled={page === totalPages || totalPages === 0}
+        onClick={() => setPage(p => p + 1)}
+        className="px-3 py-1 border rounded"
+      >
+        Next
+      </button>
 
-  <button
-    disabled={page === totalPages || totalPages === 0}
-    onClick={() => setPage(totalPages)}
-  >
-    Last
-  </button>
-
-</div>
+      <button
+        disabled={page === totalPages || totalPages === 0}
+        onClick={() => setPage(totalPages)}
+        className="px-3 py-1 border rounded"
+      >
+        Last
+      </button>
 
     </div>
-  );
+
+  </div>
+);
 }

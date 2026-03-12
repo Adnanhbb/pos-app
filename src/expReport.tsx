@@ -236,149 +236,179 @@ export default function ExpReport() {
   -------------------------------------------------- */
 
   return (
-    <div style={{ padding: 20 }}>
+  <div className="p-4 sm:p-6">
 
-      {/* ================= CARDS ================= */}
+    {/* ================= CARDS ================= */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2,1fr)",
-          gap: 15,
-          marginBottom: 20
-        }}
-      >
+      <div style={cardStyle}>
+        <FaMoneyBillWave size={26} color="#ef4444" />
+        <div>
+          <div>Total Expenses</div>
+          <strong>
+            Rs. {summary.totalExpenses.toLocaleString()}
+          </strong>
+        </div>
+      </div>
 
-        <div style={cardStyle}>
-          <FaMoneyBillWave size={26} color="#ef4444" />
-          <div>
-            <div>Total Expenses</div>
-            <strong>
-              Rs. {summary.totalExpenses.toLocaleString()}
-            </strong>
-          </div>
+      <div style={cardStyle}>
+        <FaCrown size={26} color="#f59e0b" />
+        <div>
+          <div>Highest Category</div>
+          <strong>
+            {summary.highestCategory} (
+            {summary.highestAmount.toLocaleString()})
+          </strong>
+        </div>
+      </div>
+
+    </div>
+
+    {/* ================= FILTER BAR ================= */}
+    <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-4">
+
+      {/* DATE FILTERS */}
+      <div className="flex flex-wrap items-center gap-2">
+        <span>From:</span>
+        <input
+          type="date"
+          value={fromDate}
+          onChange={e => setFromDate(e.target.value)}
+          className="border rounded px-2 py-1"
+        />
+
+        <span>To:</span>
+        <input
+          type="date"
+          value={toDate}
+          onChange={e => setToDate(e.target.value)}
+          className="border rounded px-2 py-1"
+        />
+      </div>
+
+      {/* RIGHT SIDE */}
+      <div className="flex flex-wrap items-center gap-3 lg:ml-auto">
+
+        {/* SEARCH */}
+        <div className="relative">
+          <FaSearch className="absolute left-2 top-2.5 text-gray-400" />
+
+          <input
+            placeholder="Search..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="border rounded pl-8 pr-3 py-1.5"
+          />
         </div>
 
-        <div style={cardStyle}>
-          <FaCrown size={26} color="#f59e0b" />
-          <div>
-            <div>Highest Category</div>
-            <strong>
-              {summary.highestCategory} (
-              {summary.highestAmount.toLocaleString()})
-            </strong>
-          </div>
-        </div>
+        {/* EXPORT */}
+        <FaFilePdf
+          size={22}
+          color="#dc2626"
+          className="cursor-pointer"
+          onClick={exportPDF}
+        />
+
+        <FaFileExcel
+          size={22}
+          color="#16a34a"
+          className="cursor-pointer"
+          onClick={exportExcel}
+        />
 
       </div>
 
-      {/* ================= FILTER BAR ================= */}
+    </div>
 
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          marginBottom: 12
-        }}
-      >
+    {/* ================= TABLE ================= */}
+    <div className="overflow-x-auto">
+      <table className="w-full text-left border">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="px-4 py-2 border">Date</th>
+            <th className="px-4 py-2 border">Category</th>
 
-        <div style={{ display: "flex", gap: 10 }}>
-            From:
-          <input type="date" value={fromDate}
-            onChange={e => setFromDate(e.target.value)} />
-            To:
-          <input type="date" value={toDate}
-            onChange={e => setToDate(e.target.value)} />
-        </div>
+            <th className="px-4 py-2 border hidden sm:table-cell">
+              Amount
+            </th>
 
-        <div style={{ display: "flex", gap: 12 }}>
-
-          <div style={{ position: "relative" }}>
-            <FaSearch
-              style={{
-                position: "absolute",
-                left: 8,
-                top: 8,
-                color: "#888"
-              }}
-            />
-
-            <input
-              placeholder="Search..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{
-                padding: "6px 8px 6px 26px",
-                border: "1px solid #ccc",
-                borderRadius: 6
-              }}
-            />
-          </div>
-
-          <FaFilePdf
-            size={22}
-            color="#dc2626"
-            style={{ cursor: "pointer" }}
-            onClick={exportPDF}
-          />
-
-          <FaFileExcel
-            size={22}
-            color="#16a34a"
-            style={{ cursor: "pointer" }}
-            onClick={exportExcel}
-          />
-
-        </div>
-
-      </div>
-
-      {/* ================= TABLE ================= */}
-
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ background: "#f3f4f6" ,textAlign:"left"}}>
-            <th>Date</th>
-            <th>Category</th>
-            <th>Amount</th>
-            <th>Remarks</th>
+            <th className="px-4 py-2 border hidden md:table-cell">
+              Remarks
+            </th>
           </tr>
         </thead>
 
         <tbody>
-          {paginated.map(e => (
-            <tr key={e.id} style={{ borderBottom: "1px solid #eee" }}>
-              <td>{new Date(e.date).toLocaleDateString()}</td>
-              <td>{e.category}</td>
-              <td>{e.amount.toLocaleString()}</td>
-              <td>{e.description}</td>
+          {paginated.length === 0 ? (
+            <tr>
+              <td colSpan={4} className="px-4 py-2 text-center text-gray-500">
+                No expenses found.
+              </td>
             </tr>
-          ))}
+          ) : (
+            paginated.map(e => (
+              <tr
+                key={e.id}
+                className="border-b hover:bg-gray-50"
+              >
+                {/* DATE */}
+                <td className="px-2 py-1 sm:px-4 sm:py-2">
+                  {new Date(e.date).toLocaleDateString()}
+                </td>
+
+                {/* CATEGORY */}
+                <td className="px-2 py-1 sm:px-4 sm:py-2 font-medium">
+                  {e.category}
+                </td>
+
+                {/* AMOUNT */}
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell">
+                  {e.amount.toLocaleString()}
+                </td>
+
+                {/* REMARKS */}
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell">
+                  {e.description}
+                </td>
+
+                {/* MOBILE STACKED INFO */}
+                <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1">
+                  <span>Amount: {e.amount.toLocaleString()}</span>
+                  <span>Remarks: {e.description || "-"}</span>
+                </td>
+
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
+    </div>
 
-      {/* ================= PAGINATION ================= */}
+    {/* ================= PAGINATION ================= */}
+    <div className="mt-5 flex justify-center items-center gap-3 flex-wrap">
 
-      <div
-        style={{
-          marginTop: 15,
-          display: "flex",
-          justifyContent: "center",
-          gap: 10
-        }}
+      <button
+        disabled={page === 1}
+        onClick={() => setPage(page - 1)}
+        className="px-3 py-1 border rounded"
       >
-        <button disabled={page === 1}
-          onClick={() => setPage(page - 1)}>Prev</button>
+        Prev
+      </button>
 
-        <span>Page {page} / {totalPages || 1}</span>
+      <span>
+        Page {page} / {totalPages || 1}
+      </span>
 
-        <button
-          disabled={page === totalPages || totalPages === 0}
-          onClick={() => setPage(page + 1)}>
-          Next
-        </button>
-      </div>
+      <button
+        disabled={page === totalPages || totalPages === 0}
+        onClick={() => setPage(page + 1)}
+        className="px-3 py-1 border rounded"
+      >
+        Next
+      </button>
 
     </div>
-  );
+
+  </div>
+);
 }

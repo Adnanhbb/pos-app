@@ -306,240 +306,210 @@ const calculateTotals = (data: DBSale[]) => {
   });
 };
 
-  return (
+return (
+  <div className="p-4 sm:p-6">
 
-    <div style={{ padding: 20 }}>
-
-      {/* SUMMARY CARDS */}
-
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(5,1fr)",
-        gap: 15,
-        marginBottom: 20
-      }}>
-
-        <div style={cardStyle}>
-          <FaShoppingCart size={26} color="#ef4444"/>
-          <div>
-            <div>Sales</div>
-            <strong>Rs. {totals.sales.toLocaleString()}</strong>
-          </div>
+    {/* SUMMARY CARDS */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-5">
+      <div style={cardStyle}>
+        <FaShoppingCart size={26} color="#ef4444" />
+        <div>
+          <div>Sales</div>
+          <strong>Rs. {totals.sales.toLocaleString()}</strong>
         </div>
-
-        <div style={cardStyle}>
-          <FaTruck size={26} color="#eab308"/>
-          <div>
-            <div>Purchases</div>
-            <strong>Rs. {totals.purchases.toLocaleString()}</strong>
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <FaUndo size={26} color="#10b981"/>
-          <div>
-            <div>Cust. Returns</div>
-            <strong>Rs. {totals.customerReturns.toLocaleString()}</strong>
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <FaUndo size={26} color="#3b82f6"/>
-          <div>
-            <div>Supp. Returns</div>
-            <strong>Rs. {totals.supplierReturns.toLocaleString()}</strong>
-          </div>
-        </div>
-
-        <div style={cardStyle}>
-          <FaFileInvoice size={26} color="#f59e0b"/>
-          <div>
-            <div>Profit</div>
-            <strong>Rs. {totals.profit.toLocaleString()}</strong>
-          </div>
-        </div>
-
       </div>
 
-      {/* FILTERS */}
+      <div style={cardStyle}>
+        <FaTruck size={26} color="#eab308" />
+        <div>
+          <div>Purchases</div>
+          <strong>Rs. {totals.purchases.toLocaleString()}</strong>
+        </div>
+      </div>
 
-      {/* FILTERS + RETURN SUBFILTERS */}
+      <div style={cardStyle}>
+        <FaUndo size={26} color="#10b981" />
+        <div>
+          <div>Cust. Returns</div>
+          <strong>Rs. {totals.customerReturns.toLocaleString()}</strong>
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        <FaUndo size={26} color="#3b82f6" />
+        <div>
+          <div>Supp. Returns</div>
+          <strong>Rs. {totals.supplierReturns.toLocaleString()}</strong>
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        <FaFileInvoice size={26} color="#f59e0b" />
+        <div>
+          <div>Profit</div>
+          <strong>Rs. {totals.profit.toLocaleString()}</strong>
+        </div>
+      </div>
+    </div>
+
     {/* FILTERS */}
-<div style={{
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  marginBottom: 15
-}}>
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3 flex-wrap">
 
-  {/* Left: Filter radios + optional Return sub-filters + Date inputs */}
-  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div className="flex flex-wrap items-center gap-3">
 
-    {/* Main filter radios */}
-    <div style={{ display: "flex", gap: 8 }}>
-      {["All","Sale","Purchase","Return","Quotation"].map(type => (
-        <button
-          key={type}
-          style={radioStyle(type as FilterType)}
-          onClick={() => setFilterType(type as FilterType)}
-        >
-          {type}
-        </button>
-      ))}
+        <div className="flex flex-wrap gap-2">
+          {["All","Sale","Purchase","Return","Quotation"].map(type => (
+            <button
+              key={type}
+              style={radioStyle(type as FilterType)}
+              onClick={() => setFilterType(type as FilterType)}
+            >
+              {type}
+            </button>
+          ))}
+        </div>
+
+        {filterType === "Return" && (
+          <div className="flex gap-2 text-xs">
+            {["All","Cus","Sup"].map(sub => (
+              <button
+                key={sub}
+                style={{
+                  padding: "5px 12px",
+                  borderRadius: "20px",
+                  border: returnSubFilter === sub ? "1px solid #2563eb" : "1px solid #ddd",
+                  background: returnSubFilter === sub ? "#2563eb" : "#fff",
+                  color: returnSubFilter === sub ? "#fff" : "#444",
+                  cursor: "pointer",
+                  fontWeight: 500
+                }}
+                onClick={() => setReturnSubFilter(sub as "All" | "Cus" | "Sup")}
+              >
+                {sub}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap gap-2 items-center sm:ml-4">
+          <input
+            type="date"
+            value={fromDate}
+            onChange={e => setFromDate(e.target.value)}
+            className="border rounded px-2 py-1"
+          />
+          <input
+            type="date"
+            value={toDate}
+            onChange={e => setToDate(e.target.value)}
+            className="border rounded px-2 py-1"
+          />
+        </div>
+      </div>
+
+      <div className="flex gap-3">
+        <div className="cursor-pointer" onClick={exportPDF}>
+          <FaFilePdf size={22} color="#ef4444" />
+        </div>
+        <div className="cursor-pointer" onClick={exportExcel}>
+          <FaFileExcel size={22} color="#22c55e" />
+        </div>
+      </div>
+
     </div>
 
-    {/* Return sub-filter radios: only visible if Return is selected */}
-    {filterType === "Return" && (
-      <div className="text-xs" style={{ display: "flex", gap: 6 }}>
-        {["All","Cus","Sup"].map(sub => (
-          <button
-            key={sub}
-            style={{
-              padding: "5px 12px",
-              borderRadius: "20px",
-              border: returnSubFilter === sub ? "1px solid #2563eb" : "1px solid #ddd",
-              background: returnSubFilter === sub ? "#2563eb" : "#fff",
-              color: returnSubFilter === sub ? "#fff" : "#444",
-              cursor: "pointer",
-              fontWeight: 500
-            }}
-            onClick={() => setReturnSubFilter(sub as "All" | "Cus" | "Sup")}
-          >
-            {sub}
-          </button>
-        ))}
-      </div>
-    )}
+    {/* TABLE */}
+    <div className="overflow-x-auto">
+      <table className="w-full text-left border">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="px-4 py-2 border">Invoice</th>
+            <th className="px-4 py-2 border">Date</th>
+            <th className="px-4 py-2 border">Customer/Supplier</th>
 
-    {/* Date inputs */}
-    <div style={{ display: "flex", gap: 8, marginLeft: 20 }}>
-      <div>
-        From
-        <input
-          type="date"
-          value={fromDate}
-          onChange={e => setFromDate(e.target.value)}
-          style={{ marginLeft: 6 }}
-        />
-      </div>
-
-      <div>
-        To
-        <input
-          type="date"
-          value={toDate}
-          onChange={e => setToDate(e.target.value)}
-          style={{ marginLeft: 6 }}
-        />
-      </div>
-    </div>
-
-  </div>
-
-  {/* Right: Export buttons */}
-  <div style={{ display:"flex", gap:12 }}>
-
-  <div
-    data-tooltip-id="pdfTip"
-    data-tooltip-content="Export PDF"
-    style={{ cursor:"pointer" }}
-    onClick={exportPDF}
-  >
-    <FaFilePdf size={22} color="#ef4444"/>
-  </div>
-
-  <div
-    data-tooltip-id="excelTip"
-    data-tooltip-content="Export Excel"
-    style={{ cursor:"pointer" }}
-    onClick={exportExcel}
-  >
-    <FaFileExcel size={22} color="#22c55e"/>
-  </div>
-
-  <Tooltip id="pdfTip" />
-  <Tooltip id="excelTip" />
-
-</div>
-
-</div>
-
-      {/* TABLE */}
-
-      <table style={{
-        width: "100%",
-        borderCollapse: "collapse",
-      }}>
-
-        <thead>
-
-          <tr style={{ background: "#f3f4f6", textAlign:"left" }}>
-            <th style={{ padding: 8 }}>Invoice</th>
-            <th>Date</th>
-            <th>Customer/Supplier</th>
-            <th>Grand Total</th>
-            <th>Paid</th>
-            <th>Balance</th>
-            <th>Profit</th>
+            {/* hide progressively */}
+            <th className="px-4 py-2 border hidden sm:table-cell">Grand Total</th>
+            <th className="px-4 py-2 border hidden md:table-cell">Paid</th>
+            <th className="px-4 py-2 border hidden lg:table-cell">Balance</th>
+            <th className="px-4 py-2 border hidden lg:table-cell">Profit</th>
           </tr>
-
         </thead>
 
         <tbody>
-
-          {paginated.map(s => (
-
-            <tr key={s.id} style={{ borderBottom: "1px solid #eee" }}>
-
-              <td style={{ padding: 8 }}>{s.invoiceNo}</td>
-              <td>{formatDate(s.date)}</td>
-
-              <td>
-                {s.customerName || s.supplierName}
+          {paginated.length === 0 ? (
+            <tr>
+              <td colSpan={7} className="px-4 py-2 text-center text-gray-500">
+                No records found.
               </td>
-
-              <td>{s.grandTotal.toLocaleString()}</td>
-              <td>{s.paid.toLocaleString()}</td>
-              <td>{s.arrears.toLocaleString()}</td>
-              <td>{(s.profit || 0).toLocaleString()}</td>
-
             </tr>
+          ) : (
+            paginated.map(s => (
+              <tr key={s.id} className="hover:bg-gray-50 border-b">
 
-          ))}
+                <td className="px-2 py-1 sm:px-4 sm:py-2 font-medium">
+                  {s.invoiceNo}
+                </td>
 
+                <td className="px-2 py-1 sm:px-4 sm:py-2">
+                  {formatDate(s.date)}
+                </td>
+
+                <td className="px-2 py-1 sm:px-4 sm:py-2">
+                  {s.customerName || s.supplierName}
+                </td>
+
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell">
+                  {s.grandTotal.toLocaleString()}
+                </td>
+
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell">
+                  {s.paid.toLocaleString()}
+                </td>
+
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden lg:table-cell">
+                  {s.arrears.toLocaleString()}
+                </td>
+
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden lg:table-cell">
+                  {(s.profit || 0).toLocaleString()}
+                </td>
+
+                {/* MOBILE STACKED DETAILS */}
+                <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1">
+                  <span>Total: {s.grandTotal.toLocaleString()}</span>
+                  <span>Paid: {s.paid.toLocaleString()}</span>
+                  <span>Balance: {s.arrears.toLocaleString()}</span>
+                  <span>Profit: {(s.profit || 0).toLocaleString()}</span>
+                </td>
+
+              </tr>
+            ))
+          )}
         </tbody>
-
       </table>
-
-      {/* PAGINATION */}
-
-      <div style={{
-        marginTop: 15,
-        display: "flex",
-        justifyContent: "center",
-        gap: 10
-      }}>
-
-        <button
-          disabled={page === 1}
-          onClick={() => setPage(page - 1)}
-        >
-          Prev
-        </button>
-
-        <span>
-          Page {page} / {totalPages || 1}
-        </span>
-
-        <button
-          disabled={page === totalPages || totalPages === 0}
-          onClick={() => setPage(page + 1)}
-        >
-          Next
-        </button>
-
-      </div>
-
     </div>
-  );
+
+    {/* PAGINATION */}
+    <div className="flex justify-center gap-3 mt-4 flex-wrap">
+      <button
+        disabled={page === 1}
+        onClick={() => setPage(page - 1)}
+        className="px-3 py-1 border rounded"
+      >
+        Prev
+      </button>
+
+      <span>Page {page} / {totalPages || 1}</span>
+
+      <button
+        disabled={page === totalPages || totalPages === 0}
+        onClick={() => setPage(page + 1)}
+        className="px-3 py-1 border rounded"
+      >
+        Next
+      </button>
+    </div>
+
+  </div>
+);
 }

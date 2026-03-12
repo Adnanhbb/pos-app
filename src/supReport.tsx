@@ -225,123 +225,174 @@ export default function SupReport() {
   /* UI */
   /* -------------------------------------------------- */
 
-  return (
-    <div style={{ padding: 20 }}>
+ return (
+  <div className="p-4 sm:p-6">
 
-      {/* SUMMARY CARDS */}
+    {/* ================= SUMMARY CARDS ================= */}
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-5">
 
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(5,1fr)",
-        gap: 15,
-        marginBottom: 20
-      }}>
-
-        <div style={cardStyle}>
-          <FaArrowUp size={24} color="#ef4444" />
-          <div><div>Highest Dues</div><strong>{summary.highestDues}</strong></div>
+      <div style={cardStyle}>
+        <FaArrowUp size={24} color="#ef4444" />
+        <div>
+          <div>Highest Dues</div>
+          <strong>{summary.highestDues}</strong>
         </div>
-
-        <div style={cardStyle}>
-          <FaArrowDown size={24} color="#10b981" />
-          <div><div>Lowest Dues</div><strong>{summary.lowestDues}</strong></div>
-        </div>
-
-        <div style={cardStyle}>
-          <FaFileInvoiceDollar size={24} color="#2563eb" />
-          <div><div>Highest Invoices</div><strong>{summary.highestInvoices}</strong></div>
-        </div>
-
-        <div style={cardStyle}>
-          <FaFileInvoiceDollar size={24} color="#f59e0b" />
-          <div><div>Lowest Invoices</div><strong>{summary.lowestInvoices}</strong></div>
-        </div>
-
-        <div style={cardStyle}>
-          <FaUsers size={24} color="#6366f1" />
-          <div><div>No Invoices</div><strong>{summary.noInvoices}</strong></div>
-        </div>
-
       </div>
 
-      {/* SEARCH + EXPORT */}
-
-      <div style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        marginBottom: 12
-      }}>
-
-        <div style={{ position: "relative" }}>
-          <FaSearch style={{ position: "absolute", left: 10, top: 9, color: "#888" }} />
-
-          <input
-            type="text"
-            placeholder="Search supplier..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            style={{
-              padding: "7px 10px 7px 30px",
-              borderRadius: 6,
-              border: "1px solid #ccc",
-              width: 260
-            }}
-          />
+      <div style={cardStyle}>
+        <FaArrowDown size={24} color="#10b981" />
+        <div>
+          <div>Lowest Dues</div>
+          <strong>{summary.lowestDues}</strong>
         </div>
-
-        <div style={{ display: "flex", gap: 12 }}>
-          <FaFilePdf size={22} color="#dc2626" title="Export PDF"
-            style={{ cursor: "pointer" }} onClick={exportPDF} />
-
-          <FaFileExcel size={22} color="#16a34a" title="Export Excel"
-            style={{ cursor: "pointer" }} onClick={exportExcel} />
-        </div>
-
       </div>
 
-      {/* TABLE */}
+      <div style={cardStyle}>
+        <FaFileInvoiceDollar size={24} color="#2563eb" />
+        <div>
+          <div>Highest Invoices</div>
+          <strong>{summary.highestInvoices}</strong>
+        </div>
+      </div>
 
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr style={{ background: "#f3f4f6", textAlign: "left" }}>
-            <th>Supplier</th>
-            <th># Invoices</th>
-            <th>Dues (Rs.)</th>
+      <div style={cardStyle}>
+        <FaFileInvoiceDollar size={24} color="#f59e0b" />
+        <div>
+          <div>Lowest Invoices</div>
+          <strong>{summary.lowestInvoices}</strong>
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        <FaUsers size={24} color="#6366f1" />
+        <div>
+          <div>No Invoices</div>
+          <strong>{summary.noInvoices}</strong>
+        </div>
+      </div>
+
+    </div>
+
+    {/* ================= SEARCH + EXPORT ================= */}
+    <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
+
+      {/* SEARCH */}
+      <div className="relative w-full sm:w-64">
+        <FaSearch className="absolute left-3 top-2.5 text-gray-400" />
+
+        <input
+          type="text"
+          placeholder="Search supplier..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full border rounded pl-9 pr-3 py-2"
+        />
+      </div>
+
+      {/* EXPORT BUTTONS */}
+      <div className="flex items-center gap-3 sm:ml-auto">
+        <FaFilePdf
+          size={22}
+          color="#dc2626"
+          title="Export PDF"
+          className="cursor-pointer"
+          onClick={exportPDF}
+        />
+
+        <FaFileExcel
+          size={22}
+          color="#16a34a"
+          title="Export Excel"
+          className="cursor-pointer"
+          onClick={exportExcel}
+        />
+      </div>
+
+    </div>
+
+    {/* ================= TABLE ================= */}
+    <div className="overflow-x-auto">
+      <table className="w-full text-left border">
+        <thead className="bg-gray-100">
+          <tr>
+            <th className="px-4 py-2 border">Supplier</th>
+
+            <th className="px-4 py-2 border hidden sm:table-cell">
+              # Invoices
+            </th>
+
+            <th className="px-4 py-2 border hidden md:table-cell">
+              Dues (Rs.)
+            </th>
           </tr>
         </thead>
 
         <tbody>
-          {paginated.map(s => (
-            <tr key={s.id} style={{ borderBottom: "1px solid #eee" }}>
-              <td style={{ padding: 8 }}>{s.name}</td>
-              <td>{(s.invoices || 0).toLocaleString()}</td>
-              <td>{(s.balance || 0).toLocaleString()}</td>
+          {paginated.length === 0 ? (
+            <tr>
+              <td colSpan={3} className="px-4 py-2 text-center text-gray-500">
+                No suppliers found.
+              </td>
             </tr>
-          ))}
+          ) : (
+            paginated.map(s => (
+              <tr
+                key={s.id}
+                className="border-b hover:bg-gray-50"
+              >
+                {/* SUPPLIER */}
+                <td className="px-2 py-1 sm:px-4 sm:py-2 font-medium">
+                  {s.name}
+                </td>
+
+                {/* INVOICES */}
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell">
+                  {(s.invoices || 0).toLocaleString()}
+                </td>
+
+                {/* DUES */}
+                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell">
+                  {(s.balance || 0).toLocaleString()}
+                </td>
+
+                {/* MOBILE STACKED INFO */}
+                <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1">
+                  <span>Invoices: {(s.invoices || 0).toLocaleString()}</span>
+                  <span>Dues: {(s.balance || 0).toLocaleString()}</span>
+                </td>
+
+              </tr>
+            ))
+          )}
         </tbody>
       </table>
+    </div>
 
-      {/* PAGINATION */}
+    {/* ================= PAGINATION ================= */}
+    <div className="mt-5 flex justify-center items-center gap-3 flex-wrap">
 
-      <div style={{
-        marginTop: 15,
-        display: "flex",
-        justifyContent: "center",
-        gap: 10
-      }}>
-        <button disabled={page === 1} onClick={() => setPage(page - 1)}>Prev</button>
+      <button
+        disabled={page === 1}
+        onClick={() => setPage(page - 1)}
+        className="px-3 py-1 border rounded"
+      >
+        Prev
+      </button>
 
-        <span>Page {page} / {totalPages || 1}</span>
+      <span>
+        Page {page} / {totalPages || 1}
+      </span>
 
-        <button
-          disabled={page === totalPages || totalPages === 0}
-          onClick={() => setPage(page + 1)}
-        >
-          Next
-        </button>
-      </div>
+      <button
+        disabled={page === totalPages || totalPages === 0}
+        onClick={() => setPage(page + 1)}
+        className="px-3 py-1 border rounded"
+      >
+        Next
+      </button>
 
     </div>
-  );
+
+  </div>
+);
 }

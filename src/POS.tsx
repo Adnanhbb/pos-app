@@ -1591,7 +1591,7 @@ return (
   </div>
 
 {/* Items grid */}
-<div className="grid grid-cols-4 gap-2 auto-rows-min overflow-y-auto max-h-[calc(100vh-170px)]">
+<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 auto-rows-min overflow-y-auto max-h-[calc(100vh-170px)]">
   {filteredItems.length === 0 ? (
     <div className="col-span-4 text-center text-gray-500 text-sm py-10">
       No items found. Adjust your search, category, or brand filters.

@@ -157,163 +157,205 @@ async function handleSave() {
     await loadSuppliers();
   }
 
-  return (
-    <div className="p-2 sm:p-4 lg:p-8">
-      {/* HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3">
-        <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold">Supplier Payments</h2>
-          <button
-            className={`p-2 rounded ${view === "table" ? "bg-indigo-600 text-white" : "bg-gray-200"}`}
-            onClick={() => setView("table")}
-          >
-            <FaList />
-          </button>
-          <button
-            className={`p-2 rounded ${view === "cards" ? "bg-indigo-600 text-white" : "bg-gray-200"}`}
-            onClick={() => setView("cards")}
-          >
-            <FaTh />
-          </button>
-        </div>
+ return (
+  <div className="p-2 sm:p-4 lg:p-8">
 
-        <div className="flex gap-2">
-          <div className="flex items-center bg-white px-2 rounded shadow">
-            <FaSearch className="text-gray-500" />
-            <input
-              className="p-2 outline-none w-48"
-              placeholder="Search supplier..."
-              value={query}
-              onChange={e => { setQuery(e.target.value); setPage(1); }}
-            />
-          </div>
-
-          <button
-            onClick={openCreate}
-            className="bg-green-600 text-white px-4 py-2 rounded shadow flex items-center gap-2"
-          >
-            <FaPlus /> Add Payment
-          </button>
-        </div>
+    {/* HEADER */}
+    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap">
+        <h2 className="text-lg font-semibold">Supplier Payments</h2>
+        <button
+          className={`p-2 rounded ${view === "table" ? "bg-indigo-600 text-white" : "bg-gray-200"}`}
+          onClick={() => setView("table")}
+        >
+          <FaList />
+        </button>
+        <button
+          className={`p-2 rounded ${view === "cards" ? "bg-indigo-600 text-white" : "bg-gray-200"}`}
+          onClick={() => setView("cards")}
+        >
+          <FaTh />
+        </button>
       </div>
 
-      {/* TABLE */}
-      {view === "table" && (
-        <div className="overflow-x-auto bg-white rounded-lg shadow">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-200">
+      <div className="flex gap-2 flex-wrap w-full sm:w-auto">
+        <div className="flex items-center bg-white px-2 rounded shadow flex-1 min-w-[150px]">
+          <FaSearch className="text-gray-500" />
+          <input
+            className="p-2 outline-none w-full sm:w-48"
+            placeholder="Search supplier..."
+            value={query}
+            onChange={e => { setQuery(e.target.value); setPage(1); }}
+          />
+        </div>
+
+        <button
+          onClick={openCreate}
+          className="bg-green-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 flex-none"
+        >
+          <FaPlus /> Add Payment
+        </button>
+      </div>
+    </div>
+
+    {/* TABLE VIEW */}
+    {view === "table" && (
+      <div className="overflow-x-auto bg-white rounded-lg shadow">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-200">
+            <tr>
+              <th className="p-3 text-left">Date</th>
+              <th className="p-3 text-left">Supplier</th>
+              <th className="p-3 text-left hidden sm:table-cell">Payable</th>
+              <th className="p-3 text-left hidden sm:table-cell">Paid</th>
+              <th className="p-3 text-left hidden sm:table-cell">Balance</th>
+              <th className="p-3 text-left hidden md:table-cell">Remarks</th>
+              <th className="p-3 text-center">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {payments.length === 0 ? (
               <tr>
-                <th className="p-3 text-left">Date</th>
-                <th className="p-3 text-left">Supplier</th>
-                <th className="p-3 text-left">Payable</th>
-                <th className="p-3 text-left">Paid</th>
-                <th className="p-3 text-left">Balance</th>
-                <th className="p-3 text-left">Remarks</th>
-                <th className="p-3 text-center">Actions</th>
+                <td colSpan={7} className="p-4 text-center text-gray-500">No payments found</td>
               </tr>
-            </thead>
-            <tbody>
-              {payments.map(p => {
+            ) : (
+              payments.map(p => {
                 const s = suppliers.find(x => x.id === p.supplierId);
                 return (
                   <tr key={p.id} className="border-b">
-                    <td className="p-3">{new Date(p.paymentDate).toLocaleDateString()}</td>
-                    <td className="p-3">{s?.name}</td>
-                    <td className="p-3">{p.payableSnapshot}</td>
-                    <td className="p-3">{p.amount}</td>
-                    <td className="p-3">{p.balanceSnapshot}</td>
-                    <td className="p-3">{p.remarks}</td>
-                    <td className="p-3 flex justify-center gap-2">
-                      {/* <button onClick={() => openEdit(p)} className="p-2 bg-blue-500 text-white rounded">
-                        <FaEdit />
-                      </button> */}
+                    {/* Date */}
+                    <td className="p-2 md:p-3">{new Date(p.paymentDate).toLocaleDateString()}</td>
+
+                    {/* Supplier */}
+                    <td className="p-2 md:p-3">{s?.name}</td>
+
+                    {/* Payable, Paid, Balance (hidden on mobile) */}
+                    <td className="p-2 md:p-3 hidden sm:table-cell">{p.payableSnapshot}</td>
+                    <td className="p-2 md:p-3 hidden sm:table-cell">{p.amount}</td>
+                    <td className="p-2 md:p-3 hidden sm:table-cell">{p.balanceSnapshot}</td>
+
+                    {/* Remarks (hidden on small screens) */}
+                    <td className="p-2 md:p-3 hidden md:table-cell">{p.remarks}</td>
+
+                    {/* Actions */}
+                    <td className="p-2 md:p-3 flex justify-center gap-2">
                       <button onClick={() => handleDelete(p.id!)} className="p-2 bg-red-500 text-white rounded">
                         <FaTrash />
                       </button>
                     </td>
+
+                    {/* Mobile stacked info */}
+                    <td className="p-2 md:p-3 sm:hidden flex flex-col gap-1 text-xs text-gray-600">
+                      <span>Payable: {p.payableSnapshot}</span>
+                      <span>Paid: {p.amount}</span>
+                      <span>Balance: {p.balanceSnapshot}</span>
+                      <span>Remarks: {p.remarks}</span>
+                    </td>
                   </tr>
                 );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* PAGINATION */}
-      <div className="mt-4 flex justify-center gap-2">
-        <button disabled={page === 1} onClick={() => setPage(page - 1)}>Prev</button>
-        <span>Page {page} / {totalPages}</span>
-        <button disabled={page === totalPages} onClick={() => setPage(page + 1)}>Next</button>
+              })
+            )}
+          </tbody>
+        </table>
       </div>
+    )}
 
-      {/* MODAL */}
-      {isFormOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4">
-          <div className="bg-white p-6 rounded-xl w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">
-              {editingPayment ? "Edit Payment" : "Add Payment"}
-            </h2>
-
-            <select
-              className="w-full p-2 border rounded mb-2"
-              value={form.supplierId}
-              onChange={e => {
-                const id = Number(e.target.value);
-                const s = suppliers.find(x => x.id === id);
-                if (!s) return;
-                const alreadyPaid = s.paid ?? 0;
-                const totalPayable = s.payable ?? 0;
-                const currentPayable = totalPayable - alreadyPaid; // ✅ current payable
-                setForm({
-                  ...form,
-                  supplierId: id,
-                  payableSnapshot: currentPayable,
-                });
-              }}
->
-
-              <option value={0}>Select Supplier</option>
-              {suppliers.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-
-            <label className="text-sm text-gray-600">Total Payable</label>
-            <input className="w-full p-2 border rounded mb-2" disabled value={form.payableSnapshot} />
-
-            <label className="text-sm text-gray-600">Amount Paid</label>
-            <input
-              type="number"
-              className="w-full p-2 border rounded mb-2"
-              value={form.amount}
-              onChange={e => setForm({ ...form, amount: Number(e.target.value) })}
-            />
-
-            <label className="text-sm text-gray-600">Payment Date</label>
-            <input
-              type="date"
-              className="w-full p-2 border rounded mb-2"
-              value={form.paymentDate}
-              onChange={e => setForm({ ...form, paymentDate: e.target.value })}
-            />
-
-            <textarea
-              className="w-full p-2 border rounded mb-2"
-              placeholder="Remarks"
-              value={form.remarks}
-              onChange={e => setForm({ ...form, remarks: e.target.value })}
-            />
-
-            <div className="flex justify-end gap-2">
-              <button onClick={closeForm}>Cancel</button>
-              <button onClick={handleSave} className="bg-indigo-600 text-white px-4 py-2 rounded">
-                Save
-              </button>
+    {/* CARDS VIEW */}
+    {view === "cards" && (
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {payments.map(p => {
+          const s = suppliers.find(x => x.id === p.supplierId);
+          return (
+            <div key={p.id} className="bg-white rounded-xl shadow border p-4 flex flex-col justify-between">
+              <div className="flex flex-col gap-1">
+                <div className="font-semibold">{s?.name}</div>
+                <div className="text-xs text-gray-600">Date: {new Date(p.paymentDate).toLocaleDateString()}</div>
+                <div className="text-xs text-gray-600">Payable: {p.payableSnapshot}</div>
+                <div className="text-xs text-gray-600">Paid: {p.amount}</div>
+                <div className="text-xs text-gray-600">Balance: {p.balanceSnapshot}</div>
+                <div className="text-xs text-gray-600">Remarks: {p.remarks}</div>
+              </div>
+              <div className="flex gap-2 mt-3">
+                <button onClick={() => handleDelete(p.id!)} className="flex-1 bg-red-500 text-white p-2 rounded text-sm">
+                  Delete
+                </button>
+              </div>
             </div>
+          );
+        })}
+      </div>
+    )}
+
+    {/* PAGINATION */}
+    <div className="mt-4 flex justify-center gap-2 flex-wrap">
+      <button disabled={page === 1} onClick={() => setPage(page - 1)} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Prev</button>
+      <span className="px-3 py-1 bg-gray-200 rounded">Page {page} / {totalPages}</span>
+      <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Next</button>
+    </div>
+
+    {/* MODAL */}
+    {isFormOpen && (
+      <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50">
+        <div className="bg-white p-6 rounded-xl w-full max-w-md">
+          <h2 className="text-xl font-bold mb-4">{editingPayment ? "Edit Payment" : "Add Payment"}</h2>
+
+          <select
+            className="w-full p-2 border rounded mb-2"
+            value={form.supplierId}
+            onChange={e => {
+              const id = Number(e.target.value);
+              const s = suppliers.find(x => x.id === id);
+              if (!s) return;
+              const alreadyPaid = s.paid ?? 0;
+              const totalPayable = s.payable ?? 0;
+              const currentPayable = totalPayable - alreadyPaid;
+              setForm({
+                ...form,
+                supplierId: id,
+                payableSnapshot: currentPayable,
+              });
+            }}
+          >
+            <option value={0}>Select Supplier</option>
+            {suppliers.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+
+          <label className="text-sm text-gray-600">Total Payable</label>
+          <input className="w-full p-2 border rounded mb-2" disabled value={form.payableSnapshot} />
+
+          <label className="text-sm text-gray-600">Amount Paid</label>
+          <input
+            type="number"
+            className="w-full p-2 border rounded mb-2"
+            value={form.amount}
+            onChange={e => setForm({ ...form, amount: Number(e.target.value) })}
+          />
+
+          <label className="text-sm text-gray-600">Payment Date</label>
+          <input
+            type="date"
+            className="w-full p-2 border rounded mb-2"
+            value={form.paymentDate}
+            onChange={e => setForm({ ...form, paymentDate: e.target.value })}
+          />
+
+          <textarea
+            className="w-full p-2 border rounded mb-2"
+            placeholder="Remarks"
+            value={form.remarks}
+            onChange={e => setForm({ ...form, remarks: e.target.value })}
+          />
+
+          <div className="flex justify-end gap-2 flex-wrap">
+            <button onClick={closeForm} className="px-4 py-2 bg-gray-300 rounded flex-1 sm:flex-none">Cancel</button>
+            <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded flex-1 sm:flex-none">Save</button>
           </div>
         </div>
-      )}
+      </div>
+    )}
 
-    </div>
-  );
+  </div>
+);
 }

@@ -369,131 +369,286 @@ convQty: number
 
       {/* Table / Cards */}
       {view === "table" ? (
-        <div className="overflow-x-auto bg-white rounded-lg shadow">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-200 text-gray-700">
-              <tr>
-                <th className="p-3 text-left">Name</th>
-                <th className="p-3 text-left">Barcode</th>
-                {/* <th className="p-3 text-left">Brand</th>
-                <th className="p-3 text-left">Category</th>
-                <th className="p-3 text-left">Min Unit</th>
-                <th className="p-3 text-left">Max Unit</th>
-                <th className="p-3 text-left">Conv Qty</th> */}
-                <th className="p-3 text-left">Pur_Price</th>
-                <th className="p-3 text-left">Ret_Price</th>
-                <th className="p-3 text-left">Disc_Price</th>
-                <th className="p-3 text-left">Whl_Price</th>
-                <th className="p-3 text-left">Avl_Stock</th>
-                <th className="p-3 text-center">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((it) => (
-                <tr key={it.id} className="border-b hover:bg-gray-50">
-                  <td className="p-3">{it.name}</td>
-                  <td className="p-3 flex items-center gap-3">
-                    <svg
-                      ref={(el: SVGSVGElement | null) => {
-                        svgRefs.current[it.id ?? it.barcode] = el ?? null;
-                      }}
-                      aria-hidden
-                    />
-                    <div className="text-xs text-gray-600 break-all">{it.barcode}</div>
-                  </td>
-                  {/* <td className="p-3">{it.brand}</td>
-                  <td className="p-3">{it.category}</td>
-                  <td className="p-3">{it.minunit}</td>
-                  <td className="p-3">{it.maxunit}</td>
-                  <td className="p-3">{it.ConvQty}</td> */}
-                  <td className="p-3">{it.purchasePrice}</td>
-                  <td className="p-3">{it.retailPrice}</td>
-                  <td className="p-3">{it.discountPrice || 0}</td>
-                  <td className="p-3">{it.wholesalePrice}</td>
-                  <td className="p-3 text-sm text-blue-500">
-                      {(() => {
-                        const { maxQty, minQty } = splitStock(it.availableStock, it.ConvQty);
+  <div className="w-full overflow-x-auto bg-white rounded-xl shadow">
+    <table className="w-full text-sm table-auto">
+      <thead className="bg-gray-100 text-gray-700">
+        <tr>
+          <th className="p-3 text-left">Name</th>
 
-                        return (
-                          <div className="leading-tight">
-                            {maxQty > 0 && (
-                              <div className="font-medium">
-                                {maxQty} {it.maxunit}s
-                              </div>
-                            )}
+          <th className="p-3 text-left hidden sm:table-cell">
+            Barcode
+          </th>
 
-                            {minQty > 0 && (
-                              <div className="text-green-600 text-xs">
-                                {minQty.toFixed(1)} {it.minunit}s
-                              </div>
-                            )}
+          <th className="p-3 text-left hidden md:table-cell">
+            Purchase
+          </th>
 
-                            {maxQty === 0 && minQty === 0 && (
-                              <div className="text-red-500 text-xs">Out of stock</div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </td>
-                  <td className="p-3 text-center flex justify-center gap-2">
-                    <button onClick={() => openEdit(it)} className="p-2 bg-blue-500 text-white rounded">
-                      <FaEdit />
-                    </button>
-                    <button onClick={() => handleDelete(it.id)} className="p-2 bg-red-500 text-white rounded">
-                      <FaTrash />
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {items.length === 0 && (
-                <tr>
-                  <td colSpan={11} className="text-center p-4 text-gray-500">
-                    No items found
-                  </td>
-                </tr>
+          <th className="p-3 text-left hidden md:table-cell">
+            Retail
+          </th>
+
+          <th className="p-3 text-left hidden lg:table-cell">
+            Discount
+          </th>
+
+          <th className="p-3 text-left hidden lg:table-cell">
+            Wholesale
+          </th>
+
+          <th className="p-3 text-left">
+            Stock
+          </th>
+
+          <th className="p-3 text-center w-[120px]">
+            Actions
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {items.map((it) => (
+          <tr key={it.id} className="border-t hover:bg-gray-50 align-middle">
+
+            {/* NAME */}
+            <td className="p-3 font-medium whitespace-nowrap">
+              {it.name}
+            </td>
+
+            {/* BARCODE */}
+            <td className="p-3 hidden sm:table-cell">
+              <div className="flex items-center gap-2">
+                <svg
+                  ref={(el: SVGSVGElement | null) => {
+                    svgRefs.current[it.id ?? it.barcode] = el ?? null;
+                  }}
+                  aria-hidden
+                />
+                <span className="text-xs text-gray-600 break-all">
+                  {it.barcode}
+                </span>
+              </div>
+            </td>
+
+            {/* PURCHASE */}
+            <td className="p-3 hidden md:table-cell">
+              {it.purchasePrice}
+            </td>
+
+            {/* RETAIL */}
+            <td className="p-3 hidden md:table-cell">
+              {it.retailPrice}
+            </td>
+
+            {/* DISCOUNT */}
+            <td className="p-3 hidden lg:table-cell">
+              {it.discountPrice || 0}
+            </td>
+
+            {/* WHOLESALE */}
+            <td className="p-3 hidden lg:table-cell">
+              {it.wholesalePrice}
+            </td>
+
+            {/* STOCK */}
+            <td className="p-3 text-blue-500">
+              {(() => {
+                const { maxQty, minQty } = splitStock(
+                  it.availableStock,
+                  it.ConvQty
+                );
+
+                return (
+                  <div className="leading-tight">
+                    {maxQty > 0 && (
+                      <div className="font-medium">
+                        {maxQty} {it.maxunit}s
+                      </div>
+                    )}
+
+                    {minQty > 0 && (
+                      <div className="text-green-600 text-xs">
+                        {minQty.toFixed(1)} {it.minunit}s
+                      </div>
+                    )}
+
+                    {maxQty === 0 && minQty === 0 && (
+                      <div className="text-red-500 text-xs">
+                        Out of stock
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </td>
+
+            {/* ACTIONS */}
+            <td className="p-3">
+              <div className="flex justify-center gap-2">
+                <button
+                  onClick={() => openEdit(it)}
+                  className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                >
+                  <FaEdit />
+                </button>
+
+                <button
+                  onClick={() => handleDelete(it.id)}
+                  className="p-2 bg-red-500 text-white rounded hover:bg-red-600"
+                >
+                  <FaTrash />
+                </button>
+              </div>
+            </td>
+          </tr>
+        ))}
+
+        {items.length === 0 && (
+          <tr>
+            <td colSpan={8} className="text-center p-6 text-gray-500">
+              No items found
+            </td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  </div>
+)  : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  {items.map((it) => {
+    const { maxQty, minQty } = splitStock(it.availableStock, it.ConvQty);
+
+    return (
+      <div
+  key={it.id}
+  className="bg-white rounded-xl shadow border p-4 flex flex-col justify-between hover:shadow-md transition"
+>
+  {/* HEADER + BARCODE */}
+  <div className="mb-1">
+    <div className="flex items-center gap-2">
+      <FaBoxes className="text-indigo-600 text-lg" />
+      <h3 className="font-semibold text-base leading-tight truncate">
+        {it.name}
+      </h3>
+    </div>
+
+    <div className="mt-1">
+      <svg
+        ref={(el: SVGSVGElement | null) => {
+          svgRefs.current[it.id ?? it.barcode] = el ?? null;
+        }}
+        aria-hidden
+      />
+      <div className="text-[11px] text-gray-500 break-all">
+        {it.barcode}
+      </div>
+    </div>
+  </div>
+
+  {/* DETAILS */}
+  <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+    <div>
+      <span className="text-gray-500 text-xs">Brand</span>
+      <div className="font-medium leading-tight">
+        {brands.find(b => b.name === it.brand)?.name || "-"}
+      </div>
+    </div>
+
+    <div>
+      <span className="text-gray-500 text-xs">Category</span>
+      <div className="font-medium leading-tight">
+        {categories.find(c => c.name === it.category)?.name || "-"}
+      </div>
+    </div>
+
+    <div>
+      <span className="text-gray-500 text-xs">Min Unit</span>
+      <div className="leading-tight">{it.minunit}</div>
+    </div>
+
+    <div>
+      <span className="text-gray-500 text-xs">Max Unit</span>
+      <div className="leading-tight">{it.maxunit}</div>
+    </div>
+
+    <div>
+      <span className="text-gray-500 text-xs">Conversion</span>
+      <div className="leading-tight">{it.ConvQty}</div>
+    </div>
+
+    <div>
+      <span className="text-gray-500 text-xs">Stock</span>
+      <div className="leading-tight text-blue-600">
+        {(() => {
+          const { maxQty, minQty } = splitStock(it.availableStock, it.ConvQty);
+
+          return (
+            <>
+              {maxQty > 0 && <div>{maxQty} {it.maxunit}s</div>}
+              {minQty > 0 && (
+                <div className="text-green-600 text-[11px]">
+                  {minQty.toFixed(1)} {it.minunit}s
+                </div>
               )}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {items.map((it) => (
-            <div key={it.id} className="bg-white rounded-xl shadow border p-4 flex flex-col justify-between">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <FaBoxes className="text-xl text-indigo-600" />
-                  <h3 className="font-bold text-lg truncate">{it.name}</h3>
-                </div>
-                <div className="mb-2">
-                  <svg
-                    ref={(el: SVGSVGElement | null) => {
-                      svgRefs.current[it.id ?? it.barcode] = el ?? null;
-                    }}
-                    aria-hidden
-                  />
-                </div>
-                <div className="text-sm text-gray-600">
-                  Brand: {brands.find(b => b.name === it.brand)?.name || "-"}
-                </div>
-                <div className="text-sm text-gray-600">
-                  Category: {categories.find(c => c.name === it.category)?.name || "-"}
-                </div>
-                <div className="text-sm text-gray-600">
-                  Min Unit: {units.find(u => u.name === it.minunit)?.name || "-"}
-                </div>
-                <div className="text-sm text-gray-600">
-                  Max Unit: {units.find(u => u.name === it.maxunit)?.name || "-"}
-                </div>
+              {maxQty === 0 && minQty === 0 && (
+                <span className="text-red-500 text-[11px]">Out of stock</span>
+              )}
+            </>
+          );
+        })()}
+      </div>
+    </div>
+  </div>
 
-              </div>
+  {/* PRICES */}
+  <div className="border-t mt-2 pt-2 text-sm grid grid-cols-2 gap-1">
+    <div>
+      <span className="text-gray-500 text-xs">Purchase</span>
+      <div className="font-semibold">Rs. {it.purchasePrice}</div>
+    </div>
 
-              <div className="flex gap-2 mt-3">
-                <button onClick={() => openEdit(it)} className="flex-1 bg-blue-500 text-white p-2 rounded text-sm">Edit</button>
-                <button onClick={() => handleDelete(it.id)} className="flex-1 bg-red-500 text-white p-2 rounded text-sm">Delete</button>
-              </div>
-            </div>
-          ))}
-        </div>
+    <div>
+      <span className="text-gray-500 text-xs">Retail</span>
+      <div className="font-semibold">Rs. {it.retailPrice}</div>
+    </div>
+
+    <div>
+      <span className="text-gray-500 text-xs">Discount</span>
+      <div className="font-semibold">Rs. {it.discountPrice || 0}</div>
+    </div>
+
+    <div>
+      <span className="text-gray-500 text-xs">Wholesale</span>
+      <div className="font-semibold">Rs. {it.wholesalePrice}</div>
+    </div>
+  </div>
+
+  {/* DESCRIPTION */}
+  {it.description && (
+    <div className="mt-2 text-[11px] text-gray-600 border-t pt-2">
+      {it.description}
+    </div>
+  )}
+
+  {/* ACTIONS */}
+  <div className="flex gap-2 mt-2">
+    <button
+      onClick={() => openEdit(it)}
+      className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded text-sm"
+    >
+      Edit
+    </button>
+
+    <button
+      onClick={() => handleDelete(it.id)}
+      className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded text-sm"
+    >
+      Delete
+    </button>
+  </div>
+</div>
+    );
+  })}
+</div>
       )}
 
       {/* Pagination */}
@@ -519,164 +674,212 @@ convQty: number
 
       {/* Modal Form */}
       {isFormOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50">
-          <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-2xl">
-            <h2 className="text-xl font-bold mb-4">{editingItem ? "Edit Item" : "Create Item"}</h2>
+  <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50">
+    <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      
+      {/* HEADER */}
+      <div className="p-4 border-b flex justify-between items-center">
+        <h2 className="text-xl font-bold">{editingItem ? "Edit Item" : "Create Item"}</h2>
+        <button onClick={closeForm} className="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
+      </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium mb-1">Name</label>
-                <input className="w-full p-2 border rounded" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              </div>
+      {/* SCROLLABLE FORM CONTENT */}
+      <div className="p-4 overflow-y-auto flex-1">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-              <div>
-                <label className="block text-xs font-medium mb-1">Barcode</label>
-                <input className="w-full p-2 border rounded" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
-              </div>
-
-              {/* Dropdowns for Brand / Category / Unit */}
-              <div>
-                {/* <label className="block text-xs font-medium mb-1">Brand</label> */}
-                {/* Brand */}
-                <select
-                  className="w-full p-2 border rounded"
-                  value={form.brand}
-                  onChange={(e) => setForm({ ...form, brand: e.target.value })}
-                >
-                  <option value="">Select Brand</option>
-                  {brands.map((b) => (
-                    <option key={b.id} value={b.name}>{b.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                {/* <label className="block text-xs font-medium mb-1">Category</label> */}
-                {/* Category */}
-                <select
-                  className="w-full p-2 border rounded"
-                  value={form.category}
-                  onChange={async (e) => {
-                    const selectedCategory = e.target.value;
-                    setForm(prev => ({ ...prev, category: selectedCategory }));
-
-                    if (selectedCategory.trim().toLowerCase() === "gas") {
-                      // Fetch the 11.8kg prices from settings
-                      const settings = await settingsRepository.get();
-                      if (settings) {
-                        const buy112 = Number(settings.cylBPrice) || 0;
-                        const sell112 = Number(settings.cylSPrice) || 0;
-                        const discount112 = Number(settings.cylDPrice) || 0;
-                        const wholesale112 = Number(settings.cylWPrice) || 0;
-
-                        // Calculate 1kg prices
-                        const perKgBuy = +(buy112 / 11.8).toFixed(2);
-                        const perKgSell = +(sell112 / 11.8).toFixed(2);
-                        const perKgDiscount = +(discount112 / 11.8).toFixed(2);
-                        const perKgWholesale = +(wholesale112 / 11.8).toFixed(2);
-
-                        // Update form values
-                        setForm(prev => ({
-                          ...prev,
-                          purchasePrice: perKgBuy,
-                          retailPrice: perKgSell,
-                          discountPrice: perKgDiscount,
-                          wholesalePrice: perKgWholesale
-                        }));
-                      }
-                    } else {
-                      // Non-Gas category: reset all 1kg prices to zero
-                      setForm(prev => ({
-                        ...prev,
-                        purchasePrice: 0,
-                        retailPrice: 0,
-                        discountPrice: 0,
-                        wholesalePrice: 0
-                      }));
-                    }
-                  }}
-                >
-                  <option value="">Select Category</option>
-                  {categories.map(c => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
-
-              </div>
-
-              <div>
-                {/* <label className="block text-xs font-medium mb-1"> Minimum Unit</label> */}
-                {/* Min Unit */}
-                <select
-                className="w-full p-2 border rounded"
-                value={form.minunit}
-                onChange={(e) => setForm({ ...form, minunit: e.target.value })}
-              >
-                <option value="">Select Min Unit</option>
-                {units.map((u) => (
-                  <option key={u.id} value={u.name}>{u.name}</option>
-                ))}
-              </select>
-              </div>
-
-              <div>
-                {/* <label className="block text-xs font-medium mb-1">Maximum Unit</label> */}
-                {/* Max Unit */}
-                <select
-                className="w-full p-2 border rounded"
-                value={form.maxunit}
-                onChange={(e) => setForm({ ...form, maxunit: e.target.value })}
-              >
-                <option value="">Select Max Unit</option>
-                {units.map((u) => (
-                  <option key={u.id} value={u.name}>{u.name}</option>
-                ))}
-              </select>
-              </div>
-              
-               <div className="sm:col-span-2">
-                <label className="block text-xs font-medium mb-1">{conversionLabel}</label>
-                <input type="number" className="w-full p-2 border rounded" value={form.ConvQty} onChange={(e) => setForm({ ...form, ConvQty: Number(e.target.value) })} />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium mb-1">{form.minunit} Purchase Price</label>
-                <input type="number" className="w-full p-2 border rounded" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: Number(e.target.value) })} />
-              </div>
-              
-              <div>
-                <label className="block text-xs font-medium mb-1">{form.minunit} Retail Price</label>
-                <input type="number" className="w-full p-2 border rounded" value={form.retailPrice} onChange={(e) => setForm({ ...form, retailPrice: Number(e.target.value) })} />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium mb-1">{form.minunit} Discount Price</label>
-                <input type="number" className="w-full p-2 border rounded" value={form.discountPrice} onChange={(e) => setForm({ ...form, discountPrice: Number(e.target.value) })} />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium mb-1">{form.minunit} Wholesale Price</label>
-                <input type="number" className="w-full p-2 border rounded" value={form.wholesalePrice} onChange={(e) => setForm({ ...form, wholesalePrice: Number(e.target.value) })} />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium mb-1">Opening Stock ({form.minunit})</label>
-                <input type="number" className="w-full p-2 border rounded" value={form.availableStock} onChange={(e) => setForm({ ...form, availableStock: Number(e.target.value) })} />
-              </div>
-
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-medium mb-1">Description</label>
-                <textarea className="w-full p-2 border rounded" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-              </div>
-            </div>
-
-            <div className="mt-4 flex justify-end gap-2">
-              <button onClick={closeForm} className="px-4 py-2 bg-gray-300 rounded">Cancel</button>
-              <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded">Save</button>
-            </div>
+          <div>
+            <label className="block text-xs font-medium mb-1">Name</label>
+            <input
+              className="w-full p-2 border rounded"
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+            />
           </div>
+
+          <div>
+            <label className="block text-xs font-medium mb-1">Barcode</label>
+            <input
+              className="w-full p-2 border rounded"
+              value={form.barcode}
+              onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+            />
+          </div>
+
+          {/* Brand */}
+          <div>
+            <select
+              className="w-full p-2 border rounded"
+              value={form.brand}
+              onChange={(e) => setForm({ ...form, brand: e.target.value })}
+            >
+              <option value="">Select Brand</option>
+              {brands.map((b) => (
+                <option key={b.id} value={b.name}>{b.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Category */}
+          <div>
+            <select
+              className="w-full p-2 border rounded"
+              value={form.category}
+              onChange={async (e) => {
+                const selectedCategory = e.target.value;
+                setForm(prev => ({ ...prev, category: selectedCategory }));
+
+                if (selectedCategory.trim().toLowerCase() === "gas") {
+                  const settings = await settingsRepository.get();
+                  if (settings) {
+                    const buy112 = Number(settings.cylBPrice) || 0;
+                    const sell112 = Number(settings.cylSPrice) || 0;
+                    const discount112 = Number(settings.cylDPrice) || 0;
+                    const wholesale112 = Number(settings.cylWPrice) || 0;
+
+                    const perKgBuy = +(buy112 / 11.8).toFixed(2);
+                    const perKgSell = +(sell112 / 11.8).toFixed(2);
+                    const perKgDiscount = +(discount112 / 11.8).toFixed(2);
+                    const perKgWholesale = +(wholesale112 / 11.8).toFixed(2);
+
+                    setForm(prev => ({
+                      ...prev,
+                      purchasePrice: perKgBuy,
+                      retailPrice: perKgSell,
+                      discountPrice: perKgDiscount,
+                      wholesalePrice: perKgWholesale
+                    }));
+                  }
+                } else {
+                  setForm(prev => ({
+                    ...prev,
+                    purchasePrice: 0,
+                    retailPrice: 0,
+                    discountPrice: 0,
+                    wholesalePrice: 0
+                  }));
+                }
+              }}
+            >
+              <option value="">Select Category</option>
+              {categories.map(c => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Min Unit */}
+          <div>
+            <select
+              className="w-full p-2 border rounded"
+              value={form.minunit}
+              onChange={(e) => setForm({ ...form, minunit: e.target.value })}
+            >
+              <option value="">Select Min Unit</option>
+              {units.map((u) => (
+                <option key={u.id} value={u.name}>{u.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Max Unit */}
+          <div>
+            <select
+              className="w-full p-2 border rounded"
+              value={form.maxunit}
+              onChange={(e) => setForm({ ...form, maxunit: e.target.value })}
+            >
+              <option value="">Select Max Unit</option>
+              {units.map((u) => (
+                <option key={u.id} value={u.name}>{u.name}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Conversion Quantity */}
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium mb-1">{conversionLabel}</label>
+            <input
+              type="number"
+              className="w-full p-2 border rounded"
+              value={form.ConvQty}
+              onChange={(e) => setForm({ ...form, ConvQty: Number(e.target.value) })}
+            />
+          </div>
+
+          {/* Prices */}
+          <div>
+            <label className="block text-xs font-medium mb-1">{form.minunit} Purchase Price</label>
+            <input
+              type="number"
+              className="w-full p-2 border rounded"
+              value={form.purchasePrice}
+              onChange={(e) => setForm({ ...form, purchasePrice: Number(e.target.value) })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium mb-1">{form.minunit} Retail Price</label>
+            <input
+              type="number"
+              className="w-full p-2 border rounded"
+              value={form.retailPrice}
+              onChange={(e) => setForm({ ...form, retailPrice: Number(e.target.value) })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium mb-1">{form.minunit} Discount Price</label>
+            <input
+              type="number"
+              className="w-full p-2 border rounded"
+              value={form.discountPrice}
+              onChange={(e) => setForm({ ...form, discountPrice: Number(e.target.value) })}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium mb-1">{form.minunit} Wholesale Price</label>
+            <input
+              type="number"
+              className="w-full p-2 border rounded"
+              value={form.wholesalePrice}
+              onChange={(e) => setForm({ ...form, wholesalePrice: Number(e.target.value) })}
+            />
+          </div>
+
+          {/* Stock */}
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium mb-1">Opening Stock ({form.minunit})</label>
+            <input
+              type="number"
+              className="w-full p-2 border rounded"
+              value={form.availableStock}
+              onChange={(e) => setForm({ ...form, availableStock: Number(e.target.value) })}
+            />
+          </div>
+
+          {/* Description */}
+          <div className="sm:col-span-2">
+            <label className="block text-xs font-medium mb-1">Description</label>
+            <textarea
+              className="w-full p-2 border rounded"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+            />
+          </div>
+
         </div>
-      )}
+      </div>
+
+      {/* ACTION BUTTONS */}
+      <div className="p-4 border-t flex justify-end gap-2">
+        <button onClick={closeForm} className="px-4 py-2 bg-gray-300 rounded">Cancel</button>
+        <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded">Save</button>
+      </div>
+
+    </div>
+  </div>
+)}
     </div>
   );
 }
