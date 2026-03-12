@@ -77,18 +77,22 @@ useEffect(() => {
 
 // --- Save General Settings (tab 1) ---
 const saveGeneralSettings = async () => {
-  const currentSettings = await getSettings(); // get existing saved settings
+  const currentSettings = await getSettings();
   if (!currentSettings) return;
 
-  await saveSettings({
-    ...currentSettings, // keep existing values
+  const updated = {
+    ...currentSettings,
     businessName: formData.businessName,
     email: formData.email,
     contact: formData.contact,
     address: formData.address,
     logo: formData.logo
-    // NOTE: do NOT touch cylBPrice or cylSPrice
-  });
+  };
+
+  await saveSettings(updated);
+
+  // ⭐ ADD THIS LINE
+  window.dispatchEvent(new Event("settingsUpdated"));
 
   alert("General settings saved!");
 };

@@ -76,7 +76,7 @@ export default function ProdReport() {
   generateReport();
 }, [products, fromDate, toDate, categoryFilter, brandFilter]);
 
-   const generateReport = async () => {
+const generateReport = async () => {
 
   const sales: DBSale[] =
     await salesRepository.getSalesPage(1, 100000);
@@ -95,20 +95,38 @@ export default function ProdReport() {
     if (toDate && new Date(s.date) > new Date(toDate))
       return false;
 
-    return s.transactionType === "Sale";
+    // include SALE + CUSTOMER RETURNS
+    if (s.transactionType === "Sale") return true;
+
+    if (
+      s.transactionType === "Return" &&
+      s.invoiceNo?.startsWith("RET-C")
+    ) return true;
+
+    return false;
   });
 
-  const validSaleIds = new Set(
-    filteredSales
-      .filter(s => s.id !== undefined)
-      .map(s => s.id!)
-  );
+  const saleTypeMap = new Map<number, "Sale" | "Return">();
+
+  filteredSales.forEach(s => {
+    if (!s.id) return;
+
+    if (s.transactionType === "Sale")
+      saleTypeMap.set(s.id, "Sale");
+
+    if (
+      s.transactionType === "Return" &&
+      s.invoiceNo?.startsWith("RET-C")
+    )
+      saleTypeMap.set(s.id, "Return");
+  });
 
   /* ---------- AGGREGATE SALES ITEMS ---------- */
 
   items.forEach(it => {
 
-    if (!validSaleIds.has(it.saleId)) return;
+    const type = saleTypeMap.get(it.saleId);
+    if (!type) return;
 
     if (!map.has(it.name)) {
       map.set(it.name, {
@@ -117,12 +135,13 @@ export default function ProdReport() {
         brand: "",
         qty: 0,
         sales: 0,
-        profit: 0,
-        dead: false
+        profit: 0
       });
     }
 
     const row = map.get(it.name)!;
+
+    /* ----- calculate line total ----- */
 
     const base = it.qty * it.price;
 
@@ -138,8 +157,12 @@ export default function ProdReport() {
 
     const total = base - discount + tax;
 
-    row.qty += it.qty;
-    row.sales += total;
+    /* ----- APPLY SIGN BASED ON TYPE ----- */
+
+    const sign = type === "Sale" ? 1 : -1;
+
+    row.qty += it.qty * sign;
+    row.sales += total * sign;
   });
 
   /* ---------- MERGE ALL PRODUCTS (DEAD STOCK FIX) ---------- */
@@ -160,13 +183,12 @@ export default function ProdReport() {
       const row = map.get(p.name)!;
       row.category = p.category;
       row.brand = p.brand;
-      row.dead = row.qty === 0;
     }
   });
 
   let result = Array.from(map.values());
 
-  /* ---------- APPLY FILTERS ---------- */
+  /* ---------- APPLY CATEGORY / BRAND FILTERS ---------- */
 
   if (categoryFilter !== "All")
     result = result.filter(r => r.category === categoryFilter);
@@ -174,22 +196,21 @@ export default function ProdReport() {
   if (brandFilter !== "All")
     result = result.filter(r => r.brand === brandFilter);
 
-  /* ---------- SORT (DESCENDING QTY SOLD) ---------- */
-  // IMPORTANT: dead stock automatically moves to bottom
+  /* ---------- SORT DESC BY QTY SOLD ---------- */
+
   result.sort((a, b) => b.qty - a.qty);
 
   setRows(result);
-  setPage(1); // reset pagination when regenerating
 
-  /* ---------- SUMMARY (SAFE SORT COPIES) ---------- */
+  /* ---------- SUMMARY ---------- */
 
   const soldOnly = result.filter(r => r.qty > 0);
 
   const top =
-    [...soldOnly].sort((a, b) => b.qty - a.qty)[0]?.product || "-";
+    soldOnly[0]?.product || "-";
 
   const least =
-    [...soldOnly].sort((a, b) => a.qty - b.qty)[0]?.product || "-";
+    soldOnly[soldOnly.length - 1]?.product || "-";
 
   const dead = result.filter(r => r.qty === 0).length;
 
@@ -240,10 +261,8 @@ const exportPDF = () => {
       "Product",
       "Category",
       "Brand",
-      "Qty Sold",
-      "Sales",
-      "Profit",
-      "Dead"
+      "Net Qty Sold",
+      "Net Sales",
     ]],
     body: rows.map(r => [
       r.product,
@@ -251,8 +270,6 @@ const exportPDF = () => {
       r.brand,
       r.qty,
       r.sales.toLocaleString(),
-      (r.profit || 0).toLocaleString(),
-      r.qty === 0 ? "Yes" : "No"
     ]),
     styles: {
       fontSize: 9
@@ -286,7 +303,7 @@ const exportExcel = () => {
 
   const tableData = rows.map(r => ({
     Product: r.product,
-    "Qty Sold": r.qty,
+    "Net Qty Sold": r.qty,
     Sales: r.sales
   }));
 
@@ -359,7 +376,7 @@ const exportExcel = () => {
         <div style={cardStyle}>
           <FaBan color="#ef4444" size={24}/>
           <div>
-            <div>Dead Stock</div>
+            <div>Dead Stock Items</div>
             <strong>{summary.dead}</strong>
           </div>
         </div>
@@ -434,8 +451,8 @@ const exportExcel = () => {
         <thead>
           <tr style={{ background:"#f3f4f6",textAlign:"left" }}>
             <th>Product</th>
-            <th>Qty Sold</th>
-            <th>Sales</th>
+            <th>Net Qty Sold</th>
+            <th>Net Sales</th>
           </tr>
         </thead>
 

@@ -204,7 +204,7 @@ export default function CustPayments() {
                 const c = customers.find(x => x.id === p.customerId);
                 return (
                   <tr key={p.id} className="border-b">
-                    <td className="p-3">{p.paymentDate}</td>
+                    <td className="p-3">{new Date(p.paymentDate).toLocaleDateString()}</td>
                     <td className="p-3">{c?.name}</td>
                     <td className="p-3">{p.payableSnapshot}</td>
                     <td className="p-3">{p.amount}</td>

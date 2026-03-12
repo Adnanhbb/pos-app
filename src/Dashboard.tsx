@@ -32,6 +32,7 @@ import {
   FaDatabase,
   FaProductHunt,
   FaKeyboard,
+  FaSteam,
 } from "react-icons/fa";
 
 import {
@@ -62,6 +63,10 @@ import POS from "./POS";
 import Invoices from "./Invoices";
 import SalesReport from "./salesReport";
 import ProdReport from "./prodReport";
+import CustReport from "./custReport";
+import SupReport from "./supReport";
+import ExpReport from "./expReport";
+import ProfReport from "./profReport";
 
 // DB helpers
 import { authRepository } from "./repositories/authRepository";
@@ -359,15 +364,30 @@ useEffect(() => {
 
 
 useEffect(() => {
-  async function loadSettings() {
+
+  const loadSettings = async () => {
     const settings = await settingsRepository.get();
     if (!settings) return;
 
     setBusinessName(settings.businessName || "My Business");
-    setBusinessLogo(settings.logo || "/images/logo.png"); // fallback
-  }
+    setBusinessLogo(settings.logo || "/images/logo.png");
+  };
 
+  // initial load
   loadSettings();
+
+  // ✅ listen for settings updates
+  const handleSettingsUpdated = () => {
+    loadSettings();
+  };
+
+  window.addEventListener("settingsUpdated", handleSettingsUpdated);
+
+  // cleanup (VERY important)
+  return () => {
+    window.removeEventListener("settingsUpdated", handleSettingsUpdated);
+  };
+
 }, []);
 
 
@@ -567,9 +587,12 @@ const saveEditedUser = async () => {
             </button>
             {reportsOpen && (
               <ul className="ml-6 mt-1 space-y-1">
-                {[{ name: "Sales Report", icon: <FaChartLine /> },
-                  { name: "Products Report", icon: <FaUsers /> },
-                  { name: "Expenses Report", icon: <FaDollarSign /> }
+                {[{ name: "Sales Report", icon: <FaChartLine color="red"/> },
+                  { name: "Products Report", icon: <FaBoxes color="blue"/> },
+                  { name: "Customers Report", icon: <FaUsers color="green"/> },
+                  { name: "Suppliers Report", icon: <FaTruck color="blue"/> },
+                  { name: "Expenses Report", icon: <FaDollarSign color="red"/> },
+                  { name: "Profit Report", icon: <FaMoneyBill color="green"/> }
                 ].map((sub) => (
                   <li key={sub.name}>
                     <button
@@ -729,8 +752,14 @@ const saveEditedUser = async () => {
           <SalesReport />
         ) : activeItem === "Products Report" ? (
           <ProdReport />
-        ) : activeItem === "Expenses Report" ? (
-          <div>Expenses Report Page</div>
+        ) : activeItem === "Customers Report" ? (
+          <CustReport />
+        ): activeItem === "Suppliers Report" ? (
+          <SupReport />
+        ): activeItem === "Expenses Report" ? (
+          <ExpReport />
+        ): activeItem === "Profit Report" ? (
+          <ProfReport />
         )
         :(
           <>

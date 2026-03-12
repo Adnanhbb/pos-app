@@ -460,7 +460,7 @@ if (
             <div className="flex justify-between items-start mb-4 text-sm">
               <div >
                 <h2 className="text-lg font-semibold">Invoice #: {selectedInvoice.invoiceNo}</h2>
-                <p><strong>Date:</strong> {selectedInvoice.date}</p>
+                <p><strong>Date:</strong> {new Date(selectedInvoice.date).toLocaleDateString()}</p>
                 <p><strong>Cust/Supp Name:</strong> {getPartyName(selectedInvoice)}</p>
               </div>
               <div>
@@ -518,9 +518,11 @@ if (
 
                 {/* Right column */}
                 <div className="flex flex-col gap-1 text-right">
-                  <p className="text-blue-500"><strong>Grand Total:</strong> {selectedInvoice.grandTotal.toFixed()}</p>
-                  <p className="text-green-500"><strong>Paid:</strong> {selectedInvoice.paid}</p>
-                  <p className="text-red-500"><strong>Balance:</strong> {selectedInvoice.arrears.toFixed()}</p>
+                  <p><strong>Grand Total:</strong> {selectedInvoice.grandTotal.toFixed()}</p>
+                  <p><strong>Paid:</strong> {selectedInvoice.paid}</p>
+                  <p><strong>Balance:</strong> {selectedInvoice.arrears.toFixed()}</p>
+                  <p><strong>Profit:</strong> {selectedInvoice.profit.toFixed()}</p>
+
                 </div>
               </div>
 

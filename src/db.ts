@@ -94,10 +94,15 @@ export interface Tax {
 export interface Expense {
   id?: number;
   date: string; // stored as string, e.g. "2025-11-26"
+  category: string;
   amount: number;
   description?: string;
 }
 
+export interface ExpCateg{
+  id?:number;
+  category: string
+}
 /* ====================== Settings ====================== */
 export interface Settings {
   id?: number;
@@ -275,6 +280,12 @@ export interface DBSaleItem {
       "by-saleId": number;
     };
   };
+
+  expCategories: {
+    key: number;
+    value: ExpCateg;
+    indexes: { "by-category": string };
+  };
 }
 
 
@@ -288,7 +299,7 @@ let _db: IDBPDatabase<POSDB> | null = null;
 export async function initDB() {
   if (_db) return _db;
 
-  _db = await openDB<POSDB>("POSDatabase", 10,{
+  _db = await openDB<POSDB>("POSDatabase", 12,{
     // bumped version to 9 to include expenses store
     upgrade(db, oldVersion, newVersion, transaction) {
       /* ---------------- USERS STORE ---------------- */
@@ -428,6 +439,12 @@ export async function initDB() {
         try { store.index("by-description"); } catch { store.createIndex("by-description", "description"); }
       }
 
+       if (!db.objectStoreNames.contains("expCategories")) {
+        db.createObjectStore("expCategories", {
+          keyPath: "id",
+          autoIncrement: true,
+        });
+      }
       /* ---------------- SETTINGS STORE ---------------- */
 if (!db.objectStoreNames.contains("settings")) {
   const store = db.createObjectStore("settings", { keyPath: "id", autoIncrement: true });
@@ -991,6 +1008,7 @@ export async function addExpense(expense: Omit<Expense, "id">): Promise<number> 
   // basic normalization/validation
   const e: Expense = {
     date: expense.date,
+    category: expense.category,
     amount: Number(expense.amount || 0),
     description: expense.description || "",
   };
@@ -1003,6 +1021,7 @@ export async function updateExpense(expense: Expense): Promise<void> {
   const e: Expense = {
     id: expense.id,
     date: expense.date,
+    category: expense.category,
     amount: Number(expense.amount || 0),
     description: expense.description || "",
   };
@@ -1357,8 +1376,40 @@ export async function getItemById(id: number): Promise<Item | null> {
   return item ?? null;
 }
 
+export const getAllExpCategories = async (): Promise<ExpCateg[]> => {
+  const conn = await db.open();  // db must be initialized properly
+
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction("expCategories", "readonly");
+    const store = tx.objectStore("expCategories");
+    const req = store.getAll();
+
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+};
+
+export const addExpCategory = async (category: string): Promise<number> => {
+  const conn = await db.open();
+
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction("expCategories", "readwrite");
+    const store = tx.objectStore("expCategories");
+    const req = store.add({ category });
+
+    req.onsuccess = () => {
+      // Wait for the transaction to complete before resolving
+      tx.oncomplete = () => resolve(req.result as number);
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    };
+
+    req.onerror = () => reject(req.error);
+  });
+};
+
 const DB_NAME = "POSDatabase";
-const DB_VERSION = 10;
+const DB_VERSION = 12;
 
 class Database {
   private conn: IDBDatabase | null = null;
@@ -1404,6 +1455,11 @@ class Database {
     const store = conn.createObjectStore("customer_payments", { keyPath: "id", autoIncrement: true });
     store.createIndex("customerId", "customerId");
   }
+
+request.onupgradeneeded = (event) => {
+  const conn = request.result;
+
+};
       };
 
       request.onsuccess = () => {

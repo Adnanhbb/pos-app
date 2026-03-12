@@ -36,20 +36,45 @@ const exportPDF = () => {
 
   const doc = new jsPDF();
 
+  /* ---------- HEADER ---------- */
+
+  doc.setFontSize(16);
+  doc.text("Sales Report", 14, 15);
+
+  doc.setFontSize(10);
+  doc.text(
+    `Date Range: ${fromDate || "Start"} - ${toDate || "Today"}`,
+    14,
+    22
+  );
+
+  /* ---------- SUMMARY (CARDS DATA) ---------- */
+
+  doc.setFontSize(11);
+
+  doc.text(`Total Sales: Rs. ${totals.sales.toLocaleString()}`, 14, 32);
+  doc.text(`Total Purchases: Rs. ${totals.purchases.toLocaleString()}`, 14, 38);
+  doc.text(`Customer Returns: Rs. ${totals.customerReturns.toLocaleString()}`, 14, 44);
+  
+  doc.text(`Supplier Returns: Rs. ${totals.supplierReturns.toLocaleString()}`, 120, 32);
+  doc.text(`Total Profit: Rs. ${totals.profit.toLocaleString()}`, 120, 38);
+  doc.text(`Invoices Count: ${filtered.length}`, 120, 44);
+
+  /* ---------- TABLE DATA ---------- */
+
   const tableColumn = [
     "Invoice",
     "Date",
     "Customer/Supplier",
     "Grand Total",
     "Paid",
-    "Arrears",
+    "Balance",
     "Profit"
   ];
 
   const tableRows: any[] = [];
 
   filtered.forEach(s => {
-
     tableRows.push([
       s.invoiceNo,
       s.date,
@@ -59,39 +84,81 @@ const exportPDF = () => {
       s.arrears.toLocaleString(),
       (s.profit || 0).toLocaleString()
     ]);
-
   });
 
-  autoTable(doc,{
-    head:[tableColumn],
-    body:tableRows,
-    startY:20
+  autoTable(doc, {
+    startY: 58,
+    head: [tableColumn],
+    body: tableRows,
+    styles: {
+      fontSize: 9
+    },
+    headStyles: {
+      fillColor: [37, 99, 235]
+    }
   });
-
-  doc.text("Sales Report",14,15);
 
   doc.save("sales_report.pdf");
-
 };
 
 const exportExcel = () => {
-  const wsData = [
-    ["Invoice", "Date", "Customer/Supplier", "Grand Total", "Paid", "Arrears", "Profit"],
-    ...filtered.map(s => [
-      s.invoiceNo,
-      s.date,
-      s.customerName || s.supplierName,
-      s.grandTotal,
-      s.paid,
-      s.arrears,
-      s.profit || 0
-    ])
+
+  /* ---------- HEADER SECTION ---------- */
+
+  const headerRows = [
+    ["Sales Report"],
+    [`Date Range: ${fromDate || "Start"} - ${toDate || "Today"}`],
+    [],
+    ["Total Sales", totals.sales],
+    ["Total Purchases", totals.purchases],
+    ["Customer Returns", totals.customerReturns],
+    ["Supplier Returns", totals.supplierReturns],
+    ["Total Profit", totals.profit],
+    [],
   ];
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-  XLSX.utils.book_append_sheet(wb, ws, "SalesReport");
-  XLSX.writeFile(wb, "sales_report.xlsx");
+  /* ---------- TABLE DATA ---------- */
+
+  const tableData = filtered.map(s => ({
+    Invoice: s.invoiceNo,
+    Date: s.date,
+    "Customer/Supplier": s.customerName || s.supplierName,
+    "Grand Total": s.grandTotal,
+    Paid: s.paid,
+    Arrears: s.arrears,
+    Profit: s.profit || 0
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet([]);
+
+  // Header
+  XLSX.utils.sheet_add_aoa(worksheet, headerRows, {
+    origin: "A1"
+  });
+
+  // Table
+  XLSX.utils.sheet_add_json(
+    worksheet,
+    tableData,
+    { origin: "A11" }
+  );
+
+  /* ---------- COLUMN WIDTH ---------- */
+
+  worksheet["!cols"] = [
+    { wch: 18 },
+    { wch: 12 },
+    { wch: 30 },
+    { wch: 15 },
+    { wch: 12 },
+    { wch: 12 },
+    { wch: 12 }
+  ];
+
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Sales Report");
+
+  XLSX.writeFile(workbook, "sales_report.xlsx");
 };
 
   const [returnSubFilter, setReturnSubFilter] =
@@ -143,42 +210,57 @@ const exportExcel = () => {
     calculateTotals(result);
   };
 
-  const calculateTotals = (data: DBSale[]) => {
+const calculateTotals = (data: DBSale[]) => {
 
-    const totals = {
-      sales: 0,
-      purchases: 0,
-      customerReturns: 0,
-      supplierReturns: 0,
-      profit: 0
-    };
-
-    data.forEach(s => {
-
-      if (s.transactionType === "Sale") {
-        totals.sales += s.grandTotal;
-        totals.profit += s.profit || 0;
-      }
-
-      if (s.transactionType === "Purchase") {
-        totals.purchases += s.grandTotal;
-      }
-
-      if (s.transactionType === "Return") {
-
-        if (s.invoiceNo?.startsWith("RET-C")) {
-          totals.customerReturns += s.grandTotal;
-        }
-
-        if (s.invoiceNo?.startsWith("RET-S")) {
-          totals.supplierReturns += s.grandTotal;
-        }
-      }
-
-    });
-
-    setTotals(totals);
+  const totals = {
+    sales: 0,
+    purchases: 0,
+    customerReturns: 0,
+    supplierReturns: 0,
+    profit: 0
   };
+
+  data.forEach(s => {
+
+    // true transaction value (exclude dues adjustments)
+    const netAmount =
+      (s.subtotal || 0) -
+      (s.discount || 0) +
+      (s.tax || 0);
+
+    /* ---------- SALES ---------- */
+    if (s.transactionType === "Sale") {
+
+      totals.sales += netAmount;
+
+      // add profit from sale
+      totals.profit += (s.profit || 0);
+    }
+
+    /* ---------- PURCHASE ---------- */
+    if (s.transactionType === "Purchase") {
+      totals.purchases += netAmount;
+    }
+
+    /* ---------- RETURNS ---------- */
+    if (s.transactionType === "Return") {
+
+      // CUSTOMER RETURN → reverse revenue & profit
+      if (s.invoiceNo?.startsWith("RET-C")) {
+        totals.customerReturns += netAmount;
+        totals.profit += (s.profit || 0); // subtract profit
+      }
+
+      // SUPPLIER RETURN
+      if (s.invoiceNo?.startsWith("RET-S")) {
+        totals.supplierReturns += netAmount;
+      }
+    }
+
+  });
+
+  setTotals(totals);
+};
 
   const paginated = filtered.slice(
     (page - 1) * PAGE_SIZE,
@@ -211,6 +293,18 @@ const exportExcel = () => {
     alignItems: "center",
     gap: "12px"
   };
+
+  const formatDate = (dateString: string) => {
+  if (!dateString) return "";
+
+  const d = new Date(dateString);
+
+  return d.toLocaleDateString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+};
 
   return (
 
@@ -385,7 +479,7 @@ const exportExcel = () => {
             <th>Customer/Supplier</th>
             <th>Grand Total</th>
             <th>Paid</th>
-            <th>Arrears</th>
+            <th>Balance</th>
             <th>Profit</th>
           </tr>
 
@@ -398,7 +492,7 @@ const exportExcel = () => {
             <tr key={s.id} style={{ borderBottom: "1px solid #eee" }}>
 
               <td style={{ padding: 8 }}>{s.invoiceNo}</td>
-              <td>{s.date}</td>
+              <td>{formatDate(s.date)}</td>
 
               <td>
                 {s.customerName || s.supplierName}

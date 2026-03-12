@@ -4,12 +4,18 @@ import {
   addExpense,
   updateExpense,
   deleteExpense,
+  searchExpenses,
+  getAllExpCategories,
+  addExpCategory,
 } from "../db";
 
 export type { Expense };
 
 export const expenseRepository = {
-  /* ---------- BASIC CRUD ---------- */
+
+  /* =====================================================
+     BASIC CRUD
+  ===================================================== */
 
   getAll: async (): Promise<Expense[]> => {
     return await getAllExpenses();
@@ -32,14 +38,28 @@ export const expenseRepository = {
     await deleteExpense(id);
   },
 
-  /* ---------- REPORT HELPERS ---------- */
+  /* =====================================================
+     SEARCH (UI MUST USE THIS — NOT db.ts)
+  ===================================================== */
+
+  search: async (query: string): Promise<Expense[]> => {
+    if (!query.trim()) return await getAllExpenses();
+    return await searchExpenses(query);
+  },
+
+  /* =====================================================
+     DATE FILTERING / REPORT HELPERS
+  ===================================================== */
 
   getByDateRange: async (
     start: string,
     end: string
   ): Promise<Expense[]> => {
     const all = await getAllExpenses();
-    return all.filter(e => e.date >= start && e.date <= end);
+
+    return all.filter(
+      e => e.date >= start && e.date <= end
+    );
   },
 
   getTotalByDateRange: async (
@@ -47,6 +67,25 @@ export const expenseRepository = {
     end: string
   ): Promise<number> => {
     const filtered = await expenseRepository.getByDateRange(start, end);
-    return filtered.reduce((sum, e) => sum + e.amount, 0);
+
+    return filtered.reduce(
+      (sum, e) => sum + e.amount,
+      0
+    );
   },
+
+  /* =====================================================
+     EXPENSE CATEGORIES (NEW)
+     UI MUST NEVER CALL db.ts DIRECTLY
+  ===================================================== */
+
+  getCategories: async (): Promise<string[]> => {
+    const cats = await getAllExpCategories();
+    return cats.map(c => c.category);
+  },
+
+  addCategory: async (category: string): Promise<number> => {
+    return await addExpCategory(category);
+  },
+  
 };
