@@ -97,7 +97,7 @@ export default function ProfReport() {
         <div>
           <div>Net Profit</div>
           <strong>
-            Rs. {totals.totalProfit.toLocaleString()}
+            Rs. {totals.totalProfit.toFixed().toLocaleString()}
           </strong>
         </div>
       </div>
@@ -107,7 +107,7 @@ export default function ProfReport() {
         <div>
           <div>Total Expenses</div>
           <strong>
-            Rs. {totals.totalExpenses.toLocaleString()}
+            Rs. {totals.totalExpenses.toFixed().toLocaleString()}
           </strong>
         </div>
       </div>
@@ -117,7 +117,7 @@ export default function ProfReport() {
         <div>
           <div>Final Profit</div>
           <strong>
-            Rs. {totals.netProfit.toLocaleString()}
+            Rs. {totals.netProfit.toFixed().toLocaleString()}
           </strong>
         </div>
       </div>

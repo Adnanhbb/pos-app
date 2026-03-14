@@ -67,6 +67,7 @@ import CustReport from "./custReport";
 import SupReport from "./supReport";
 import ExpReport from "./expReport";
 import ProfReport from "./profReport";
+import CFReport from "./CFReport";
 
 // DB helpers
 import { authRepository } from "./repositories/authRepository";
@@ -592,6 +593,7 @@ const saveEditedUser = async () => {
                   { name: "Customers Report", icon: <FaUsers color="green"/> },
                   { name: "Suppliers Report", icon: <FaTruck color="blue"/> },
                   { name: "Expenses Report", icon: <FaDollarSign color="red"/> },
+                  { name: "Cash-flow Report", icon: <FaMoneyBill color="green"/> },
                   { name: "Profit Report", icon: <FaMoneyBill color="green"/> }
                 ].map((sub) => (
                   <li key={sub.name}>
@@ -758,6 +760,8 @@ const saveEditedUser = async () => {
           <SupReport />
         ): activeItem === "Expenses Report" ? (
           <ExpReport />
+        ): activeItem === "Cash-flow Report" ? (
+          <CFReport />  
         ): activeItem === "Profit Report" ? (
           <ProfReport />
         )

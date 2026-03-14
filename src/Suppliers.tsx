@@ -228,21 +228,21 @@ async function handleSave() {
         <FaMoneyBillWave className="text-yellow-600 text-3xl" />
         <div>
           <div className="text-xs text-gray-500">PAYABLE</div>
-          <div className="text-xl font-bold">{totalPayable}</div>
+          <div className="text-xl font-bold">{totalPayable.toFixed()}</div>
         </div>
       </div>
       <div className="bg-white shadow rounded-xl p-4 flex items-center gap-3">
         <FaCreditCard className="text-green-600 text-3xl" />
         <div>
           <div className="text-xs text-gray-500">PAID</div>
-          <div className="text-xl font-bold">{totalPaid}</div>
+          <div className="text-xl font-bold">{totalPaid.toFixed()}</div>
         </div>
       </div>
       <div className="bg-white shadow rounded-xl p-4 flex items-center gap-3">
         <FaBalanceScale className="text-red-600 text-3xl" />
         <div>
           <div className="text-xs text-gray-500">BALANCE</div>
-          <div className="text-xl font-bold">{totalBalance}</div>
+          <div className="text-xl font-bold">{totalBalance.toFixed()}</div>
         </div>
       </div>
     </div>

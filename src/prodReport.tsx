@@ -251,7 +251,7 @@ const exportPDF = () => {
   const totalQty = rows.reduce((s, r) => s + r.qty, 0);
 
   doc.text(`Total Qty Sold: ${totalQty}`, 120, 32);
-  doc.text(`Total Sales: Rs. ${totalSales.toLocaleString()}`, 120, 38);
+  doc.text(`Total Sales: Rs. ${totalSales.toFixed().toLocaleString()}`, 120, 38);
 
   /* ---------- TABLE ---------- */
 

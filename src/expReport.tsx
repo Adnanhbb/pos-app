@@ -151,14 +151,14 @@ export default function ExpReport() {
     const gap = 7;
 
     doc.text(
-      `Total Expenses: ${summary.totalExpenses.toLocaleString()}`,
+      `Total Expenses: ${summary.totalExpenses.toFixed().toLocaleString()}`,
       14,
       y
     );
     y += gap;
 
     doc.text(
-      `Highest Category: ${summary.highestCategory} (${summary.highestAmount.toLocaleString()})`,
+      `Highest Category: ${summary.highestCategory} (${summary.highestAmount.toFixed().toLocaleString()})`,
       14,
       y
     );

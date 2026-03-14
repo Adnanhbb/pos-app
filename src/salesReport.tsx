@@ -315,7 +315,7 @@ return (
         <FaShoppingCart size={26} color="#ef4444" />
         <div>
           <div>Sales</div>
-          <strong>Rs. {totals.sales.toLocaleString()}</strong>
+          <strong>Rs. {totals.sales.toFixed().toLocaleString()}</strong>
         </div>
       </div>
 
@@ -323,7 +323,7 @@ return (
         <FaTruck size={26} color="#eab308" />
         <div>
           <div>Purchases</div>
-          <strong>Rs. {totals.purchases.toLocaleString()}</strong>
+          <strong>Rs. {totals.purchases.toFixed().toLocaleString()}</strong>
         </div>
       </div>
 
@@ -331,7 +331,7 @@ return (
         <FaUndo size={26} color="#10b981" />
         <div>
           <div>Cust. Returns</div>
-          <strong>Rs. {totals.customerReturns.toLocaleString()}</strong>
+          <strong>Rs. {totals.customerReturns.toFixed().toLocaleString()}</strong>
         </div>
       </div>
 
@@ -339,7 +339,7 @@ return (
         <FaUndo size={26} color="#3b82f6" />
         <div>
           <div>Supp. Returns</div>
-          <strong>Rs. {totals.supplierReturns.toLocaleString()}</strong>
+          <strong>Rs. {totals.supplierReturns.toFixed().toLocaleString()}</strong>
         </div>
       </div>
 
@@ -347,7 +347,7 @@ return (
         <FaFileInvoice size={26} color="#f59e0b" />
         <div>
           <div>Profit</div>
-          <strong>Rs. {totals.profit.toLocaleString()}</strong>
+          <strong>Rs. {totals.profit.toFixed().toLocaleString()}</strong>
         </div>
       </div>
     </div>
