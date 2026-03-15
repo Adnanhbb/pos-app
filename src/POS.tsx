@@ -250,7 +250,12 @@ function InvoiceAdjustmentModal({
 // Component
 // =====================
 
-export default function SalesPOS() {
+interface POSProps {
+  currentUser: { username: string; role: "admin" | "saleboy" };
+  // ...other props if any
+}
+
+export default function SalesPOS({ currentUser }: POSProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [editing, setEditing] = useState<CartItem | null>(null);
@@ -1803,24 +1808,26 @@ return (
       })()}
     </div>
 
-    <button
-  onClick={() => {
-    const showSupplier =
-      isPurchase || (transactionType === "Return" && returnMode === "supplier");
+    {currentUser?.role === "admin" && (
+  <button
+    onClick={() => {
+      const showSupplier =
+        isPurchase || (transactionType === "Return" && returnMode === "supplier");
 
-    showSupplier
-      ? setShowSupplierModal(true)
-      : setShowCustomerModal(true);
-  }}
-  className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
-  title={
-    isPurchase || (transactionType === "Return" && returnMode === "supplier")
-      ? "Add New Supplier"
-      : "Add New Customer"
-  }
->
-  <FaPlus size={12} />
-</button>
+      showSupplier
+        ? setShowSupplierModal(true)
+        : setShowCustomerModal(true);
+    }}
+    className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
+    title={
+      isPurchase || (transactionType === "Return" && returnMode === "supplier")
+        ? "Add New Supplier"
+        : "Add New Customer"
+    }
+  >
+    <FaPlus size={12} />
+  </button>
+)}
 
   </div>
 </div>

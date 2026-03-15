@@ -30,27 +30,33 @@ export default function Login({ onLogin }: LoginProps) {
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
+  e.preventDefault();
+  setError("");
 
-    try {
-      const user = await validateUser(username.trim(), password);
-      if (user) {
-        // store logged-in ID
-        localStorage.setItem("loggedInUserId", String(user.id));
-
-        // pass display name and role to app state
-        onLogin(user.Name, user.Role as "admin" | "saleboy");
-
-        if (rememberMe) localStorage.setItem("rememberedUser", user.Username);
-      } else {
-        setError("Invalid username, password, or role.");
+  try {
+    const user = await validateUser(username.trim(), password); // Returns the user object if username/password match
+    if (user) {
+      // Verify role
+      if (user.Role !== role) {
+        setError(`Incorrect role selected for this user.`);
+        return;
       }
-    } catch (err) {
-      console.error(err);
-      setError("Login failed. Try again.");
+
+      // store logged-in ID
+      localStorage.setItem("loggedInUserId", String(user.id));
+
+      // pass display name and role to app state
+      onLogin(user.Name, user.Role as "admin" | "saleboy");
+
+      if (rememberMe) localStorage.setItem("rememberedUser", user.Username);
+    } else {
+      setError("Invalid username or password.");
     }
-  };
+  } catch (err) {
+    console.error(err);
+    setError("Login failed. Try again.");
+  }
+};
 
   // Secure Forgot Password (Option A)
   const handleForgotPassword = async () => {

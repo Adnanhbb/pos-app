@@ -1,34 +1,51 @@
-import { useState } from 'react';
-import Login from './Login';
-import Dashboard from './Dashboard';
+import React, { useEffect, useState } from "react";
+import Dashboard from "./Dashboard";
+import Login from "./Login";
 
-interface User {
-  username: string;
-  role: 'admin' | 'saleboy';
-}
+type Role = "admin" | "saleboy";
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
+  type Role = "admin" | "saleboy";
 
-  // Called by Login component on successful login
-  const handleLogin = (username: string, role: 'admin' | 'saleboy') => {
-    setUser({ username, role }); // Redirect happens via conditional rendering
+  const [user, setUser] = useState<{
+    username: string;
+    role: Role;
+  } | null>(null);
+
+  // AUTO LOGIN CHECK (important)
+  useEffect(() => {
+  const id = localStorage.getItem("loggedInUserId");
+  const role = localStorage.getItem("loggedInUserRole");
+  const username = localStorage.getItem("loggedInUserName");
+
+  if (id && role && username) {
+    setUser({
+      username: username,
+      role: role as Role
+    });
+  }
+}, []);
+
+  const handleLogin = (username: string, role: Role) => {
+    // persist session
+    localStorage.setItem("loggedInUserName", username);
+    localStorage.setItem("loggedInUserRole", role);
+
+    setUser({ username, role });
   };
 
-  // Called by Dashboard component on logout
   const handleLogout = () => {
+    localStorage.removeItem("loggedInUserId");
+    localStorage.removeItem("loggedInUserName");
+    localStorage.removeItem("loggedInUserRole");
+
     setUser(null);
   };
 
-  return (
-    <>
-      {!user ? (
-        // Show login page if not logged in
-        <Login onLogin={handleLogin} />
-      ) : (
-        // Show dashboard if logged in
-        <Dashboard/>
-      )}
-    </>
-  );
+  // 🔐 AUTH GATE
+  if (!user) {
+    return <Login onLogin={handleLogin} />;
+  }
+
+  return <Dashboard user={user} onLogout={handleLogout} />;
 }

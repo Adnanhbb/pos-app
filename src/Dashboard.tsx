@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   FaTachometerAlt,
+  FaShoppingCart,
   FaUsers,
   FaUserTie,
   FaBoxes,
@@ -98,9 +99,17 @@ const recentOrders = [
   { id: 4, customer: "Alice Brown", total: "$50", status: "Cancelled" },
 ];
 
-export default function Dashboard() {
+interface Props {
+  user: {
+    username: string;
+    role: "admin" | "saleboy";
+  };
+  onLogout: () => void;
+}
+
+export default function Dashboard({ user, onLogout }: Props) {
   const [viewMode, setViewMode] = useState<"grid" | "stack">("stack");
-  const [activeItem, setActiveItem] = useState("Dashboard");
+  const [activeItem, setActiveItem] = useState(user.role === "saleboy" ? "POS" : "Dashboard");
   const [timeFilter, setTimeFilter] = useState<"Today" | "Weekly" | "Monthly" | "Custom">("Today");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -126,18 +135,18 @@ export default function Dashboard() {
   const mobileUserMenuRef = useRef<HTMLDivElement>(null);
 
   const menuItems = [
-    { name: "Dashboard", icon: <FaTachometerAlt className="text-blue-500"/> },
-    { name: "Staff", icon: <FaUserTie className="text-yellow-500"/> },
-    { name: "Customers", icon: <FaUsers className="text-green-500"/> },
-    { name: "Suppliers", icon: <FaTruck className="text-red-500"/> },
-    { name: "Entries", icon: <FaKeyboard className="text-blue-300"/> },
-    { name: "Items", icon: <FaBoxes className="text-yellow-300"/> },
-    { name: "Sales", icon: <FaTruck className="text-green-300"/> },
-    { name: "Payments", icon: <FaMoneyBill className="text-red-300"/> },
-    { name: "Expenses", icon: <FaDollarSign className="text-blue-400"/> },
-    { name: "Reports", icon: <FaChartBar className="text-yellow-400"/> },
-    { name: "Settings", icon: <FaCog className="text-red-400"/> },
-  ];
+  { name: "Dashboard", icon: <FaTachometerAlt className="text-blue-500"/>, disabled: user?.role === "saleboy" },
+  { name: "Staff", icon: <FaUserTie className="text-yellow-500"/>, disabled: user?.role === "saleboy" },
+  { name: "Customers", icon: <FaUsers className="text-green-500"/>, disabled: user?.role === "saleboy" },
+  { name: "Suppliers", icon: <FaTruck className="text-red-500"/>, disabled: user?.role === "saleboy" },
+  { name: "Entries", icon: <FaKeyboard className="text-blue-300"/>, disabled: user?.role === "saleboy" },
+  { name: "Items", icon: <FaBoxes className="text-yellow-300"/>, disabled: user?.role === "saleboy" },
+  { name: "Sales", icon: <FaTruck className="text-green-300"/>, disabled: user?.role === "saleboy" },
+  { name: "Payments", icon: <FaMoneyBill className="text-red-300"/>, disabled: user?.role === "saleboy" },
+  { name: "Expenses", icon: <FaDollarSign className="text-blue-400"/>, disabled: user?.role === "saleboy" },
+  { name: "Reports", icon: <FaChartBar className="text-yellow-400"/>, disabled: user?.role === "saleboy" },
+  { name: "Settings", icon: <FaCog className="text-red-400"/>, disabled: user?.role === "saleboy" },
+];
 
   const timeFilters = ["Today", "Weekly", "Monthly", "Custom"] as const;
 
@@ -299,22 +308,25 @@ setSalesChartData(salesByMonth);
 };
 
 const handleMenuClick = (itemName: string) => {
-  // Example: check if POS is active 
-  if (activeItem === "POS") {
+
+  // If user clicks the same menu item, do nothing
+  if (itemName === activeItem) return;
+
+  // Confirm only when leaving POS
+  if (activeItem === "POS" && itemName !== "POS") {
     const confirmLeave = window.confirm(
       "Are you sure you want to leave the POS?"
     );
-    if (!confirmLeave) {
-      return; // abort navigation
-    }
+    if (!confirmLeave) return;
   }
 
-  // Proceed with normal navigation
+  // Proceed with navigation
   setActiveItem(itemName);
+
   if (sidebarOpen) setSidebarOpen(false);
 
   if (itemName === "Dashboard") {
-    loadDashboardData(); // refresh KPI data immediately
+    loadDashboardData();
   }
 };
 
@@ -459,12 +471,24 @@ const saveEditedUser = async () => {
               <FaUserCircle size={28} className="text-gray-700" />
               <span className="text-gray-700 font-medium">{currentUser ? currentUser.Name : "Guest"}</span>
             </div>
-            {userMenuOpen && (
-              <div className="absolute right-0 mt-2 bg-white shadow-lg rounded p-2 w-40 z-50">
-                <button onClick={() => openEditCurrentUser()} className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"><FaEdit /> Edit User</button>
-                <button onClick={() => logout()} className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"><FaSignOutAlt /> Log Out</button>
-              </div>
-            )}
+ {userMenuOpen && (
+  <div className="absolute right-0 top-full mt-1 bg-white shadow-lg rounded p-2 w-44 z-50">
+    {currentUser?.Role === "admin" && (
+      <button
+        onClick={openEditCurrentUser}
+        className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"
+      >
+        <FaEdit /> Edit User
+      </button>
+    )}
+    <button
+      onClick={logout}
+      className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"
+    >
+      <FaSignOutAlt /> Log Out
+    </button>
+  </div>
+)}
           </div>
           <button onClick={() => setSidebarOpen(true)}>
             <FaBars size={24} />
@@ -485,147 +509,178 @@ const saveEditedUser = async () => {
 
   {viewMode === "stack" ? (
     <ul className="space-y-2">
-      {menuItems.map((item) =>
-        item.name === "Entries" ? (
-          <li key="Entries">
-            <button
-              onClick={() => setEntriesOpen(!entriesOpen)}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100`}
-            >
-              <span className="flex items-center gap-3">{item.icon} {item.name}</span>
-              {entriesOpen ? <FaChevronDown /> : <FaChevronRight />}
-            </button>
-            {entriesOpen && (
-              <ul className="ml-6 mt-1 space-y-1">
-                {[{ name: "Categories", icon: <FaListAlt /> }, { name: "Brands", icon: <FaTags /> }, { name: "Units", icon: <FaThLarge /> }, { name: "Discounts", icon: <FaPercentage /> }, { name: "Taxes", icon: <FaMoneyBillWave /> }].map((sub) => (
-                  <li key={sub.name}>
-                    <button
-                      onClick={() => handleMenuClick(sub.name)}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
-                        activeItem === sub.name ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""
-                      }`}
-                    >
-                      {sub.icon} {sub.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
+      {menuItems.map((item) => {
+  const isDisabled = user?.role === "saleboy" && item.disabled;
 
-        ) : item.name === "Sales" ? (
-          <li key="Sales">
-            <button
-              onClick={() => setPosOpen(!posOpen)}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100`}
-            >
-              <span className="flex items-center gap-3">{item.icon} Sales</span>
-              {posOpen ? <FaChevronDown /> : <FaChevronRight />}
-            </button>
-            {posOpen && (
-              <ul className="ml-6 mt-1 space-y-1">
-                {[{ name: "POS", icon: <FaReceipt /> }, { name: "POS Invoices", icon: <FaDatabase /> }].map((sub) => (
-                  <li key={sub.name}>
-                    <button
-                      onClick={() => handleMenuClick(sub.name === "POS Invoices" ? "Invoices" : sub.name)}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
-                        activeItem === (sub.name === "POS Invoices" ? "Invoices" : sub.name)
-                          ? "bg-blue-100 text-blue-600 font-semibold shadow"
-                          : ""
-                      }`}
-                    >
-                      {sub.icon} {sub.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-
-        ) : item.name === "Payments" ? (
-          <li key="Payments">
-            <button
-              onClick={() => setPaymentsOpen(!paymentsOpen)}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100`}
-            >
-              <span className="flex items-center gap-3">{item.icon} {item.name}</span>
-              {paymentsOpen ? <FaChevronDown /> : <FaChevronRight />}
-            </button>
-            {paymentsOpen && (
-              <ul className="ml-6 mt-1 space-y-1">
-                <li>
-                  <button
-                    onClick={() => handleMenuClick("CustPayments")}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
-                      activeItem === "CustPayments" ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""
-                    }`}
-                  >
-                    <FaUsers /> Customer
-                  </button>
-                </li>
-                <li>
-                  <button
-                    onClick={() => handleMenuClick("SupPayments")}
-                    className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
-                      activeItem === "SupPayments" ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""
-                    }`}
-                  >
-                    <FaTruck /> Supplier
-                  </button>
-                </li>
-              </ul>
-            )}
-          </li>
-
-        ) : item.name === "Reports" ? (
-          <li key="Reports">
-            <button
-              onClick={() => setReportsOpen(!reportsOpen)}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold text-gray-700 hover:bg-gray-100`}
-            >
-              <span className="flex items-center gap-3">{item.icon} {item.name}</span>
-              {reportsOpen ? <FaChevronDown /> : <FaChevronRight />}
-            </button>
-            {reportsOpen && (
-              <ul className="ml-6 mt-1 space-y-1">
-                {[{ name: "Sales Report", icon: <FaChartLine color="red"/> },
-                  { name: "Products Report", icon: <FaBoxes color="blue"/> },
-                  { name: "Customers Report", icon: <FaUsers color="green"/> },
-                  { name: "Suppliers Report", icon: <FaTruck color="blue"/> },
-                  { name: "Expenses Report", icon: <FaDollarSign color="red"/> },
-                  { name: "Cash-flow Report", icon: <FaMoneyBill color="green"/> },
-                  { name: "Profit Report", icon: <FaMoneyBill color="green"/> }
-                ].map((sub) => (
-                  <li key={sub.name}>
-                    <button
-                      onClick={() => handleMenuClick(sub.name)}
-                      className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm text-gray-700 hover:bg-gray-100 ${
-                        activeItem === sub.name ? "bg-blue-100 text-blue-600 font-semibold shadow" : ""
-                      }`}
-                    >
-                      {sub.icon} {sub.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </li>
-
-        ) : (
-          <li
-            key={item.name}
-            onClick={() => handleMenuClick(item.name)}
-            className={`flex items-center gap-3 px-3 py-2 rounded-lg cursor-pointer transition ${
-              activeItem === item.name
-                ? "bg-blue-100 text-blue-600 font-semibold shadow"
-                : "text-gray-700 hover:bg-gray-100"
-            }`}
-          >
-            <span className="text-lg">{item.icon}</span>
-            <span className="text-sm font-medium">{item.name}</span>
-          </li>
-        )
+  return item.name === "Entries" ? (
+    <li key="Entries">
+      <button
+        onClick={() => !isDisabled && setEntriesOpen(!entriesOpen)}
+        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold ${
+          isDisabled ? "text-gray-400 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"
+        }`}
+      >
+        <span className="flex items-center gap-3">{item.icon} {item.name}</span>
+        {entriesOpen ? <FaChevronDown /> : <FaChevronRight />}
+      </button>
+      {entriesOpen && (
+        <ul className="ml-6 mt-1 space-y-1">
+          {[{ name: "Categories", icon: <FaListAlt /> },
+            { name: "Brands", icon: <FaTags /> },
+            { name: "Units", icon: <FaThLarge /> },
+            { name: "Discounts", icon: <FaPercentage /> },
+            { name: "Taxes", icon: <FaMoneyBillWave /> }
+          ].map((sub) => (
+            <li key={sub.name}>
+              <button
+                onClick={() => !isDisabled && handleMenuClick(sub.name)}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm ${
+                  isDisabled
+                    ? "text-gray-400 cursor-not-allowed"
+                    : activeItem === sub.name
+                    ? "bg-blue-100 text-blue-600 font-semibold shadow"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {sub.icon} {sub.name}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
+    </li>
+  ) : item.name === "Sales" ? (
+    <li key="Sales">
+      <button
+        onClick={() => !isDisabled && setPosOpen(!posOpen)}
+        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold ${
+          isDisabled ? "text-gray-400 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"
+        }`}
+      >
+        <span className="flex items-center gap-3">{item.icon} Sales</span>
+        {posOpen ? <FaChevronDown /> : <FaChevronRight />}
+      </button>
+      {posOpen && (
+        <ul className="ml-6 mt-1 space-y-1">
+          {[{ name: "POS", icon: <FaReceipt /> }, { name: "POS Invoices", icon: <FaDatabase /> }].map((sub) => (
+            <li key={sub.name}>
+              <button
+                onClick={() => !isDisabled && handleMenuClick(sub.name === "POS Invoices" ? "Invoices" : sub.name)}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm ${
+                  isDisabled
+                    ? "text-gray-400 cursor-not-allowed"
+                    : activeItem === (sub.name === "POS Invoices" ? "Invoices" : sub.name)
+                    ? "bg-blue-100 text-blue-600 font-semibold shadow"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {sub.icon} {sub.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  ) : item.name === "Payments" ? (
+    <li key="Payments">
+      <button
+        onClick={() => !isDisabled && setPaymentsOpen(!paymentsOpen)}
+        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold ${
+          isDisabled ? "text-gray-400 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"
+        }`}
+      >
+        <span className="flex items-center gap-3">{item.icon} {item.name}</span>
+        {paymentsOpen ? <FaChevronDown /> : <FaChevronRight />}
+      </button>
+      {paymentsOpen && (
+        <ul className="ml-6 mt-1 space-y-1">
+          <li>
+            <button
+              onClick={() => !isDisabled && handleMenuClick("CustPayments")}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm ${
+                isDisabled
+                  ? "text-gray-400 cursor-not-allowed"
+                  : activeItem === "CustPayments"
+                  ? "bg-blue-100 text-blue-600 font-semibold shadow"
+                  : "text-gray-700 hover:bg-gray-100"
+              }`}
+            >
+              <FaUsers /> Customer
+            </button>
+          </li>
+          <li>
+            <button
+              onClick={() => !isDisabled && handleMenuClick("SupPayments")}
+              className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm ${
+                isDisabled
+                  ? "text-gray-400 cursor-not-allowed"
+                  : activeItem === "SupPayments"
+                  ? "bg-blue-100 text-blue-600 font-semibold shadow"
+                  : "text-gray-700 hover:bg-gray-100"
+              }`}
+            >
+              <FaTruck /> Supplier
+            </button>
+          </li>
+        </ul>
+      )}
+    </li>
+  ) : item.name === "Reports" ? (
+    <li key="Reports">
+      <button
+        onClick={() => !isDisabled && setReportsOpen(!reportsOpen)}
+        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold ${
+          isDisabled ? "text-gray-400 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"
+        }`}
+      >
+        <span className="flex items-center gap-3">{item.icon} {item.name}</span>
+        {reportsOpen ? <FaChevronDown /> : <FaChevronRight />}
+      </button>
+      {reportsOpen && (
+        <ul className="ml-6 mt-1 space-y-1">
+          {[{ name: "Sales Report", icon: <FaChartLine color="red"/> },
+            { name: "Products Report", icon: <FaBoxes color="blue"/> },
+            { name: "Customers Report", icon: <FaUsers color="green"/> },
+            { name: "Suppliers Report", icon: <FaTruck color="blue"/> },
+            { name: "Expenses Report", icon: <FaDollarSign color="red"/> },
+            { name: "Cash-flow Report", icon: <FaMoneyBill color="green"/> },
+            { name: "Profit Report", icon: <FaMoneyBill color="green"/> }
+          ].map((sub) => (
+            <li key={sub.name}>
+              <button
+                onClick={() => !isDisabled && handleMenuClick(sub.name)}
+                className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm ${
+                  isDisabled
+                    ? "text-gray-400 cursor-not-allowed"
+                    : activeItem === sub.name
+                    ? "bg-blue-100 text-blue-600 font-semibold shadow"
+                    : "text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                {sub.icon} {sub.name}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  ) : (
+    <li
+      key={item.name}
+      onClick={() => !isDisabled && handleMenuClick(item.name)}
+      className={`flex items-center gap-3 px-3 py-2 rounded-lg transition ${
+        isDisabled
+          ? "text-gray-400 cursor-not-allowed"
+          : activeItem === item.name
+          ? "bg-blue-100 text-blue-600 font-semibold shadow"
+          : "text-gray-700 hover:bg-gray-100"
+      }`}
+    >
+      <span className="text-lg">{item.icon}</span>
+      <span className="text-sm font-medium">{item.name}</span>
+    </li>
+  );
+})}
     </ul>
 
   ) : (
@@ -669,11 +724,23 @@ const saveEditedUser = async () => {
               <span className="font-medium text-gray-700">{currentUser ? currentUser.Name : "Guest"}</span>
             </div>
             {userMenuOpen && (
-              <div className="absolute right-0 top-full mt-1 bg-white shadow-lg rounded p-2 w-44 z-50">
-                <button onClick={() => openEditCurrentUser()} className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"><FaEdit /> Edit User</button>
-                <button onClick={() => logout()} className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"><FaSignOutAlt /> Log Out</button>
-              </div>
-            )}
+            <div className="absolute right-0 top-full mt-1 bg-white shadow-lg rounded p-2 w-44 z-50">
+              {currentUser?.Role === "admin" && (
+                <button
+                  onClick={openEditCurrentUser}
+                  className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"
+                >
+                  <FaEdit /> Edit User
+                </button>
+              )}
+              <button
+                onClick={logout}
+                className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"
+              >
+                <FaSignOutAlt /> Log Out
+              </button>
+            </div>
+          )}
           </div>
         </div>
 
@@ -716,7 +783,11 @@ const saveEditedUser = async () => {
         )}
 
         {/* CONDITIONAL PAGE RENDERING */}
-        {activeItem === "Staff" ? (
+        {/* CONDITIONAL PAGE RENDERING */}
+
+        {user.role === "saleboy" ? (
+          <POS currentUser={user}/>
+        ) : activeItem === "Staff" ? (
           <Staff />
         ) : activeItem === "Customers" ? (
           <Customers />
@@ -740,32 +811,27 @@ const saveEditedUser = async () => {
           <Settings />
         ) : activeItem === "CustPayments" ? (
           <CustPayments />
-         ) 
-        : activeItem === "SupPayments" ? (
-           <SupPayments />
-         ) 
-        : activeItem === "POS" ? (
-          <POS />
-        )
-        : activeItem === "Invoices" ? (
+        ) : activeItem === "SupPayments" ? (
+          <SupPayments />
+        ) : activeItem === "POS" ? (
+          <POS currentUser={user}/>
+        ) : activeItem === "Invoices" ? (
           <Invoices />
-        )
-        : activeItem === "Sales Report" ? (
+        ) : activeItem === "Sales Report" ? (
           <SalesReport />
         ) : activeItem === "Products Report" ? (
           <ProdReport />
         ) : activeItem === "Customers Report" ? (
           <CustReport />
-        ): activeItem === "Suppliers Report" ? (
+        ) : activeItem === "Suppliers Report" ? (
           <SupReport />
-        ): activeItem === "Expenses Report" ? (
+        ) : activeItem === "Expenses Report" ? (
           <ExpReport />
-        ): activeItem === "Cash-flow Report" ? (
-          <CFReport />  
-        ): activeItem === "Profit Report" ? (
+        ) : activeItem === "Cash-flow Report" ? (
+          <CFReport />
+        ) : activeItem === "Profit Report" ? (
           <ProfReport />
-        )
-        :(
+        ) : (
           <>
             {/* Dashboard KPIs */}
             <div className="flex flex-wrap gap-2 mb-6">
