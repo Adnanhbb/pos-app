@@ -2,17 +2,31 @@
 import { useEffect, useState } from "react";
 import { salesRepository } from "./repositories/salesRepository";
 import type { DBSale, DBSaleItem } from "./db";
-import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight, FaTrash } from "react-icons/fa";
+import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight, FaTrash,FaPrint } from "react-icons/fa";
 import { customersRepository } from "./repositories/customerRepository";
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
-import { indexedDbSupplierRepository as suppliersRepository } 
-  from "./repositories/indexedDbSupplierRepository";
-
+import { indexedDbSupplierRepository as suppliersRepository } from "./repositories/indexedDbSupplierRepository";
 import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
-
+import { printInvoice } from "./services/printing/printService";
 
 const PAGE_SIZE = 10;
 const TRANSACTION_TYPES = ["All", "Sale", "Purchase", "Return", "Quotation"] as const;
+
+export const resolvePartyName = (inv: DBSale) => {
+
+  if (inv.transactionType === "Purchase") {
+    return inv.supplierName || "Direct Purchase";
+  }
+
+  if (inv.transactionType === "Return") {
+    if (inv.invoiceNo?.startsWith("RET-S")) {
+      return inv.supplierName || "Direct Purchase";
+    }
+    return inv.customerName || "Walk-in Customer";
+  }
+
+  return inv.customerName || "Walk-in Customer";
+};
 
 export default function Invoices() {
   const [sales, setSales] = useState<DBSale[]>([]);
@@ -33,23 +47,7 @@ export default function Invoices() {
   const [returnSubFilter, setReturnSubFilter] = useState<"All" | "Cus" | "Sup">("All");
 
   // Helper to get the correct party name (customer or supplier)
-  const getPartyName = (inv: DBSale) => {
-  if (inv.transactionType === "Purchase") {
-    return inv.supplierName || "Direct Purchase";
-  }
-
-  if (inv.transactionType === "Return") {
-    // Supplier Return invoices have RET-S prefix
-    if (inv.invoiceNo?.startsWith("RET-S")) {
-      return inv.supplierName || "Direct Purchase";
-    }
-    // Customer Return
-    return inv.customerName || "Walk-in Customer";
-  }
-
-  // Sale & Quotation
-  return inv.customerName || "Walk-in Customer";
-};
+  const getPartyName = resolvePartyName;
 
   // Load total count on mount or filter change
   useEffect(() => {
@@ -313,6 +311,43 @@ if (
   }
 };
 
+const handlePrintInvoice = async (invoice: DBSale) => {
+
+  const confirmed = window.confirm("Do you want to print this invoice?");
+  if (!confirmed) return;
+
+  try {
+
+    // ✅ LOAD ITEMS FROM DATABASE
+    const dbItems = await salesRepository.getSaleItems(invoice.id!);
+
+    // ✅ Normalize name
+    const name = resolvePartyName(invoice);
+
+    // ✅ Normalize items for printer
+    const items = (dbItems ?? []).map(i => ({
+      name: i.name,
+      qty: i.qty,
+      price: i.price,
+      discountType: i.discountType ?? "flat",
+      discountValue: i.discountValue ?? 0,
+      taxType: i.taxType ?? "flat",
+      taxValue: i.taxValue ?? 0
+    }));
+
+    await printInvoice({
+      ...invoice,
+      items,
+      name,
+      previousDues: invoice.dues ?? 0
+    });
+
+  } catch (err) {
+    console.error("Print failed:", err);
+    alert("Failed to load invoice items for printing.");
+  }
+};
+
   return (
     <div className="p-4 flex flex-col lg:flex-row gap-4">
       
@@ -420,17 +455,32 @@ if (
                     {new Date(filteredInvoices.date).toLocaleDateString()}
                   </td>
                   <td className="border p-2 text-right">{filteredInvoices.grandTotal.toFixed()}</td>
-                   <td className="border p-2 text-center">
-                    <button
-                      onClick={e => {
-                        e.stopPropagation(); // prevent selecting the invoice
-                        handleDeleteInvoice(filteredInvoices);
-                      }}
-                      className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
-                    >
-                      <FaTrash />
-                    </button>
-                  </td>
+                  <td className="border p-2 text-center space-x-1">
+
+                      {/* PRINT */}
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          handlePrintInvoice(filteredInvoices);
+                        }}
+                        className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                      >
+                        🖨
+                      </button>
+
+                      {/* DELETE */}
+                      <button
+                        onClick={e => {
+                          e.stopPropagation();
+                          handleDeleteInvoice(filteredInvoices);
+                        }}
+                        className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+                      >
+                        <FaTrash />
+                      </button>
+
+                    </td>
+                  
                 </tr>
               ))}
               {sales.length === 0 && (

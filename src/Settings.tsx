@@ -27,7 +27,9 @@ export default function SettingsPage() {
   purchase1kg: "",     // calculated
   retail1kg: "",       // calculated
   discount1kg: "",     // calculated
-  wholesale1kg: ""     // calculated
+  wholesale1kg: "",     // calculated
+  printer: "pos",
+  language:"eng"
 });
 
 
@@ -39,7 +41,9 @@ export default function SettingsPage() {
   useEffect(() => {
     async function load() {
       const settings = await getSettings();
-      if (settings) setFormData({ ...formData, ...settings });
+      if (settings) {
+        setFormData(prev => ({ ...prev, ...settings }));
+      }
       setLoading(false);
     }
     load();
@@ -86,7 +90,9 @@ const saveGeneralSettings = async () => {
     email: formData.email,
     contact: formData.contact,
     address: formData.address,
-    logo: formData.logo
+    logo: formData.logo,
+    printer: formData.printer,
+    language: formData.language
   };
 
   await saveSettings(updated);
@@ -179,6 +185,8 @@ const saveGasPrices = async () => {
 
           {/* General Fields */}
           <div className="md:w-2/3 space-y-4">
+            
+            {/* <label className="font-large text-red-500">Business Settings</label> */}
             <div className="grid grid-cols-3 items-center gap-4">
               <label className="font-medium col-span-1">Business Name</label>
               <input
@@ -217,6 +225,76 @@ const saveGasPrices = async () => {
                 value={formData.address}
                 onChange={e => setFormData(p => ({ ...p, address: e.target.value }))}
               />
+            </div>
+
+            {/* <label className="font-large text-red-500">Printer Settings</label> */}
+            <div className="grid grid-cols-3 items-center gap-4">
+
+                <label className="font-medium col-span-1">Printer Settings</label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="printerType"
+                    value="pos"
+                    checked={formData.printer === "pos"}
+                    onChange={(e) =>
+                      setFormData(p => ({ ...p, printer: e.target.value as "pos" | "a4" }))
+                    }
+                    className="accent-indigo-600"
+                  />
+                  <span>POS Printer</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="printerType"
+                    value="a4"
+                    checked={formData.printer === "a4"}
+                    onChange={(e) =>
+                      setFormData(p => ({ ...p, printer: e.target.value as "pos" | "a4" }))
+                    }
+                    className="accent-indigo-600"
+                  />
+                  <span>A4 Printer</span>
+                </label>
+
+            </div>
+
+            <p></p>
+
+            {/* <label className="font-large text-red-500">Language Settings</label> */}
+            <div className="grid grid-cols-3 items-center gap-4">
+
+                <label className="font-medium col-span-1">Language Settings</label>
+              <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="radio"
+                name="langType"
+                value="eng"
+                checked={formData.language === "eng"}
+                onChange={(e) =>
+                  setFormData(p => ({ ...p, language: e.target.value as "eng" | "urd" }))
+                }
+                className="accent-indigo-600"
+              />
+              <span>English</span>
+            </label>
+
+<label className="flex items-center gap-2 cursor-pointer">
+  <input
+    type="radio"
+    name="langType"
+    value="urd"
+    checked={formData.language === "urd"}
+    onChange={(e) =>
+      setFormData(p => ({ ...p, language: e.target.value as "eng" | "urd" }))
+    }
+    className="accent-indigo-600"
+  />
+  <span>Urdu</span>
+</label>
+
             </div>
 
             <div className="flex justify-end">

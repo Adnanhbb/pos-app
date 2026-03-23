@@ -5,8 +5,7 @@ import { FaBarcode, FaEdit, FaTrash, FaTimes, FaCheck, FaPlus } from "react-icon
 // 🔹 DB INTEGRATION
 import { itemsRepository } from "./repositories/itemsRepository";
 import { customersRepository } from "./repositories/customerRepository";
-import { suppliersRepository as supplierRepo } 
-  from "./repositories/suppliersRepository";
+import { suppliersRepository as supplierRepo } from "./repositories/suppliersRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
 import type { Brand, Category,Item } from "./db";
@@ -16,7 +15,7 @@ import { supplierPaymentRepository } from "./repositories/supplierPaymentReposit
 import { discountRepository } from "./repositories/discountRepository";
 import { taxRepository } from "./repositories/taxRepository";
 import type { Discount, Tax } from "./db";
-import Dashboard from "Dashboard";
+import { printInvoice } from "./services/printing/printService";
 
 // =====================
 // Types
@@ -324,6 +323,16 @@ export default function SalesPOS({ currentUser }: POSProps) {
   const [selectedDiscount, setSelectedDiscount] = useState<Discount | null>(null);
   const [selectedTax, setSelectedTax] = useState<Tax | null>(null);
 
+  const [modalDiscount, setModalDiscount] = useState<Discount | null>(null);
+  const [modalDiscountMode, setModalDiscountMode] =
+  useState<"percentage" | "Fixed Amount">("percentage");
+  const [modalDiscountValue, setModalDiscountValue] = useState(0);
+
+  const [modalTax, setModalTax] = useState<Tax | null>(null);
+  const [modalTaxMode, setModalTaxMode] =
+  useState<"percentage" | "Fixed Amount">("percentage");
+  const [modalTaxValue, setModalTaxValue] = useState(0);
+
   const [returnMode, setReturnMode] = useState<ReturnMode>(null);
 
   const PRICE_CATEGORIES = ["Retail", "Discount", "Wholesale"] as const;
@@ -524,20 +533,20 @@ if (isSale || isCustomerReturn) {
   /* --------------------------------------------------
      6️⃣ PREPARE ITEMS
   -------------------------------------------------- */
-  const transactionItems = cart.map(ci => {
-    const line = calcLine(ci);
-    return {
-      originalItemId: ci.originalItemId,
-      name: ci.name,
-      qty: ci.qty,
-      price: ci.minUnitPrice,
-      priceCategory: ci.priceCategory,
-      discountType: ci.discountType,
-      discountValue: line.discount,
-      taxType: ci.taxType,
-      taxValue: line.tax,
-    };
-  });
+  const transactionItems = cart.map(ci => ({
+  originalItemId: ci.originalItemId,
+  name: ci.name,
+  qty: ci.qty,
+  price: ci.minUnitPrice,
+  priceCategory: ci.priceCategory,
+
+  // ✅ SAVE USER INPUT (NOT CALCULATED VALUES)
+  discountType: ci.discountType,
+  discountValue: ci.discountValue,
+
+  taxType: ci.taxType,
+  taxValue: ci.taxValue,
+}));
 
   /* --------------------------------------------------
      7️⃣ SAVE TRANSACTION
@@ -726,7 +735,40 @@ for (const ci of cart) {
   const nextInvoice = await getNextInvoiceNoFromDB(prefix);
   setInvoiceNo(nextInvoice);
 
-  alert(`${transactionType} completed successfully. Invoice #${invoiceNo}`);
+  const shouldPrint = window.confirm(
+  `Transaction saved.\n\nDo you want to print the invoice?`
+);
+
+if (shouldPrint) {
+
+  const previousDues = isCustomerContext
+  ? customerArrears ?? 0
+  : isSupplierContext
+  ? supplierBalance ?? 0
+  : 0;
+
+  await printInvoice({
+
+    invoiceNo,
+    date: new Date(),
+    name: isCustomerContext
+    ? customerName
+    : isSupplierContext
+    ? supplierName
+    : "Walk-in Customer", // fallback,
+    previousDues,
+
+    items: transactionItems,
+    subtotal: invoiceSubtotal,
+    discount: invoiceDiscount,
+    tax: invoiceTax,
+    grandTotal,
+    paid: paidAmount,
+    arrears,
+  });
+}
+
+// alert(`${transactionType} completed successfully. Invoice #${invoiceNo}`);
 }
 
 interface UnitPriceContext {
@@ -1339,13 +1381,17 @@ const totals = useMemo(() => {
   });
 
   const invoiceDiscountAmount = applyAdjustment(
-    subtotal,
-    selectedDiscount ? { type: discountMode, value: discountValue } : null
-  );
+  subtotal,
+  discountValue > 0
+    ? { type: discountMode, value: discountValue }
+    : null
+);
 
   const invoiceTaxAmount = applyAdjustment(
     subtotal - invoiceDiscountAmount,
-    selectedTax ? { type: taxMode, value: taxValue } : null
+    taxValue > 0
+  ? { type: taxMode, value: taxValue }
+  : null
   );
 
   const invoiceTotal = subtotal - invoiceDiscountAmount + invoiceTaxAmount;
@@ -2400,34 +2446,51 @@ return (
 
       {/* Discount Name */}
       <select
-        className="w-full border p-2 rounded mb-2"
-        value={selectedDiscount?.id ?? ""}
-        onChange={e => {
-          const d = discounts.find(d => d.id === Number(e.target.value));
-          if (d) {
-            setSelectedDiscount(d);
-            setDiscountMode(d.type === "percentage" ? "percentage" : "Fixed Amount");
-            setDiscountValue(d.value);
-          } else {
-            setSelectedDiscount(null);
-            setDiscountMode("percentage");
-            setDiscountValue(0);
-          }
-        }}
-      >
-        <option value="">Select Discount</option>
-        {discounts.map(d => (
-          <option key={d.id} value={d.id}>
-            {d.name}
-          </option>
-        ))}
-      </select>
+      className="w-full border p-2 rounded mb-2"
+      value={modalDiscount?.id ?? ""}
+      onChange={(e) => {
+        const selectedId = e.target.value;
+
+        // ✅ If nothing selected → allow manual discount
+        if (selectedId === "") {
+          setModalDiscount(null);
+          return; // IMPORTANT: do NOT reset values
+        }
+
+        const d = discounts.find(
+          d => d.id === Number(selectedId)
+        );
+
+        if (!d) return;
+
+        // ✅ Populate fields only
+        setModalDiscount(d);
+        setModalDiscountMode(
+          d.type === "percentage"
+            ? "percentage"
+            : "Fixed Amount"
+        );
+        setModalDiscountValue(d.value);
+      }}
+    >
+      <option value="">Manual Discount</option>
+
+      {discounts.map(d => (
+        <option key={d.id} value={d.id}>
+          {d.name}
+        </option>
+      ))}
+    </select>
 
       {/* Discount Type */}
       <select
         className="w-full border p-2 mb-2 rounded"
-        value={discountMode}
-        onChange={e => setDiscountMode(e.target.value as "percentage" | "Fixed Amount")}
+        value={modalDiscountMode}
+        onChange={(e) =>
+          setModalDiscountMode(
+            e.target.value as "percentage" | "Fixed Amount"
+          )
+        }
       >
         <option value="percentage">Percentage</option>
         <option value="Fixed Amount">Fixed Amount</option>
@@ -2437,25 +2500,40 @@ return (
       <input
         type="number"
         className="w-full border p-2 mb-3 rounded"
-        value={discountValue}
-        onChange={e => setDiscountValue(Number(e.target.value))}
+        value={modalDiscountValue}
+        onChange={(e) =>
+          setModalDiscountValue(Number(e.target.value))
+        }
       />
 
       <div className="flex justify-end gap-2">
-        {/* <button
+        {/* CANCEL */}
+        <button
           className="px-3 py-1 border rounded"
           onClick={() => setShowInvoiceDiscountModal(false)}
         >
           Cancel
-        </button> */}
-        <button
-          className="px-3 py-1 bg-blue-600 text-white rounded"
-          onClick={() => {            
-            setShowInvoiceDiscountModal(false);
-          }}
-        >
-          Ok
         </button>
+
+        {/* SAVE */}
+        <button
+        className="px-3 py-1 bg-blue-600 text-white rounded"
+        onClick={() => {
+
+          // ✅ Apply modal values to main UI ALWAYS
+          setSelectedDiscount(modalDiscount); // can be null (manual)
+
+          setDiscountMode(modalDiscountMode);
+
+          setDiscountValue(
+            Number(modalDiscountValue) || 0
+          );
+
+          setShowInvoiceDiscountModal(false);
+        }}
+      >
+        Save
+      </button>
       </div>
     </div>
   </div>
@@ -2469,21 +2547,34 @@ return (
       {/* Tax Name */}
       <select
         className="w-full border p-2 rounded mb-2"
-        value={selectedTax?.id ?? ""}
-        onChange={e => {
-          const t = taxes.find(t => t.id === Number(e.target.value));
-          if (t) {
-            setSelectedTax(t);
-            setTaxMode(t.type === "percentage" ? "percentage" : "Fixed Amount");
-            setTaxValue(t.value);
-          } else {
-            setSelectedTax(null);
-            setTaxMode("percentage");
-            setTaxValue(0);
+        value={modalTax?.id ?? ""}
+        onChange={(e) => {
+          const selectedId = e.target.value;
+
+          // ✅ Manual Tax (no preset)
+          if (selectedId === "") {
+            setModalTax(null);
+            return; // keep entered values
           }
+
+          const t = taxes.find(
+            t => t.id === Number(selectedId)
+          );
+
+          if (!t) return;
+
+          // populate modal fields only
+          setModalTax(t);
+          setModalTaxMode(
+            t.type === "percentage"
+              ? "percentage"
+              : "Fixed Amount"
+          );
+          setModalTaxValue(t.value);
         }}
       >
-        <option value="">Select Tax</option>
+        <option value="">Manual Tax</option>
+
         {taxes.map(t => (
           <option key={t.id} value={t.id}>
             {t.name}
@@ -2494,8 +2585,12 @@ return (
       {/* Tax Type */}
       <select
         className="w-full border p-2 mb-2 rounded"
-        value={taxMode}
-        onChange={e => setTaxMode(e.target.value as "percentage" | "Fixed Amount")}
+        value={modalTaxMode}
+        onChange={(e) =>
+          setModalTaxMode(
+            e.target.value as "percentage" | "Fixed Amount"
+          )
+        }
       >
         <option value="percentage">Percentage</option>
         <option value="Fixed Amount">Fixed Amount</option>
@@ -2505,27 +2600,39 @@ return (
       <input
         type="number"
         className="w-full border p-2 mb-3 rounded"
-        value={taxValue}
-        onChange={e => setTaxValue(Number(e.target.value))}
+        value={modalTaxValue}
+        onChange={(e) =>
+          setModalTaxValue(Number(e.target.value))
+        }
       />
 
       <div className="flex justify-end gap-2">
-        {/* <button
+        {/* CANCEL */}
+        <button
           className="px-3 py-1 border rounded"
           onClick={() => setShowInvoiceTaxModal(false)}
         >
           Cancel
-        </button> */}
+        </button>
+
+        {/* SAVE */}
         <button
           className="px-3 py-1 bg-blue-600 text-white rounded"
           onClick={() => {
-            if (selectedTax) {
-              setShowInvoiceTaxModal(false);
-            }
+
+            // ✅ Apply modal values ALWAYS (preset OR manual)
+            setSelectedTax(modalTax); // may be null
+
+            setTaxMode(modalTaxMode);
+
+            setTaxValue(
+              Number(modalTaxValue) || 0
+            );
+
             setShowInvoiceTaxModal(false);
           }}
         >
-          Ok
+          Save
         </button>
       </div>
     </div>

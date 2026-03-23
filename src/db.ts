@@ -115,6 +115,8 @@ export interface Settings {
   cylSPrice: string
   cylDPrice: string,   
   cylWPrice: string,
+  printer: "pos" | "a4";
+  language: "eng" | "urd";
 }
 
 export interface CustomerPayment {
