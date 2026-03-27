@@ -222,7 +222,7 @@ ${(data.items ?? []).map((i: any) => {
         | Tax: ${taxInput}${taxType === "%" ? "%" : "flat"}
       </span>
 
-      <span>${lineTotal.toFixed(2)}</span>
+      <span>${lineTotal.toFixed(0)}</span>
     </div>
   `;
 }).join("")}

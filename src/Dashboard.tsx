@@ -1,5 +1,5 @@
 // src/Dashboard.tsx
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef,useMemo, JSX } from "react";
 import {
   FaTachometerAlt,
   FaShoppingCart,
@@ -28,6 +28,7 @@ import {
   FaMoneyBillWave,
   FaChevronDown,
   FaChevronRight,
+  FaChevronLeft,
   FaEdit,
   FaSignOutAlt,
   FaDatabase,
@@ -78,26 +79,10 @@ import { salesRepository } from "./repositories/salesRepository";
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
 import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
 import { expenseRepository } from "./repositories/expenseRepository";
+import { useLang } from "./i18n/LanguageContext";
 
 import type { User } from "./db";
 // import ProdReport from "prodReport";
-
-// Sample Data
-const salesData = [
-  { month: "Jan", sales: 4000 },
-  { month: "Feb", sales: 3000 },
-  { month: "Mar", sales: 5000 },
-  { month: "Apr", sales: 4000 },
-  { month: "May", sales: 6000 },
-  { month: "Jun", sales: 7000 },
-];
-
-const recentOrders = [
-  { id: 1, customer: "John Doe", total: "$120", status: "Completed" },
-  { id: 2, customer: "Jane Smith", total: "$80", status: "Pending" },
-  { id: 3, customer: "Bob Johnson", total: "$200", status: "Completed" },
-  { id: 4, customer: "Alice Brown", total: "$50", status: "Cancelled" },
-];
 
 interface Props {
   user: {
@@ -134,21 +119,39 @@ export default function Dashboard({ user, onLogout }: Props) {
   const desktopUserMenuRef = useRef<HTMLDivElement>(null);
   const mobileUserMenuRef = useRef<HTMLDivElement>(null);
 
-  const menuItems = [
-  { name: "Dashboard", icon: <FaTachometerAlt className="text-blue-500"/>, disabled: user?.role === "saleboy" },
-  { name: "Staff", icon: <FaUserTie className="text-yellow-500"/>, disabled: user?.role === "saleboy" },
-  { name: "Customers", icon: <FaUsers className="text-green-500"/>, disabled: user?.role === "saleboy" },
-  { name: "Suppliers", icon: <FaTruck className="text-red-500"/>, disabled: user?.role === "saleboy" },
-  { name: "Entries", icon: <FaKeyboard className="text-blue-300"/>, disabled: user?.role === "saleboy" },
-  { name: "Items", icon: <FaBoxes className="text-yellow-300"/>, disabled: user?.role === "saleboy" },
-  { name: "Sales", icon: <FaTruck className="text-green-300"/>, disabled: user?.role === "saleboy" },
-  { name: "Payments", icon: <FaMoneyBill className="text-red-300"/>, disabled: user?.role === "saleboy" },
-  { name: "Expenses", icon: <FaDollarSign className="text-blue-400"/>, disabled: user?.role === "saleboy" },
-  { name: "Reports", icon: <FaChartBar className="text-yellow-400"/>, disabled: user?.role === "saleboy" },
-  { name: "Settings", icon: <FaCog className="text-red-400"/>, disabled: user?.role === "saleboy" },
-];
+  const [languageLoaded, setLanguageLoaded] = useState(false);
+
+  const { t, lang, setLang } = useLang();
+
+ const menuItems = useMemo(() => [
+  { key: "dashboard", label: "dashboard", icon: <FaTachometerAlt className="text-blue-500" />, disabled: user?.role === "saleboy" },
+  { key: "staff", label: "staff", icon: <FaUserTie className="text-yellow-500" />, disabled: user?.role === "saleboy" },
+  { key: "customers", label: "customers", icon: <FaUsers className="text-green-500" />, disabled: user?.role === "saleboy" },
+  { key: "suppliers", label: "suppliers", icon: <FaTruck className="text-red-500" />, disabled: user?.role === "saleboy" },
+  { key: "entries", label: "entries", icon: <FaKeyboard className="text-blue-300" />, disabled: user?.role === "saleboy" },
+  { key: "items", label: "items", icon: <FaBoxes className="text-yellow-300" />, disabled: user?.role === "saleboy" },
+  { key: "sales", label: "sales", icon: <FaTruck className="text-green-300" />, disabled: user?.role === "saleboy" },
+  { key: "payments", label: "payments", icon: <FaMoneyBill className="text-red-300" />, disabled: user?.role === "saleboy" },
+  { key: "expenses", label: "expenses", icon: <FaDollarSign className="text-blue-400" />, disabled: user?.role === "saleboy" },
+  { key: "reports", label: "reports", icon: <FaChartBar className="text-yellow-400" />, disabled: user?.role === "saleboy" },
+  { key: "settings", label: "settings", icon: <FaCog className="text-red-400" />, disabled: user?.role === "saleboy" },
+], [t, user?.role]);
+  
 
   const timeFilters = ["Today", "Weekly", "Monthly", "Custom"] as const;
+
+  const getTimeFilterLabel = (filter: typeof timeFilters[number]) => {
+  switch (filter) {
+    case "Today":
+      return t("time_today");
+    case "Weekly":
+      return t("time_weekly");
+    case "Monthly":
+      return t("time_monthly");
+    case "Custom":
+      return t("time_custom");
+  }
+};
 
   const [salesChartData, setSalesChartData] = useState<{ month: string; sales: number }[]>([]);
 
@@ -307,27 +310,17 @@ const salesByMonth: { month: string; sales: number }[] = months.map((m, i) => {
 setSalesChartData(salesByMonth);
 };
 
-const handleMenuClick = (itemName: string) => {
+const handleMenuClick = (key: string) => {
+  if (key === activeItem) return;
 
-  // If user clicks the same menu item, do nothing
-  if (itemName === activeItem) return;
-
-  // Confirm only when leaving POS
-  if (activeItem === "POS" && itemName !== "POS") {
-    const confirmLeave = window.confirm(
-      "Are you sure you want to leave the POS?"
-    );
-    if (!confirmLeave) return;
+  if (activeItem === "pos" && key !== "pos") {
+    if (!window.confirm("Are you sure you want to leave the POS?")) return;
   }
 
-  // Proceed with navigation
-  setActiveItem(itemName);
-
+  setActiveItem(key);
   if (sidebarOpen) setSidebarOpen(false);
 
-  if (itemName === "Dashboard") {
-    loadDashboardData();
-  }
+  if (key === "dashboard") loadDashboardData();
 };
 
 // ----- STATE -----
@@ -375,35 +368,30 @@ useEffect(() => {
     });
 }, []);
 
-
 useEffect(() => {
-
   const loadSettings = async () => {
     const settings = await settingsRepository.get();
     if (!settings) return;
 
     setBusinessName(settings.businessName || "My Business");
     setBusinessLogo(settings.logo || "/images/logo.png");
+
+    // set activeItem only after settings are loaded
+    setActiveItem("dashboard"); // or whatever your default key is
   };
 
-  // initial load
   loadSettings();
 
-  // ✅ listen for settings updates
   const handleSettingsUpdated = () => {
     loadSettings();
   };
 
   window.addEventListener("settingsUpdated", handleSettingsUpdated);
 
-  // cleanup (VERY important)
   return () => {
     window.removeEventListener("settingsUpdated", handleSettingsUpdated);
   };
-
 }, []);
-
-
 
   const openEditCurrentUser = () => {
     if (!currentUser) { alert("No user is currently signed in."); return; }
@@ -453,8 +441,6 @@ const saveEditedUser = async () => {
   }
 };
 
-
-
   const logout = () => {
     localStorage.removeItem("loggedInUserId");
     window.location.reload();
@@ -463,29 +449,34 @@ const saveEditedUser = async () => {
   return (
     <div className="flex min-h-screen bg-gray-100 relative">
       {/* MOBILE TOP BAR */}
-      <div className="lg:hidden fixed top-0 left-0 right-0 flex items-center justify-between bg-white shadow p-4 z-50">
-        <h2 className="text-xl font-bold">{activeItem}</h2>
-        <div className="flex items-center gap-3">
-          <div className="relative" ref={mobileUserMenuRef}>
+<div className="lg:hidden fixed inset-x-0 top-0 h-14 flex items-center justify-between bg-white shadow px-4 z-40">
+            <h2 className="text-xl font-bold">{activeItem ? t(activeItem) : ""} </h2>
+
+    <div className="flex items-center gap-3">
+          <div className="relative overflow-visible" ref={mobileUserMenuRef}
+>
             <div className="flex items-center gap-1 cursor-pointer" onClick={() => setUserMenuOpen(!userMenuOpen)}>
               <FaUserCircle size={28} className="text-gray-700" />
               <span className="text-gray-700 font-medium">{currentUser ? currentUser.Name : "Guest"}</span>
             </div>
  {userMenuOpen && (
-  <div className="absolute right-0 top-full mt-1 bg-white shadow-lg rounded p-2 w-44 z-50">
+  <div
+    className={`absolute top-full mt-1 bg-white shadow-lg rounded p-2 w-44 z-50
+      ${lang === "ur" ? "left-0" : "right-0"}`}
+  >
     {currentUser?.Role === "admin" && (
       <button
         onClick={openEditCurrentUser}
         className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"
       >
-        <FaEdit /> Edit User
+        <FaEdit /> {t("edituser")}
       </button>
     )}
     <button
       onClick={logout}
       className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"
     >
-      <FaSignOutAlt /> Log Out
+      <FaSignOutAlt /> {t("logout")}
     </button>
   </div>
 )}
@@ -496,207 +487,196 @@ const saveEditedUser = async () => {
         </div>
       </div>
 
-     {/* SIDEBAR */}
-<aside className={`w-64 bg-white shadow-lg p-4 lg:block fixed lg:static top-0 left-0 h-screen z-50 overflow-y-auto transform transition-transform ${sidebarOpen ? "translate-x-0" : "-translate-x-full"} lg:translate-x-0`}>
+{/* SIDEBAR */}
+<aside
+  className={`
+    w-64 bg-white shadow-lg p-4
+    fixed lg:static top-0 h-screen z-50 overflow-y-auto
+    transform transition-all duration-300 ease-in-out
+    lg:translate-x-0
+
+    ${lang === "ur" ? "right-0" : "left-0"}
+
+    ${
+      sidebarOpen
+        ? "translate-x-0 opacity-100 pointer-events-auto"
+        : lang === "ur"
+        ? "translate-x-full opacity-0 pointer-events-none"
+        : "-translate-x-full opacity-0 pointer-events-none"
+    }
+  `}
+>
+  {/* Mobile Header */}
   <div className="flex justify-between items-center mb-4 lg:hidden">
-    <h2 className="text-xl font-bold">Menu</h2>
-    <button onClick={() => setSidebarOpen(false)}><FaTimes size={24} /></button>
+    <h2 className="text-xl font-bold">{t("menu")}</h2>
+    <button onClick={() => setSidebarOpen(false)}>
+      <FaTimes size={24} />
+    </button>
   </div>
 
+  {/* Desktop Header */}
   <div className="flex items-center justify-between mb-4 hidden lg:flex">
-    <h2 className="text-xl font-bold">Menu</h2>
+    <h2 className="text-xl font-bold">{t("menu")}</h2>
   </div>
 
   {viewMode === "stack" ? (
     <ul className="space-y-2">
-      {menuItems.map((item) => {
-  const isDisabled = user?.role === "saleboy" && item.disabled;
+  {menuItems.map((item) => {
+    const isDisabled = user?.role === "saleboy" && item.disabled;
 
-  return item.name === "Entries" ? (
-    <li key="Entries">
+    // Submenu button
+    const SubMenuButton = ({
+      name,
+      icon,
+      clickKey,
+    }: {
+      name: string;
+      icon: JSX.Element;
+      clickKey?: string;
+    }) => (
+      <li key={name}>
+        <button
+          onClick={() => !isDisabled && handleMenuClick(clickKey ?? name)}
+          className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm ${
+            isDisabled
+              ? "text-gray-400 cursor-not-allowed"
+              : activeItem === (clickKey ?? name)
+              ? "bg-blue-100 text-blue-600 font-semibold shadow"
+              : "text-gray-700 hover:bg-gray-100"
+          }`}
+        >
+          {icon} {t(name)}
+        </button>
+      </li>
+    );
+
+    // Toggle button for collapsible items
+    const CollapsibleButton = ({
+      label,
+      open,
+      setOpen,
+    }: {
+      label: string;
+      open: boolean;
+      setOpen: (v: boolean) => void;
+    }) => (
       <button
-        onClick={() => !isDisabled && setEntriesOpen(!entriesOpen)}
+        onClick={() => !isDisabled && setOpen(!open)}
         className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold ${
           isDisabled ? "text-gray-400 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"
         }`}
       >
-        <span className="flex items-center gap-3">{item.icon} {item.name}</span>
-        {entriesOpen ? <FaChevronDown /> : <FaChevronRight />}
-      </button>
-      {entriesOpen && (
-        <ul className="ml-6 mt-1 space-y-1">
-          {[{ name: "Categories", icon: <FaListAlt /> },
-            { name: "Brands", icon: <FaTags /> },
-            { name: "Units", icon: <FaThLarge /> },
-            { name: "Discounts", icon: <FaPercentage /> },
-            { name: "Taxes", icon: <FaMoneyBillWave /> }
-          ].map((sub) => (
-            <li key={sub.name}>
-              <button
-                onClick={() => !isDisabled && handleMenuClick(sub.name)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm ${
-                  isDisabled
-                    ? "text-gray-400 cursor-not-allowed"
-                    : activeItem === sub.name
-                    ? "bg-blue-100 text-blue-600 font-semibold shadow"
-                    : "text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                {sub.icon} {sub.name}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <span className="flex items-center gap-3">{item.icon} {t(label)}</span>
+        {open ? (
+      <FaChevronDown />
+      ) : lang === "ur" ? (
+        <FaChevronLeft />
+      ) : (
+        <FaChevronRight />
       )}
-    </li>
-  ) : item.name === "Sales" ? (
-    <li key="Sales">
-      <button
-        onClick={() => !isDisabled && setPosOpen(!posOpen)}
-        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold ${
-          isDisabled ? "text-gray-400 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"
-        }`}
-      >
-        <span className="flex items-center gap-3">{item.icon} Sales</span>
-        {posOpen ? <FaChevronDown /> : <FaChevronRight />}
       </button>
-      {posOpen && (
-        <ul className="ml-6 mt-1 space-y-1">
-          {[{ name: "POS", icon: <FaReceipt /> }, { name: "POS Invoices", icon: <FaDatabase /> }].map((sub) => (
-            <li key={sub.name}>
-              <button
-                onClick={() => !isDisabled && handleMenuClick(sub.name === "POS Invoices" ? "Invoices" : sub.name)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm ${
-                  isDisabled
-                    ? "text-gray-400 cursor-not-allowed"
-                    : activeItem === (sub.name === "POS Invoices" ? "Invoices" : sub.name)
-                    ? "bg-blue-100 text-blue-600 font-semibold shadow"
-                    : "text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                {sub.icon} {sub.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
-  ) : item.name === "Payments" ? (
-    <li key="Payments">
-      <button
-        onClick={() => !isDisabled && setPaymentsOpen(!paymentsOpen)}
-        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold ${
-          isDisabled ? "text-gray-400 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"
-        }`}
-      >
-        <span className="flex items-center gap-3">{item.icon} {item.name}</span>
-        {paymentsOpen ? <FaChevronDown /> : <FaChevronRight />}
-      </button>
-      {paymentsOpen && (
-        <ul className="ml-6 mt-1 space-y-1">
-          <li>
-            <button
-              onClick={() => !isDisabled && handleMenuClick("CustPayments")}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm ${
-                isDisabled
-                  ? "text-gray-400 cursor-not-allowed"
-                  : activeItem === "CustPayments"
-                  ? "bg-blue-100 text-blue-600 font-semibold shadow"
-                  : "text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              <FaUsers /> Customer
-            </button>
+    );
+
+    // Render each menu item with submenus
+    switch (item.key) {
+      case "entries":
+        return (
+          <li key="Entries">
+            <CollapsibleButton label="entries" open={entriesOpen} setOpen={setEntriesOpen} />
+            {entriesOpen && (
+              <ul className="ml-6 mt-1 space-y-1">
+                {[
+                  { name: "categories", icon: <FaListAlt /> },
+                  { name: "brands", icon: <FaTags /> },
+                  { name: "units", icon: <FaThLarge /> },
+                  { name: "discounts", icon: <FaPercentage /> },
+                  { name: "taxes", icon: <FaMoneyBillWave /> },
+                ].map((sub) => (
+                  <SubMenuButton key={sub.name} {...sub} />
+                ))}
+              </ul>
+            )}
           </li>
-          <li>
-            <button
-              onClick={() => !isDisabled && handleMenuClick("SupPayments")}
-              className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm ${
-                isDisabled
-                  ? "text-gray-400 cursor-not-allowed"
-                  : activeItem === "SupPayments"
-                  ? "bg-blue-100 text-blue-600 font-semibold shadow"
-                  : "text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              <FaTruck /> Supplier
-            </button>
+        );
+      case "sales":
+        return (
+          <li key="Sales">
+            <CollapsibleButton label="sales" open={posOpen} setOpen={setPosOpen} />
+            {posOpen && (
+              <ul className="ml-6 mt-1 space-y-1">
+                <SubMenuButton name="pos" icon={<FaReceipt />} />
+                <SubMenuButton name="posinvoices" icon={<FaDatabase />} clickKey="posinvoices" />
+              </ul>
+            )}
           </li>
-        </ul>
-      )}
-    </li>
-  ) : item.name === "Reports" ? (
-    <li key="Reports">
-      <button
-        onClick={() => !isDisabled && setReportsOpen(!reportsOpen)}
-        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg font-semibold ${
-          isDisabled ? "text-gray-400 cursor-not-allowed" : "text-gray-700 hover:bg-gray-100"
-        }`}
-      >
-        <span className="flex items-center gap-3">{item.icon} {item.name}</span>
-        {reportsOpen ? <FaChevronDown /> : <FaChevronRight />}
-      </button>
-      {reportsOpen && (
-        <ul className="ml-6 mt-1 space-y-1">
-          {[{ name: "Sales Report", icon: <FaChartLine color="red"/> },
-            { name: "Products Report", icon: <FaBoxes color="blue"/> },
-            { name: "Customers Report", icon: <FaUsers color="green"/> },
-            { name: "Suppliers Report", icon: <FaTruck color="blue"/> },
-            { name: "Expenses Report", icon: <FaDollarSign color="red"/> },
-            { name: "Cash-flow Report", icon: <FaMoneyBill color="green"/> },
-            { name: "Profit Report", icon: <FaMoneyBill color="green"/> }
-          ].map((sub) => (
-            <li key={sub.name}>
-              <button
-                onClick={() => !isDisabled && handleMenuClick(sub.name)}
-                className={`flex items-center gap-3 px-3 py-2 rounded-lg w-full text-sm ${
-                  isDisabled
-                    ? "text-gray-400 cursor-not-allowed"
-                    : activeItem === sub.name
-                    ? "bg-blue-100 text-blue-600 font-semibold shadow"
-                    : "text-gray-700 hover:bg-gray-100"
-                }`}
-              >
-                {sub.icon} {sub.name}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </li>
-  ) : (
+        );
+      case "payments":
+        return (
+          <li key="Payments">
+            <CollapsibleButton label="payments" open={paymentsOpen} setOpen={setPaymentsOpen} />
+            {paymentsOpen && (
+              <ul className="ml-6 mt-1 space-y-1">
+                <SubMenuButton name="customer" icon={<FaUsers />} clickKey="customer" />
+                <SubMenuButton name="supplier" icon={<FaTruck />} clickKey="supplier" />
+              </ul>
+            )}
+          </li>
+        );
+      case "reports":
+        return (
+          <li key="Reports">
+            <CollapsibleButton label="reports" open={reportsOpen} setOpen={setReportsOpen} />
+            {reportsOpen && (
+              <ul className="ml-6 mt-1 space-y-1">
+                {[
+                  { name: "salesreport", icon: <FaChartLine color="red" /> },
+                  { name: "productsReport", icon: <FaBoxes color="blue" /> },
+                  { name: "customersreport", icon: <FaUsers color="green" /> },
+                  { name: "suppliersreport", icon: <FaTruck color="blue" /> },
+                  { name: "expensesreport", icon: <FaDollarSign color="red" /> },
+                  { name: "cashflowreport", icon: <FaMoneyBill color="green" /> },
+                  { name: "profitreport", icon: <FaMoneyBill color="green" /> },
+                ].map((sub) => (
+                  <SubMenuButton key={sub.name} {...sub} />
+                ))}
+              </ul>
+            )}
+          </li>
+        );
+      default:
+        return (
     <li
-      key={item.name}
-      onClick={() => !isDisabled && handleMenuClick(item.name)}
+      key={item.key}
+      onClick={() => !isDisabled && handleMenuClick(item.key)}
       className={`flex items-center gap-3 px-3 py-2 rounded-lg transition ${
         isDisabled
           ? "text-gray-400 cursor-not-allowed"
-          : activeItem === item.name
-          ? "bg-blue-100 text-blue-600 font-semibold shadow"
-          : "text-gray-700 hover:bg-gray-100"
+          : activeItem === item.key
+          ? "bg-blue-100 text-blue-600 font-semibold shadow cursor-pointer"
+          : "text-gray-700 hover:bg-gray-100 cursor-pointer"
       }`}
     >
-      <span className="text-lg">{item.icon}</span>
-      <span className="text-sm font-medium">{item.name}</span>
-    </li>
-  );
-})}
-    </ul>
-
+            <span className="text-lg">{item.icon}</span>
+            <span className="text-sm font-medium">{t(item.key)}</span>
+          </li>
+        );
+    }
+  })}
+</ul>
   ) : (
     <div className="grid grid-cols-3 gap-3">
       {menuItems.map((item) => (
         <div
-          key={item.name}
-          onClick={() => handleMenuClick(item.name)}
+          key={item.key}
+          onClick={() => handleMenuClick(item.key)}
           className={`flex flex-col items-center p-2 rounded-lg cursor-pointer transition ${
-            activeItem === item.name
+            activeItem === item.key
               ? "bg-blue-100 text-blue-600 shadow"
               : "text-gray-700 hover:bg-gray-100"
           }`}
         >
           <span className="text-xl">{item.icon}</span>
-          <span className="text-xs text-center">{item.name}</span>
+          <span className="text-xs text-center"><span>{t(item.key)}</span></span>
         </div>
       ))}
     </div>
@@ -713,7 +693,7 @@ const saveEditedUser = async () => {
       <main className="flex-1 p-4 lg:p-4 flex-col gap-6 pt-20 lg:pt-6">
         {/* HEADER DESKTOP */}
         <div className="hidden lg:flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold">{activeItem}</h2>
+          <h2 className="text-xl font-bold">{t(activeItem)}</h2>
           <div className="flex items-center gap-2 text-2xl font-serif font-semibold text-gray-500">
             {businessLogo && <img src={businessLogo} alt="Logo" className="h-8 w-8 rounded-md object-cover" />}
             <span>{businessName}</span>
@@ -723,24 +703,27 @@ const saveEditedUser = async () => {
               <FaUserCircle size={32} className="text-gray-700" />
               <span className="font-medium text-gray-700">{currentUser ? currentUser.Name : "Guest"}</span>
             </div>
-            {userMenuOpen && (
-            <div className="absolute right-0 top-full mt-1 bg-white shadow-lg rounded p-2 w-44 z-50">
-              {currentUser?.Role === "admin" && (
-                <button
-                  onClick={openEditCurrentUser}
-                  className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"
-                >
-                  <FaEdit /> Edit User
-                </button>
-              )}
-              <button
-                onClick={logout}
-                className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"
-              >
-                <FaSignOutAlt /> Log Out
-              </button>
-            </div>
-          )}
+           {userMenuOpen && (
+  <div
+  className={`absolute top-full mt-1 bg-white shadow-lg rounded p-2 w-44 z-[9999]
+    ${lang === "ur" ? "left-0" : "right-0"}`}
+>
+    {currentUser?.Role === "admin" && (
+      <button
+        onClick={openEditCurrentUser}
+        className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"
+      >
+        <FaEdit /> {t("edituser")}
+      </button>
+    )}
+    <button
+      onClick={logout}
+      className="block w-full text-left px-3 py-1 hover:bg-gray-100 text-sm flex items-center gap-2"
+    >
+      <FaSignOutAlt /> {t("logout")}
+    </button>
+  </div>
+)}
           </div>
         </div>
 
@@ -748,125 +731,145 @@ const saveEditedUser = async () => {
         {editUserOpen && currentUser && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
             <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl p-6">
-              <h3 className="text-lg font-semibold mb-4">Edit User</h3>
+              <h3 className="text-lg font-semibold mb-4">{t("edituser")}</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block mb-1 font-medium">Name</label>
+                  <label className="block mb-1 font-medium">{t("name")}</label>
                   <input className="w-full p-2 border rounded" value={editForm.Name} onChange={(e) => setEditForm((p) => ({ ...p, Name: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="block mb-1 font-medium">Mobile</label>
+                  <label className="block mb-1 font-medium">{t("mobile")}</label>
                   <input className="w-full p-2 border rounded" value={editForm.Mobile} onChange={(e) => setEditForm((p) => ({ ...p, Mobile: e.target.value }))} />
                 </div>
                 <div>
-                  <label className="block mb-1 font-medium">Role</label>
+                  <label className="block mb-1 font-medium">{t("role")}</label>
                   <select className="w-full p-2 border rounded" value={editForm.Role} onChange={(e) => setEditForm((p) => ({ ...p, Role: e.target.value }))}>
-                    <option value="admin">admin</option>
-                    <option value="saleboy">saleboy</option>
+                    <option value="admin">{t("admin")}</option>
+                    <option value="saleboy">{t("saleboy")}</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block mb-1 font-medium">Username</label>
+                  <label className="block mb-1 font-medium">{t("username")}</label>
                   <input className="w-full p-2 border rounded" value={editForm.Username} onChange={(e) => setEditForm((p) => ({ ...p, Username: e.target.value }))} />
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block mb-1 font-medium">Password</label>
+                  <label className="block mb-1 font-medium">{t("password")}</label>
                   <input className="w-full p-2 border rounded" value={editForm.Password} onChange={(e) => setEditForm((p) => ({ ...p, Password: e.target.value }))} />
                 </div>
               </div>
               <div className="flex justify-end gap-3 mt-6">
-                <button onClick={() => setEditUserOpen(false)} className="px-4 py-2 bg-gray-300 rounded">Cancel</button>
-                <button onClick={() => saveEditedUser()} className="px-4 py-2 bg-indigo-600 text-white rounded">Save</button>
+                <button onClick={() => setEditUserOpen(false)} className="px-4 py-2 bg-gray-300 rounded">{t("cancel")}</button>
+                <button onClick={() => saveEditedUser()} className="px-4 py-2 bg-indigo-600 text-white rounded">{t("save")}</button>
               </div>
             </div>
           </div>
         )}
 
         {/* CONDITIONAL PAGE RENDERING */}
-        {/* CONDITIONAL PAGE RENDERING */}
 
         {user.role === "saleboy" ? (
-          <POS currentUser={user}/>
-        ) : activeItem === "Staff" ? (
+          <POS currentUser={user} />
+        ) : activeItem === "staff" ? (
           <Staff />
-        ) : activeItem === "Customers" ? (
+        ) : activeItem === "customers" ? (
           <Customers />
-        ) : activeItem === "Suppliers" ? (
+        ) : activeItem === "suppliers" ? (
           <Suppliers />
-        ) : activeItem === "Items" ? (
+        ) : activeItem === "items" ? (
           <ItemsPage />
-        ) : activeItem === "Categories" ? (
+        ) : activeItem === "categories" ? (
           <Categories />
-        ) : activeItem === "Brands" ? (
+        ) : activeItem === "brands" ? (
           <Brands />
-        ) : activeItem === "Units" ? (
+        ) : activeItem === "units" ? (
           <Units />
-        ) : activeItem === "Discounts" ? (
+        ) : activeItem === "discounts" ? (
           <Discounts />
-        ) : activeItem === "Taxes" ? (
+        ) : activeItem === "taxes" ? (
           <Taxes />
-        ) : activeItem === "Expenses" ? (
+        ) : activeItem === "expenses" ? (
           <Expenses />
-        ) : activeItem === "Settings" ? (
+        ) : activeItem === "settings" ? (
           <Settings />
-        ) : activeItem === "CustPayments" ? (
+        ) : activeItem === "customer" ? (
           <CustPayments />
-        ) : activeItem === "SupPayments" ? (
+        ) : activeItem === "supplier" ? (
           <SupPayments />
-        ) : activeItem === "POS" ? (
-          <POS currentUser={user}/>
-        ) : activeItem === "Invoices" ? (
+        ) : activeItem === "pos" ? (
+          <POS currentUser={user} />
+        ) : activeItem === "posinvoices" ? (
           <Invoices />
-        ) : activeItem === "Sales Report" ? (
+        ) : activeItem === "salesreport" ? (
           <SalesReport />
-        ) : activeItem === "Products Report" ? (
+        ) : activeItem === "productsReport" ? (
           <ProdReport />
-        ) : activeItem === "Customers Report" ? (
+        ) : activeItem === "customersreport" ? (
           <CustReport />
-        ) : activeItem === "Suppliers Report" ? (
+        ) : activeItem === "suppliersreport" ? (
           <SupReport />
-        ) : activeItem === "Expenses Report" ? (
+        ) : activeItem === "expensesreport" ? (
           <ExpReport />
-        ) : activeItem === "Cash-flow Report" ? (
+        ) : activeItem === "cashflowreport" ? (
           <CFReport />
-        ) : activeItem === "Profit Report" ? (
+        ) : activeItem === "profitreport" ? (
           <ProfReport />
         ) : (
           <>
             {/* Dashboard KPIs */}
             <div className="flex flex-wrap gap-2 mb-6">
-              {timeFilters.map((filter) => (
-                <button key={filter} onClick={() => setTimeFilter(filter)} className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${timeFilter === filter ? "bg-blue-600 text-white shadow" : "bg-gray-200 text-gray-700 hover:bg-gray-300"}`}>{filter}</button>
-              ))}
-            </div>
+            {timeFilters.map((filter) => {
+              const label =
+                filter === "Today"
+                  ? t("time_today")
+                  : filter === "Weekly"
+                  ? t("time_weekly")
+                  : filter === "Monthly"
+                  ? t("time_monthly")
+                  : t("time_custom");
+
+              return (
+                <button
+                  key={filter}
+                  onClick={() => setTimeFilter(filter)}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                    timeFilter === filter
+                      ? "bg-blue-600 text-white shadow"
+                      : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                  }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
 
             {/* KPI ROW 1 */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaDollarSign size={28} className="text-green-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Sales</h3>
+                  <h3 className="text-sm font-medium">{t("sales")}</h3>
                   <p className="text-xl font-bold mt-1">Rs.{kpis.sales.toFixed()}</p>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaDollarSign size={28} className="text-red-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Purchases</h3>
+                  <h3 className="text-sm font-medium">{t("purchases")}</h3>
                   <p className="text-xl font-bold mt-1">Rs.{kpis.purchases.toFixed()}</p>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaUndo size={28} className="text-yellow-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Customer Returns</h3>
+                  <h3 className="text-sm font-medium">{t("customerreturns")}</h3>
                   <p className="text-xl font-bold mt-1">Rs.{kpis.customerReturns.toFixed()}</p>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaUndo size={28} className="text-red-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Supplier Returns</h3>
+                  <h3 className="text-sm font-medium">{t("supplierreturns")}</h3>
                   <p className="text-xl font-bold mt-1">Rs.{kpis.supplierReturns.toFixed()}</p>
                 </div>
               </div>
@@ -877,28 +880,28 @@ const saveEditedUser = async () => {
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaMoneyBill size={24} className="text-pink-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Dues Received</h3>
+                  <h3 className="text-sm font-medium">{t("duesreceived")}</h3>
                   <p className="text-xl font-bold mt-1">Rs.{kpis.customerPayments.toFixed()}</p>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaMoneyBill size={24} className="text-indigo-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Dues Paid</h3>
+                  <h3 className="text-sm font-medium">{t("duespaid")}</h3>
                   <p className="text-xl font-bold mt-1">Rs.{kpis.supplierPayments.toFixed()}</p>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaDollarSign size={24} className="text-blue-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Expenses</h3>
+                  <h3 className="text-sm font-medium">{t("expenses")}</h3>
                   <p className="text-xl font-bold mt-1">Rs.{kpis.expenses.toFixed()}</p>
                 </div>
               </div>
               <div className="bg-white p-4 rounded-lg shadow-lg flex items-center gap-3">
                 <FaChartLine size={24} className="text-orange-500" />
                 <div>
-                  <h3 className="text-sm font-medium">Net Profit</h3>
+                  <h3 className="text-sm font-medium">{t("netprofit")}</h3>
                   <p className="text-xl font-bold mt-1">Rs.{kpis.profit.toFixed()}</p>
                 </div>
               </div>
@@ -907,7 +910,7 @@ const saveEditedUser = async () => {
             {/* Sales Chart */}
             <div className="bg-white p-4 rounded-lg shadow-lg mt-6">
               <h3 className="text-lg font-semibold mb-3">
-                Sales Overview {new Date().getFullYear()}
+                {t("salesoverview")} {new Date().getFullYear()}
               </h3>
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={salesChartData}>
@@ -955,10 +958,10 @@ const saveEditedUser = async () => {
 {showCustomModal && (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
     <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
-      <h3 className="text-lg font-semibold mb-4">Select Date Range</h3>
+      <h3 className="text-lg font-semibold mb-4">{t("selectdaterange")}</h3>
       <div className="grid grid-cols-1 gap-4">
         <div>
-          <label className="block mb-1 font-medium">Start Date</label>
+          <label className="block mb-1 font-medium">{t("startdate")}</label>
           <input
             type="date"
             className="w-full border p-2 rounded"
@@ -967,7 +970,7 @@ const saveEditedUser = async () => {
           />
         </div>
         <div>
-          <label className="block mb-1 font-medium">End Date</label>
+          <label className="block mb-1 font-medium">{t("enddate")}</label>
           <input
             type="date"
             className="w-full border p-2 rounded"
@@ -984,7 +987,7 @@ const saveEditedUser = async () => {
           }}
           className="px-4 py-2 bg-gray-300 rounded"
         >
-          Cancel
+          {t("cancel")}
         </button>
         <button
           onClick={() => {
@@ -997,7 +1000,7 @@ const saveEditedUser = async () => {
           }}
           className="px-4 py-2 bg-indigo-600 text-white rounded"
         >
-          OK
+          {t("ok")}
         </button>
       </div>
     </div>

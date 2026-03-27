@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 // ✅ Add
 import { indexedDbSupplierRepository as suppliersRepo } from "./repositories/indexedDbSupplierRepository";
 import {Supplier} from "./db";
+import { useLang } from "./i18n/LanguageContext";
 
 import {
   FaPlus,
@@ -200,6 +201,10 @@ async function handleSave() {
     setPage(1);
   }
 
+  const { t, lang, setLang } = useLang();
+
+  const textAlign = lang === "ur" ? "text-right" : "text-left";
+
   return (
   <div className="p-2 sm:p-4 lg:p-8">
 
@@ -211,7 +216,7 @@ async function handleSave() {
           checked={showDueOnly}
           onChange={(e) => setShowDueOnly(e.target.checked)}
         />
-        <span className="text-sm">Show Only Due Suppliers</span>
+        <span className="text-sm">{t("showonlyduesuppliers")}</span>
       </div>
     </div>
 
@@ -220,29 +225,29 @@ async function handleSave() {
       <div className="bg-white shadow rounded-xl p-4 flex items-center gap-3">
         <FaUsers className="text-indigo-600 text-3xl" />
         <div>
-          <div className="text-xs text-gray-500">SUPPLIERS</div>
+          <div className="text-xs text-gray-500">{t("suppliers")}</div>
           <div className="text-xl font-bold">{totalSuppliers}</div>
         </div>
       </div>
       <div className="bg-white shadow rounded-xl p-4 flex items-center gap-3">
         <FaMoneyBillWave className="text-yellow-600 text-3xl" />
         <div>
-          <div className="text-xs text-gray-500">PAYABLE</div>
-          <div className="text-xl font-bold">{totalPayable.toFixed()}</div>
+          <div className="text-xs text-gray-500">{t("payable")}</div>
+          <div className="text-xl font-bold">Rs.{totalPayable.toFixed()}</div>
         </div>
       </div>
       <div className="bg-white shadow rounded-xl p-4 flex items-center gap-3">
         <FaCreditCard className="text-green-600 text-3xl" />
         <div>
-          <div className="text-xs text-gray-500">PAID</div>
-          <div className="text-xl font-bold">{totalPaid.toFixed()}</div>
+          <div className="text-xs text-gray-500">{t("paid")}</div>
+          <div className="text-xl font-bold">Rs.{totalPaid.toFixed()}</div>
         </div>
       </div>
       <div className="bg-white shadow rounded-xl p-4 flex items-center gap-3">
         <FaBalanceScale className="text-red-600 text-3xl" />
         <div>
-          <div className="text-xs text-gray-500">BALANCE</div>
-          <div className="text-xl font-bold">{totalBalance.toFixed()}</div>
+          <div className="text-xs text-gray-500">{t("balance")}</div>
+          <div className="text-xl font-bold">Rs.{totalBalance.toFixed()}</div>
         </div>
       </div>
     </div>
@@ -250,7 +255,7 @@ async function handleSave() {
     {/* ===================== SEARCH / VIEW / CREATE ===================== */}
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3 flex-wrap">
       <div className="flex items-center gap-2 flex-wrap">
-        <h2 className="text-lg font-semibold">Suppliers</h2>
+        <h2 className="text-lg font-semibold">{t("suppliers")}</h2>
         <button
           className={`p-2 rounded ${view === "table" ? "bg-indigo-600 text-white" : "bg-gray-200"}`}
           onClick={() => setView("table")}
@@ -270,7 +275,7 @@ async function handleSave() {
           <FaSearch className="text-gray-500" />
           <input
             className="p-2 outline-none w-full sm:w-48"
-            placeholder="Search..."
+            placeholder={t("search")}
             value={query}
             onChange={(e) => handleSearch(e.target.value)}
           />
@@ -280,7 +285,7 @@ async function handleSave() {
           onClick={openCreate}
           className="bg-green-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 flex-none"
         >
-          <FaPlus /> Create New
+          <FaPlus /> {t("createnew")}
         </button>
       </div>
     </div>
@@ -291,23 +296,23 @@ async function handleSave() {
   <div className="overflow-x-auto bg-white rounded-lg shadow">
     <table className="min-w-full text-sm">
       <thead className="bg-gray-200 text-gray-700">
-        <tr>
-          <th className="p-3 text-left">Name</th>
-          <th className="p-3 text-left hidden sm:table-cell">Mobile</th>
-          <th className="p-3 text-left hidden md:table-cell">CNIC</th>
-          <th className="p-3 text-left hidden md:table-cell">Address</th>
-          <th className="p-3 text-left hidden lg:table-cell">Invoices</th>
-          <th className="p-3 text-left hidden lg:table-cell">Payable</th>
-          <th className="p-3 text-left hidden lg:table-cell">Paid</th>
-          <th className="p-3 text-left hidden lg:table-cell">Balance</th>
-          <th className="p-3 text-center">Actions</th>
-        </tr>
+       <tr>
+        <th className={`p-3 ${textAlign}`}>{t("name")}</th>
+        <th className={`p-3 hidden sm:table-cell ${textAlign}`}>{t("mobile")}</th>
+        <th className={`p-3 hidden md:table-cell ${textAlign}`}>{t("cnic")}</th>
+        <th className={`p-3 hidden md:table-cell ${textAlign}`}>{t("address")}</th>
+        <th className={`p-3 hidden lg:table-cell ${textAlign}`}>{t("invoices")}</th>
+        <th className={`p-3 hidden lg:table-cell ${textAlign}`}>{t("payable")}</th>
+        <th className={`p-3 hidden lg:table-cell ${textAlign}`}>{t("paid")}</th>
+        <th className={`p-3 hidden lg:table-cell ${textAlign}`}>{t("balance")}</th>
+        <th className="p-3 text-center">{t("actions")}</th>
+      </tr>
       </thead>
       <tbody>
         {suppliers.length === 0 ? (
           <tr>
             <td colSpan={9} className="text-center p-4 text-gray-500">
-              No suppliers found
+              {t("nosuppliersfound")}
             </td>
           </tr>
         ) : (
@@ -346,7 +351,7 @@ async function handleSave() {
     {/* ===================== CARDS VIEW ===================== */}
     {view === "cards" && (
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {suppliers.length === 0 && <div className="text-gray-500 col-span-full">No suppliers found</div>}
+        {suppliers.length === 0 && <div className="text-gray-500 col-span-full">{t("nosuppliersfound")}</div>}
         {suppliers.map((c) => (
           <div
             key={c.id}
@@ -354,13 +359,13 @@ async function handleSave() {
           >
             <div className="mb-3">
               <h3 className="font-bold text-lg truncate">{c.name}</h3>
-              <p className="text-gray-600 text-sm mt-1 truncate">Mobile: {c.mobile}</p>
-              <p className="text-gray-600 text-sm mt-1 truncate">CNIC: {c.cnic}</p>
-              <p className="text-gray-600 text-sm mt-1 truncate">Address: {c.address}</p>
-              <p className="text-gray-600 text-sm mt-1 truncate">Invoices: {c.invoices}</p>
-              <p className="text-gray-600 text-sm mt-1 truncate">Payable: {c.payable}</p>
-              <p className="text-gray-600 text-sm mt-1 truncate">Paid: {c.paid}</p>
-              <p className="text-gray-600 text-sm mt-1 truncate">Balance: {c.balance}</p>
+              <p className="text-gray-600 text-sm mt-1 truncate">{t("mobile")}: {c.mobile}</p>
+              <p className="text-gray-600 text-sm mt-1 truncate">{t("cnic")}: {c.cnic}</p>
+              <p className="text-gray-600 text-sm mt-1 truncate">{t("address")}: {c.address}</p>
+              <p className="text-gray-600 text-sm mt-1 truncate">{t("invoices")}: {c.invoices}</p>
+              <p className="text-gray-600 text-sm mt-1 truncate">{t("payable")}: {c.payable}</p>
+              <p className="text-gray-600 text-sm mt-1 truncate">{t("paid")}: {c.paid}</p>
+              <p className="text-gray-600 text-sm mt-1 truncate">{t("balance")}: {c.balance}</p>
             </div>
             <div className="flex gap-2 mt-2">
               <button
@@ -388,17 +393,17 @@ async function handleSave() {
         onClick={() => setPage(page - 1)}
         className={`px-3 py-1 rounded ${page === 1 ? "bg-gray-300" : "bg-indigo-500 text-white"}`}
       >
-        Prev
+        {t("prev")}
       </button>
       <span className="px-3 py-1 bg-gray-200 rounded">
-        Page {page} / {totalPages}
+        {t("page")} {page} / {totalPages}
       </span>
       <button
         disabled={page === totalPages}
         onClick={() => setPage(page + 1)}
         className={`px-3 py-1 rounded ${page === totalPages ? "bg-gray-300" : "bg-indigo-500 text-white"}`}
       >
-        Next
+        {t("next")}
       </button>
     </div>
 
@@ -407,35 +412,35 @@ async function handleSave() {
       <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4">
         <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md">
           <h2 className="text-xl font-bold mb-4">
-            {editingSupplier ? "Edit Supplier" : "Create Supplier"}
+            {editingSupplier ? t("editsupplier") : t("createsupplier")}
           </h2>
 
           <div className="space-y-3">
             <input
               className="w-full p-2 border rounded"
-              placeholder="Supplier Name"
+              placeholder={t("suppliername")}
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
             />
             <input
               className="w-full p-2 border rounded"
-              placeholder="Mobile"
+              placeholder={t("mobile")}
               value={form.mobile}
               onChange={(e) => setForm({ ...form, mobile: e.target.value })}
             />
             <input
               className="w-full p-2 border rounded"
-              placeholder="CNIC"
+              placeholder={t("cnic")}
               value={form.cnic}
               onChange={(e) => setForm({ ...form, cnic: e.target.value })}
             />
             <input
               className="w-full p-2 border rounded"
-              placeholder="Address"
+              placeholder={t("address")}
               value={form.address}
               onChange={(e) => setForm({ ...form, address: e.target.value })}
             />
-            <label className="text-sm text-gray-600">Previous Dues</label>
+            <label className="text-sm text-gray-600">{t("previousdues")}</label>
             <input
               className="w-full p-2 border rounded"
               type="text"
@@ -447,10 +452,10 @@ async function handleSave() {
 
           <div className="flex justify-end gap-2 mt-4 flex-wrap">
             <button onClick={closeForm} className="px-4 py-2 bg-gray-300 rounded">
-              Cancel
+              {t("cancel")}
             </button>
             <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded">
-              Save
+              {t("save")}
             </button>
           </div>
         </div>

@@ -13,6 +13,7 @@ import * as XLSX from "xlsx";
 import { FaFilePdf, FaFileExcel, FaSearch } from "react-icons/fa";
 
 import { suppliersRepository } from "./repositories/suppliersRepository";
+import { useLang } from "./i18n/LanguageContext";
 
 const PAGE_SIZE = 10;
 
@@ -23,6 +24,8 @@ export default function SupReport() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
 
+  const { t, lang, setLang } = useLang();
+  
   const [summary, setSummary] = useState({
     highestDues: "-",
     lowestDues: "-",
@@ -225,6 +228,8 @@ export default function SupReport() {
   /* UI */
   /* -------------------------------------------------- */
 
+      const textAlign = lang === "ur" ? "text-right" : "text-left";
+
  return (
   <div className="p-4 sm:p-6">
 
@@ -234,7 +239,7 @@ export default function SupReport() {
       <div style={cardStyle}>
         <FaArrowUp size={24} color="#ef4444" />
         <div>
-          <div>Highest Dues</div>
+          <div>{t("highestdues")}</div>
           <strong>{summary.highestDues}</strong>
         </div>
       </div>
@@ -242,7 +247,7 @@ export default function SupReport() {
       <div style={cardStyle}>
         <FaArrowDown size={24} color="#10b981" />
         <div>
-          <div>Lowest Dues</div>
+          <div>{t("lowestdues")}</div>
           <strong>{summary.lowestDues}</strong>
         </div>
       </div>
@@ -250,7 +255,7 @@ export default function SupReport() {
       <div style={cardStyle}>
         <FaFileInvoiceDollar size={24} color="#2563eb" />
         <div>
-          <div>Highest Invoices</div>
+          <div>{t("highestinvoices")}</div>
           <strong>{summary.highestInvoices}</strong>
         </div>
       </div>
@@ -258,7 +263,7 @@ export default function SupReport() {
       <div style={cardStyle}>
         <FaFileInvoiceDollar size={24} color="#f59e0b" />
         <div>
-          <div>Lowest Invoices</div>
+          <div>{t("lowestinvoices")}</div>
           <strong>{summary.lowestInvoices}</strong>
         </div>
       </div>
@@ -266,7 +271,7 @@ export default function SupReport() {
       <div style={cardStyle}>
         <FaUsers size={24} color="#6366f1" />
         <div>
-          <div>No Invoices</div>
+          <div>{t("noinvoices")}</div>
           <strong>{summary.noInvoices}</strong>
         </div>
       </div>
@@ -282,7 +287,7 @@ export default function SupReport() {
 
         <input
           type="text"
-          placeholder="Search supplier..."
+          placeholder={t("searchsupplier")}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="w-full border rounded pl-9 pr-3 py-2"
@@ -294,7 +299,7 @@ export default function SupReport() {
         <FaFilePdf
           size={22}
           color="#dc2626"
-          title="Export PDF"
+          title={t("exportpdf")}
           className="cursor-pointer"
           onClick={exportPDF}
         />
@@ -302,7 +307,7 @@ export default function SupReport() {
         <FaFileExcel
           size={22}
           color="#16a34a"
-          title="Export Excel"
+          title={t("exportexcel")}
           className="cursor-pointer"
           onClick={exportExcel}
         />
@@ -315,14 +320,12 @@ export default function SupReport() {
       <table className="w-full text-left border">
         <thead className="bg-gray-100">
           <tr>
-            <th className="px-4 py-2 border">Supplier</th>
-
-            <th className="px-4 py-2 border hidden sm:table-cell">
-              # Invoices
+            <th className={`px-4 py-2 border ${textAlign}`}>{t("supplier")}</th>
+            <th className={`px-4 py-2 border hidden sm:table-cell ${textAlign}`}>
+              # {t("invoices")}
             </th>
-
-            <th className="px-4 py-2 border hidden md:table-cell">
-              Dues (Rs.)
+            <th className={`px-4 py-2 border hidden md:table-cell ${textAlign}`}>
+              {t("dues")}
             </th>
           </tr>
         </thead>
@@ -331,36 +334,32 @@ export default function SupReport() {
           {paginated.length === 0 ? (
             <tr>
               <td colSpan={3} className="px-4 py-2 text-center text-gray-500">
-                No suppliers found.
+                {t("nosuppliersfound")}
               </td>
             </tr>
           ) : (
             paginated.map(s => (
-              <tr
-                key={s.id}
-                className="border-b hover:bg-gray-50"
-              >
+              <tr key={s.id} className="border-b hover:bg-gray-50">
                 {/* SUPPLIER */}
-                <td className="px-2 py-1 sm:px-4 sm:py-2 font-medium">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 font-medium ${textAlign}`}>
                   {s.name}
                 </td>
 
                 {/* INVOICES */}
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell ${textAlign}`}>
                   {(s.invoices || 0).toLocaleString()}
                 </td>
 
                 {/* DUES */}
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell ${textAlign}`}>
                   {(s.balance || 0).toLocaleString()}
                 </td>
 
                 {/* MOBILE STACKED INFO */}
                 <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1">
-                  <span>Invoices: {(s.invoices || 0).toLocaleString()}</span>
-                  <span>Dues: {(s.balance || 0).toLocaleString()}</span>
+                  <span>{t("invoices")}: {(s.invoices || 0).toLocaleString()}</span>
+                  <span>{t("dues")}: {(s.balance || 0).toLocaleString()}</span>
                 </td>
-
               </tr>
             ))
           )}
@@ -376,11 +375,11 @@ export default function SupReport() {
         onClick={() => setPage(page - 1)}
         className="px-3 py-1 border rounded"
       >
-        Prev
+        {t("prev")}
       </button>
 
       <span>
-        Page {page} / {totalPages || 1}
+        {t("page")} {page} / {totalPages || 1}
       </span>
 
       <button
@@ -388,7 +387,7 @@ export default function SupReport() {
         onClick={() => setPage(page + 1)}
         className="px-3 py-1 border rounded"
       >
-        Next
+        {t("next")}
       </button>
 
     </div>

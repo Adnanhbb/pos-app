@@ -16,6 +16,7 @@ import { discountRepository } from "./repositories/discountRepository";
 import { taxRepository } from "./repositories/taxRepository";
 import type { Discount, Tax } from "./db";
 import { printInvoice } from "./services/printing/printService";
+import { useLang } from "./i18n/LanguageContext";
 
 // =====================
 // Types
@@ -261,8 +262,16 @@ export default function SalesPOS({ currentUser }: POSProps) {
   const [search, setSearch] = useState("");
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split("T")[0]);
   const [invoiceNo, setInvoiceNo] = useState("");
+  const { t, lang, setLang } = useLang();
+  type TransactionType = "Sale" | "Purchase" | "Return" | "Quotation";
   const [transactionType, setTransactionType] =
-    useState<"Sale" | "Purchase" | "Return" | "Quotation">("Sale");
+  useState<TransactionType>("Sale");
+  const transactionTypes: { value: TransactionType; label: string }[] = [
+  { value: "Sale", label: t("sale") },
+  { value: "Purchase", label: t("purchase") },
+  { value: "Return", label: t("return") },
+  { value: "Quotation", label: t("quotation") },
+];
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | null>(null);
@@ -364,7 +373,6 @@ export default function SalesPOS({ currentUser }: POSProps) {
 
   const showSupplierDropdown = isPurchase || (transactionType === "Return" && returnMode === "supplier");
   const showCustomerDropdown = !isPurchase && !(transactionType === "Return" && returnMode === "supplier");
-
   
 useEffect(() => {
   if (transactionType !== "Return") return;
@@ -1570,13 +1578,13 @@ return (
   {/* Top controls */}
   <div className="flex gap-2 mb-3">
     {/* Transaction Type Selector */}
-      <div className="flex items-center gap-4 mb-3">
-  {(["Sale", "Purchase", "Return", "Quotation"] as const).map(type => (
+    <div className="flex items-center gap-4 mb-3">
+  {transactionTypes.map(type => (
     <label
-      key={type}
+      key={type.value}
       className={`flex items-center gap-2 px-3 py-1 rounded cursor-pointer transition
         ${
-          transactionType === type
+          transactionType === type.value
             ? "bg-indigo-600 text-white"
             : "bg-gray-200 text-gray-700 hover:bg-gray-300"
         }
@@ -1585,22 +1593,19 @@ return (
       <input
         type="radio"
         name="transactionType"
-        value={type}
+        value={type.value}
         className="hidden"
-        checked={transactionType === type}
-        onChange={() => {
-          // 🔁 Always rollback cart + UI stock first
-          handleTransactionTypeChange(type);
-        }}
+        checked={transactionType === type.value}
+        onChange={() => handleTransactionTypeChange(type.value)}
       />
-      {type}
+      {type.label}
     </label>
   ))}
 </div>
 
     <input
       type="text"
-      placeholder="Search Items / Scan Barcode ..."
+      placeholder={t("searchitembarcode")}
       className="border p-2 rounded flex-1 w-full"
       value={search}
       onChange={(e) => setSearch(e.target.value)}
@@ -1618,7 +1623,7 @@ return (
   onChange={(e) => setSelectedCategory(e.target.value)}
   className="w-full border rounded px-2 py-1"
 >
-  <option value="">All Categories</option>
+  <option value="">{t("allcategories")}</option>
   {Categories.map((cat) => (
     <option key={cat.id} value={cat.name}>
       {cat.name}
@@ -1631,7 +1636,7 @@ return (
   onChange={(e) => setSelectedBrand(e.target.value)}
   className="w-full border rounded px-2 py-1"
 >
-  <option value="">All Brands</option>
+  <option value="">{t("allbrands")}</option>
   {Brands.map((b) => (
     <option key={b.id} value={b.name}>
       {b.name}
@@ -1685,7 +1690,7 @@ return (
 
           {item.availableStock <= 0 && (
             <div className="text-red-500 text-xs font-semibold mt-1">
-              Out of Stock
+              {t("outofstock")}
             </div>
           )}
         </div>
@@ -1704,7 +1709,7 @@ return (
   {/* Row 1: Invoice + Total Items */}
   <div className="flex justify-between items-center mb-1">
     <div className="text-lg font-semibold">
-      Invoice #: {invoiceNo}
+      {t("invoice")}: {invoiceNo}
     </div>
 
  {transactionType === "Return" ? (
@@ -1717,7 +1722,7 @@ return (
         checked={returnMode === "customer"}
         onChange={() => setReturnMode("customer")}
       />
-      Customer Return
+      {t("customerreturn")}
     </label>
 
     <label className="flex items-center gap-1 cursor-pointer">
@@ -1728,12 +1733,12 @@ return (
         checked={returnMode === "supplier"}
         onChange={() => setReturnMode("supplier")}
       />
-      Supplier Return
+      {t("supplierreturn")}
     </label>
   </div>
 ) : (
   <div className="text-sm text-gray-700">
-    Total Items: <span className="font-semibold">{cart.length}</span>
+    {t("totalitems")}: <span className="font-semibold">{cart.length}</span>
   </div>
 )}
 </div>
@@ -1742,7 +1747,7 @@ return (
 <div className="flex justify-between items-center">
   {/* Date */}
   <div className="flex items-center gap-2 text-sm">
-    <span>Date:</span>
+    <span>{t("date")}:</span>
     <input
       type="date"
       className="border px-2 py-1 rounded text-sm"
@@ -1867,8 +1872,8 @@ return (
     className="p-2 bg-indigo-600 text-white rounded hover:bg-indigo-700"
     title={
       isPurchase || (transactionType === "Return" && returnMode === "supplier")
-        ? "Add New Supplier"
-        : "Add New Customer"
+        ? t("addnewsupplier")
+        : t("addnewcustomer")
     }
   >
     <FaPlus size={12} />
@@ -1891,7 +1896,7 @@ return (
               <div className="font-medium">{ci.name}</div>
               <div className="text-sm text-gray-500 leading-tight">
                <span className="text-blue-400">{ci.unit === "max"? ci.qty / ci.convQty : ci.qty}{ci.unit === "max" ? ci.maxunit : ci.minunit}×
-                            {priceForDisplay(ci.minUnitPrice, ci.unit, ci.convQty)}</span>  | <span className="text-green-400">Disc: {ci.discountValue}{ci.discountType}</span> | <span className="text-red-400">Tax: {ci.taxValue}{ci.taxType}</span>
+                            {priceForDisplay(ci.minUnitPrice, ci.unit, ci.convQty)}</span>  | <span className="text-green-400">{t("disc")}: {ci.discountValue}{ci.discountType}</span> | <span className="text-red-400">{t("tax")}: {ci.taxValue}{ci.taxType}</span>
               </div>
             </div>
             <div className="flex gap-2">
@@ -1934,12 +1939,12 @@ return (
     {/* LEFT COLUMN — EXISTING TOTALS */}
     <div className="space-y-2">
       <div className="flex justify-between">
-        <span>Subtotal</span>
+        <span>{t("subtotal")}</span>
         <span>{totals.subtotal.toFixed(2)}</span>
       </div>
 
       <div className="flex justify-between">
-        <span>Discount 
+        <span>{t("discount")} 
         <button
         className="ml-1 text-[10px] px-1 border rounded bg-green-500 text-white"
         onClick={() => setShowInvoiceDiscountModal(true)}>
@@ -1950,7 +1955,7 @@ return (
       </div>
 
       <div className="flex justify-between">
-        <span>Tax
+        <span>{t("tax")}
           <button
           className="ml-1 text-[10px] px-1 border rounded bg-red-500 text-white"
           onClick={() => setShowInvoiceTaxModal(true)}>
@@ -1964,7 +1969,7 @@ return (
   selectedCustomerId !== null &&
   customerArrears > 0 && (
     <div className="flex justify-between text-red-600 font-medium">
-      <span>Previous Dues</span>
+      <span>{t("previousdues")}</span>
       <span>{customerArrears.toFixed(2)}</span>
     </div>
 )}
@@ -1973,13 +1978,13 @@ return (
   selectedSupplierId !== null &&
   supplierBalance > 0 && (
     <div className="flex justify-between text-red-600 font-medium">
-      <span>Previous Dues</span>
+      <span>{t("previousdues")}</span>
       <span>{supplierBalance.toFixed(2)}</span>
     </div>
 )}
 
       <div className="flex justify-between font-semibold border-t pt-2 text-base">
-        <span className="text-blue-600">Payable Amount</span>
+        <span className="text-blue-600">{t("payableamount")}</span>
         <span className="text-blue-600">{totals.grandTotal.toFixed(2)}</span>
       </div>
     </div>
@@ -1988,7 +1993,7 @@ return (
     <div className="space-y-3 mt-1">
        <div className="flex items-center gap-4 ml-2">
           <label className="text-xl font-medium text-green-500 whitespace-nowrap">
-            Paid
+            {t("paid")}
           </label>
 
           <input
@@ -2009,7 +2014,7 @@ return (
         </div>
 
       <div className="flex justify-between items-center bg-gray-50 p-3 rounded">
-        <span className="font-medium text-xl text-red-600">Balance</span>
+        <span className="font-medium text-xl text-red-600">{t("balance")}</span>
         <span className="text-lg font-bold text-red-600 mr-10">
           {balance.toFixed(2)}
         </span>
@@ -2023,14 +2028,14 @@ return (
       className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
       onClick={handleCompleteTransaction}
     >
-      <FaCheck /> Complete {transactionType}
+      <FaCheck /> {t("complete")} {t(transactionType.toLowerCase())}
     </button>
 
     <button
       className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
       onClick={cancelSale}
     >
-      <FaTimes /> Cancel {transactionType}
+      <FaTimes /> {t("cancel")} {t(transactionType.toLowerCase())}
     </button>
   </div>
 </div>
@@ -2048,7 +2053,7 @@ return (
         </h3>
 
         <span className="text-xs text-green-500 text-right">
-          Stock:&nbsp;
+          {t("stock")}:&nbsp;
           {formatStock(
             items.find(i => i.id === editing.originalItemId)?.availableStock ?? 0,
             editing.convQty,
@@ -2059,7 +2064,7 @@ return (
       </div>
 
       <div className="mb-2">
-        <label className="text-xs font-medium">Unit</label>
+        <label className="text-xs font-medium">{t("unit")}</label>
         <select
           className="w-full p-2 border rounded"
           value={editing.unit}
@@ -2074,7 +2079,7 @@ return (
         </select>
       </div>
 
-      <label className="text-sm">Quantity</label>
+      <label className="text-sm">{t("quantity")}</label>
       <input
         type="number"
         className="w-full p-2 border rounded mb-2"
@@ -2085,7 +2090,7 @@ return (
       {/* Price Category / Buy Price */}
       {treatAsPurchase ? (
         <>
-          <label className="text-sm font-medium block mb-1">Buy Price</label>
+          <label className="text-sm font-medium block mb-1">{t("buyprice")}</label>
           <input
             type="number"
             className="w-full p-2 border rounded mb-2"
@@ -2107,7 +2112,7 @@ return (
         </>
       ) : (
         <>
-          <label className="text-sm font-medium block mb-1">Price</label>
+          <label className="text-sm font-medium block mb-1">{t("price")}</label>
           <div className="flex gap-3 text-sm mb-2">
             {PRICE_CATEGORIES.map(cat => (
               <label key={cat} className="flex items-center gap-1">
@@ -2147,7 +2152,7 @@ return (
         </>
       )}
 
-      <label className="text-sm">Discount</label>
+      <label className="text-sm">{t("discount")}</label>
       <div className="flex gap-2 mb-2">
         <select
           value={editing.discountType}
@@ -2165,7 +2170,7 @@ return (
         />
       </div>
 
-      <label className="text-sm">Tax</label>
+      <label className="text-sm">{t("tax")}</label>
       <div className="flex gap-2 mb-3">
         <select
           value={editing.taxType}
@@ -2184,9 +2189,9 @@ return (
       </div>
 
       <div className="flex justify-end gap-2">
-        <button onClick={() => setEditing(null)}>Cancel</button>
+        <button onClick={() => setEditing(null)}>{t("cancel")}</button>
         <button onClick={() => updateItem(editing)} className="bg-indigo-600 text-white px-4 py-2 rounded">
-          Save
+          {t("save")}
         </button>
       </div>
     </div>
@@ -2197,9 +2202,9 @@ return (
       {showCustomerModal && (
   <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
     <div className="bg-white p-5 rounded w-96 shadow">
-      <h3 className="font-semibold mb-3">Create New Customer</h3>
+      <h3 className="font-semibold mb-3">{t("createcustomer")}</h3>
 
-      <label className="text-sm">Customer Name</label>
+      <label className="text-sm">{t("customername")}</label>
       <input
         type="text"
         className="w-full p-2 border rounded mb-2"
@@ -2209,7 +2214,7 @@ return (
         }
       />
 
-      <label className="text-sm">Mobile</label>
+      <label className="text-sm">{t("mobile")}</label>
       <input
         type="text"
         className="w-full p-2 border rounded mb-2"
@@ -2219,7 +2224,7 @@ return (
         }
       />
 
-        <label className="text-sm">CNIC</label>
+        <label className="text-sm">{t("cnic")}</label>
       <input
         type="text"
         className="w-full p-2 border rounded mb-2"
@@ -2229,7 +2234,7 @@ return (
         }
       />
 
-        <label className="text-sm">Address</label>
+        <label className="text-sm">{t("address")}</label>
       <input
         type="text"
         className="w-full p-2 border rounded mb-2"
@@ -2239,7 +2244,7 @@ return (
         }
       />
 
-      <label className="text-sm">Previous Dues</label>
+      <label className="text-sm">{t("previousdues")}</label>
       <input
         type="number"
         className="w-full p-2 border rounded mb-4"
@@ -2257,7 +2262,7 @@ return (
           onClick={() => setShowCustomerModal(false)}
           className="px-3 py-1"
         >
-          Cancel
+          {t("cancel")}
         </button>
 
         <button
@@ -2308,7 +2313,7 @@ return (
                       setShowCustomerModal(false);
                     }}
                   >
-  Save
+  {t("save")}
 </button>
 
       </div>
@@ -2319,9 +2324,9 @@ return (
 {showSupplierModal && (
   <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
     <div className="bg-white p-5 rounded w-96 shadow">
-      <h3 className="font-semibold mb-3">Create New Supplier</h3>
+      <h3 className="font-semibold mb-3">{t("createsupplier")}</h3>
 
-      <label className="text-sm">Supplier Name</label>
+      <label className="text-sm">{t("suppliername")}</label>
       <input
         type="text"
         className="w-full p-2 border rounded mb-2"
@@ -2331,7 +2336,7 @@ return (
         }
       />
 
-      <label className="text-sm">Mobile</label>
+      <label className="text-sm">{t("mobile")}</label>
       <input
         type="text"
         className="w-full p-2 border rounded mb-2"
@@ -2341,7 +2346,7 @@ return (
         }
       />
 
-      <label className="text-sm">CNIC</label>
+      <label className="text-sm">{t("cnic")}</label>
       <input
         type="text"
         className="w-full p-2 border rounded mb-2"
@@ -2351,7 +2356,7 @@ return (
         }
       />
 
-      <label className="text-sm">Address</label>
+      <label className="text-sm">{t("address")}</label>
       <input
         type="text"
         className="w-full p-2 border rounded mb-2"
@@ -2361,7 +2366,7 @@ return (
         }
       />
 
-      <label className="text-sm">Opening Payable</label>
+      <label className="text-sm">{t("previousdues")}</label>
       <input
         type="number"
         className="w-full p-2 border rounded mb-4"
@@ -2379,7 +2384,7 @@ return (
           onClick={() => setShowSupplierModal(false)}
           className="px-3 py-1"
         >
-          Cancel
+          {t("cancel")}
         </button>
 
         <button
@@ -2432,7 +2437,7 @@ return (
             setShowSupplierModal(false);
           }}
         >
-          Save
+          {t("save")}
         </button>
       </div>
     </div>
@@ -2442,7 +2447,7 @@ return (
 {showInvoiceDiscountModal && (
   <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
     <div className="bg-white p-4 rounded w-80">
-      <h3 className="font-semibold mb-3">Invoice Discount</h3>
+      <h3 className="font-semibold mb-3">{t("invoice")} {t("discount")}</h3>
 
       {/* Discount Name */}
       <select
@@ -2492,8 +2497,8 @@ return (
           )
         }
       >
-        <option value="percentage">Percentage</option>
-        <option value="Fixed Amount">Fixed Amount</option>
+        <option value="percentage">{t("percentage")}</option>
+        <option value="Fixed Amount">{t("fixedamount")}</option>
       </select>
 
       {/* Discount Value */}
@@ -2512,7 +2517,7 @@ return (
           className="px-3 py-1 border rounded"
           onClick={() => setShowInvoiceDiscountModal(false)}
         >
-          Cancel
+          {t("cancel")}
         </button>
 
         {/* SAVE */}
@@ -2532,7 +2537,7 @@ return (
           setShowInvoiceDiscountModal(false);
         }}
       >
-        Save
+        {t("save")}
       </button>
       </div>
     </div>
@@ -2542,7 +2547,7 @@ return (
 {showInvoiceTaxModal && (
   <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
     <div className="bg-white p-4 rounded w-80">
-      <h3 className="font-semibold mb-3">Invoice Tax</h3>
+      <h3 className="font-semibold mb-3">{t("invoice")} {t("tax")}</h3>
 
       {/* Tax Name */}
       <select
@@ -2592,8 +2597,8 @@ return (
           )
         }
       >
-        <option value="percentage">Percentage</option>
-        <option value="Fixed Amount">Fixed Amount</option>
+        <option value="percentage">{t("percentage")}</option>
+        <option value="Fixed Amount">{t("fixedamount")}</option>
       </select>
 
       {/* Tax Value */}
@@ -2612,7 +2617,7 @@ return (
           className="px-3 py-1 border rounded"
           onClick={() => setShowInvoiceTaxModal(false)}
         >
-          Cancel
+          {t("cancel")}
         </button>
 
         {/* SAVE */}
@@ -2632,7 +2637,7 @@ return (
             setShowInvoiceTaxModal(false);
           }}
         >
-          Save
+          {t("save")}
         </button>
       </div>
     </div>

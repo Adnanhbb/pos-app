@@ -9,6 +9,7 @@ import { supplierPaymentRepository } from "./repositories/supplierPaymentReposit
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
 import { customersRepository } from "./repositories/customerRepository";
 import { suppliersRepository, SuppliersRepository } from "./repositories/suppliersRepository";
+import { useLang } from "./i18n/LanguageContext";
 
 type Totals = {
   purchasePaid: number;
@@ -28,6 +29,8 @@ export default function CFReport() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
+  const { t, lang, setLang } = useLang();
+  
   const [totals, setTotals] = useState<Totals>({
     purchasePaid: 0,
     supplierDuesPaid: 0,
@@ -220,13 +223,13 @@ const exportPDF = async () => {
 
       {/* TITLE */}
       <h2 className="text-2xl font-bold text-center mb-6">
-        Cash-flow Report
+        {t("cashflow_report")}
       </h2>
 
       {/* DATE FILTERS */}
       <div className="flex flex-wrap justify-center gap-4 mb-10">
         <div>
-          From
+          {t("from")}
           <input
             type="date"
             className="border rounded ml-2 px-2 py-1"
@@ -236,7 +239,7 @@ const exportPDF = async () => {
         </div>
 
         <div>
-          To
+          {t("to")}
           <input
             type="date"
             className="border rounded ml-2 px-2 py-1"
@@ -251,45 +254,45 @@ const exportPDF = async () => {
   <FaFilePdf
     size={26}
     className="text-red-600 cursor-pointer hover:scale-110 transition"
-    title="Export PDF"
+    title={t("exportpdf")}
     onClick={exportPDF}
   />
   </div>
 
       {/* CASH OUT FLOW */}
-      <h3 className="font-semibold mb-3">Cash Out-flow</h3>
+      <h3 className="font-semibold mb-3">{t("cash_outflow")}</h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-10">
 
-        <Card title="Purchase Paid" value={Number(totals.purchasePaid.toFixed())} />
-        <Card title="Supplier Dues Paid" value={Number(totals.supplierDuesPaid.toFixed())} />
-        <Card title="Customer Ret. Paid" value={Number(totals.customerReturnPaid.toFixed())} />
-        <Card title="Expenses" value={Number(totals.expenses.toFixed())} />
-        <Card title="Total Out-flow" value={Number(totals.totalOut.toFixed())} color="bg-yellow-50" />
+        <Card title={t("purchase_paid")} value={Number(totals.purchasePaid.toFixed())} />
+        <Card title={t("supplier_dues_paid")} value={Number(totals.supplierDuesPaid.toFixed())} />
+        <Card title={t("customer_ret_paid")} value={Number(totals.customerReturnPaid.toFixed())} />
+        <Card title={t("expenses")} value={Number(totals.expenses.toFixed())} />
+        <Card title={t("total_outflow")} value={Number(totals.totalOut.toFixed())} color="bg-yellow-50" />
 
       </div>
 
       {/* CASH IN FLOW */}
-      <h3 className="font-semibold mb-3">Cash In-flow</h3>
+      <h3 className="font-semibold mb-3">{t("cash_inflow")}</h3>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-10">
 
-        <Card title="Sales Paid" value={Number(totals.salesPaid.toFixed())} />
-        <Card title="Customer Dues Paid" value={Number(totals.customerDuesPaid.toFixed())} />
-        <Card title="Supplier Ret. Paid" value={Number(totals.supplierReturnPaid.toFixed())} />
-        <Card title="Total In-flow" value={Number(totals.totalIn.toFixed())} color="bg-yellow-50" />
+        <Card title={t("sales_paid")} value={Number(totals.salesPaid.toFixed())} />
+        <Card title={t("customer_dues_paid")} value={Number(totals.customerDuesPaid.toFixed())} />
+        <Card title={t("supplier_ret_paid")} value={Number(totals.supplierReturnPaid.toFixed())} />
+        <Card title={t("total_inflow")} value={Number(totals.totalIn.toFixed())} color="bg-yellow-50" />
 
       </div>
 
       {/* NET FLOW */}
       <h3 className="font-semibold mb-3">
-        Net In-flow
+        {t("net_inflow")}
       </h3>
 
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
 
         <Card
-          title="Net Cash Position"
+          title={t("net_cash_position")}
           value={totals.totalIn - totals.totalOut}
           color="bg-yellow-50"
         />
@@ -302,33 +305,33 @@ const exportPDF = async () => {
   style={{ width: "900px", position: "absolute", left: "-9999px" }}
 >
   <h1 style={{ textAlign: "center", marginBottom: 20,fontSize:24,fontWeight:"bold" }}>
-    Cash-Flow Report
+    {t("cashflow_report")}
   </h1>
 
   <p style={{ textAlign: "center", marginBottom: 30 }}>
-    From: {fromDate || "All"} — To: {toDate || "All"}
+    {t("from")}: {fromDate || t("all")} — {t("to")}: {toDate || t("all")}
   </p>
 
   {/* OUT FLOW */}
-  <h3>Cash Out-flow</h3>
+  <h3>{t("cash_outflow")}</h3>
   <div style={{ display: "grid", gridTemplateColumns: "repeat(5,1fr)", gap: 10 }}>
-    <PDFCard title="Purchase Paid" value={totals.purchasePaid}/>
-    <PDFCard title="Supplier Dues Paid" value={totals.supplierDuesPaid}/>
-    <PDFCard title="Customer Ret. Paid" value={totals.customerReturnPaid}/>
-    <PDFCard title="Expenses" value={totals.expenses}/>
-    <PDFCard title="Total Out-flow" value={totals.totalOut}/>
+    <PDFCard title={t("purchase_paid")} value={totals.purchasePaid}/>
+    <PDFCard title={t("supplier_dues_paid")} value={totals.supplierDuesPaid}/>
+    <PDFCard title={t("customer_ret_paid")} value={totals.customerReturnPaid}/>
+    <PDFCard title={t("expenses")} value={totals.expenses}/>
+    <PDFCard title={t("total_outflow")} value={totals.totalOut}/>
   </div>
 
-  <h3 style={{ marginTop: 30 }}>Cash In-flow</h3>
+  <h3 style={{ marginTop: 30 }}>{t("cash_inflow")}</h3>
   <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 10 }}>
-    <PDFCard title="Sales Paid" value={totals.salesPaid}/>
-    <PDFCard title="Customer Dues Paid" value={totals.customerDuesPaid}/>
-    <PDFCard title="Supplier Ret. Paid" value={totals.supplierReturnPaid}/>
-    <PDFCard title="Total In-flow" value={totals.totalIn}/>
+    <PDFCard title={t("sales_paid")} value={totals.salesPaid}/>
+    <PDFCard title={t("customer_dues_paid")} value={totals.customerDuesPaid}/>
+    <PDFCard title={t("supplier_ret_paid")} value={totals.supplierReturnPaid}/>
+    <PDFCard title={t("total_inflow")} value={totals.totalIn}/>
   </div>
 
-  <h3 style={{ marginTop: 30 }}>Net In-flow</h3>
-  <PDFCard title="Net Cash Position" value={totals.totalIn - totals.totalOut}/>
+  <h3 style={{ marginTop: 30 }}>{t("net_inflow")}</h3>
+  <PDFCard title={t("net_cash_position")} value={totals.totalIn - totals.totalOut}/>
 </div>
     </div>
   );

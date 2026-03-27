@@ -259,10 +259,10 @@ items.map((i:any)=>{
   <tr>
     <td>${i.name ?? i.productName ?? ""}</td>
     <td class="right">${qty}</td>
-    <td class="right">${price.toFixed(2)}</td>
+    <td class="right">${price.toFixed(0)}</td>
     <td class="right">${discountVal} ${discountType}</td>
     <td class="right">${taxVal} ${taxType}</td>
-    <td class="right">${lineTotal.toFixed(2)}</td>
+    <td class="right">${lineTotal.toFixed(0)}</td>
   </tr>
   `;
 }).join("")

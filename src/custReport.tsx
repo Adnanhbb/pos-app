@@ -14,6 +14,7 @@ import * as XLSX from "xlsx";
 import { FaFilePdf, FaFileExcel, FaSearch } from "react-icons/fa";
 
 import { customersRepository } from "./repositories/customerRepository";
+import { useLang } from "./i18n/LanguageContext";
 
 const PAGE_SIZE = 10;
 
@@ -31,8 +32,10 @@ export default function CustReport() {
     noInvoices: 0
   });
 
-  const applySearch = (data: Customer[]) => {
+  const { t, lang, setLang } = useLang();
 
+  const applySearch = (data: Customer[]) => {
+  
   let result = [...data];
 
   if (search.trim()) {
@@ -232,6 +235,8 @@ const exportExcel = () => {
      UI
   -------------------------------------------------- */
 
+      const textAlign = lang === "ur" ? "text-right" : "text-left";
+
  return (
   <div className="p-4 sm:p-6">
 
@@ -241,7 +246,7 @@ const exportExcel = () => {
       <div style={cardStyle}>
         <FaArrowUp size={24} color="#ef4444" />
         <div>
-          <div>Highest Dues</div>
+          <div>{t("highestdues")}</div>
           <strong>{summary.highestDues}</strong>
         </div>
       </div>
@@ -249,7 +254,7 @@ const exportExcel = () => {
       <div style={cardStyle}>
         <FaArrowDown size={24} color="#10b981" />
         <div>
-          <div>Lowest Dues</div>
+          <div>{t("lowestdues")}</div>
           <strong>{summary.lowestDues}</strong>
         </div>
       </div>
@@ -257,7 +262,7 @@ const exportExcel = () => {
       <div style={cardStyle}>
         <FaFileInvoiceDollar size={24} color="#2563eb" />
         <div>
-          <div>Highest Invoices</div>
+          <div>{t("highestinvoices")}</div>
           <strong>{summary.highestInvoices}</strong>
         </div>
       </div>
@@ -265,7 +270,7 @@ const exportExcel = () => {
       <div style={cardStyle}>
         <FaFileInvoiceDollar size={24} color="#f59e0b" />
         <div>
-          <div>Lowest Invoices</div>
+          <div>{t("lowestinvoices")}</div>
           <strong>{summary.lowestInvoices}</strong>
         </div>
       </div>
@@ -273,7 +278,7 @@ const exportExcel = () => {
       <div style={cardStyle}>
         <FaUsers size={24} color="#6366f1" />
         <div>
-          <div>No Invoices</div>
+          <div>{t("noinvoices")}</div>
           <strong>{summary.noInvoices}</strong>
         </div>
       </div>
@@ -289,7 +294,7 @@ const exportExcel = () => {
 
         <input
           type="text"
-          placeholder="Search customer..."
+          placeholder={t("searchcustomer")}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="w-full border rounded pl-9 pr-3 py-2"
@@ -301,7 +306,7 @@ const exportExcel = () => {
         <FaFilePdf
           size={22}
           color="#dc2626"
-          title="Export PDF"
+          title={t("exportpdf")}
           className="cursor-pointer"
           onClick={exportPDF}
         />
@@ -309,7 +314,7 @@ const exportExcel = () => {
         <FaFileExcel
           size={22}
           color="#16a34a"
-          title="Export Excel"
+          title={t("exportexcel")}
           className="cursor-pointer"
           onClick={exportExcel}
         />
@@ -322,12 +327,16 @@ const exportExcel = () => {
       <table className="w-full text-left border">
         <thead className="bg-gray-100">
           <tr>
-            <th className="px-4 py-2 border">Customer</th>
-            <th className="px-4 py-2 border hidden sm:table-cell">
-              # Invoices
+            <th className={`px-4 py-2 border ${textAlign}`}>
+              {t("customer")}
             </th>
-            <th className="px-4 py-2 border hidden md:table-cell">
-              Dues (Rs.)
+
+            <th className={`px-4 py-2 border hidden sm:table-cell ${textAlign}`}>
+              # {t("invoices")}
+            </th>
+
+            <th className={`px-4 py-2 border hidden md:table-cell ${textAlign}`}>
+              {t("dues")}
             </th>
           </tr>
         </thead>
@@ -336,7 +345,7 @@ const exportExcel = () => {
           {paginated.length === 0 ? (
             <tr>
               <td colSpan={3} className="px-4 py-2 text-center text-gray-500">
-                No customers found.
+                {t("nocustomersfound")}
               </td>
             </tr>
           ) : (
@@ -346,24 +355,24 @@ const exportExcel = () => {
                 className="border-b hover:bg-gray-50"
               >
                 {/* CUSTOMER */}
-                <td className="px-2 py-1 sm:px-4 sm:py-2 font-medium">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 font-medium ${textAlign}`}>
                   {c.name}
                 </td>
 
                 {/* INVOICES */}
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell ${textAlign}`}>
                   {(c.invoices || 0).toLocaleString()}
                 </td>
 
                 {/* DUES */}
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell ${textAlign}`}>
                   {(c.balance || 0).toLocaleString()}
                 </td>
 
                 {/* MOBILE STACKED DETAILS */}
-                <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1">
-                  <span>Invoices: {(c.invoices || 0).toLocaleString()}</span>
-                  <span>Dues: {(c.balance || 0).toLocaleString()}</span>
+                <td className={`px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1 ${textAlign}`}>
+                  <span>{t("invoices")}: {(c.invoices || 0).toLocaleString()}</span>
+                  <span>{t("dues")}: {(c.balance || 0).toLocaleString()}</span>
                 </td>
 
               </tr>
@@ -381,11 +390,11 @@ const exportExcel = () => {
         onClick={() => setPage(page - 1)}
         className="px-3 py-1 border rounded"
       >
-        Prev
+        {t("prev")}
       </button>
 
       <span>
-        Page {page} / {totalPages || 1}
+        {t("page")} {page} / {totalPages || 1}
       </span>
 
       <button
@@ -393,7 +402,7 @@ const exportExcel = () => {
         onClick={() => setPage(page + 1)}
         className="px-3 py-1 border rounded"
       >
-        Next
+        {t("next")}
       </button>
 
     </div>

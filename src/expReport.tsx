@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { expenseRepository, Expense } from "./repositories/expenseRepository";
+import { useLang } from "./i18n/LanguageContext";
 
 import { FaSearch, FaFilePdf, FaFileExcel, FaMoneyBillWave, FaCrown } from "react-icons/fa";
 
@@ -20,6 +21,8 @@ export default function ExpReport() {
 
   const [page, setPage] = useState(1);
 
+  const { t, lang, setLang } = useLang();
+  
   const [summary, setSummary] = useState({
     totalExpenses: 0,
     highestCategory: "-",
@@ -235,6 +238,8 @@ export default function ExpReport() {
      UI
   -------------------------------------------------- */
 
+      const textAlign = lang === "ur" ? "text-right" : "text-left";
+
   return (
   <div className="p-4 sm:p-6">
 
@@ -244,7 +249,7 @@ export default function ExpReport() {
       <div style={cardStyle}>
         <FaMoneyBillWave size={26} color="#ef4444" />
         <div>
-          <div>Total Expenses</div>
+          <div>{t("totalexpenses")}</div>
           <strong>
             Rs. {summary.totalExpenses.toLocaleString()}
           </strong>
@@ -254,7 +259,7 @@ export default function ExpReport() {
       <div style={cardStyle}>
         <FaCrown size={26} color="#f59e0b" />
         <div>
-          <div>Highest Category</div>
+          <div>{t("highestcategory")}</div>
           <strong>
             {summary.highestCategory} (
             {summary.highestAmount.toLocaleString()})
@@ -269,7 +274,7 @@ export default function ExpReport() {
 
       {/* DATE FILTERS */}
       <div className="flex flex-wrap items-center gap-2">
-        <span>From:</span>
+        <span>{t("from")}:</span>
         <input
           type="date"
           value={fromDate}
@@ -277,7 +282,7 @@ export default function ExpReport() {
           className="border rounded px-2 py-1"
         />
 
-        <span>To:</span>
+        <span>{t("to")}:</span>
         <input
           type="date"
           value={toDate}
@@ -294,7 +299,7 @@ export default function ExpReport() {
           <FaSearch className="absolute left-2 top-2.5 text-gray-400" />
 
           <input
-            placeholder="Search..."
+            placeholder={t("search")}
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="border rounded pl-8 pr-3 py-1.5"
@@ -305,6 +310,7 @@ export default function ExpReport() {
         <FaFilePdf
           size={22}
           color="#dc2626"
+          title={t("exportpdf")}
           className="cursor-pointer"
           onClick={exportPDF}
         />
@@ -312,6 +318,7 @@ export default function ExpReport() {
         <FaFileExcel
           size={22}
           color="#16a34a"
+          title={t("exportexcel")}
           className="cursor-pointer"
           onClick={exportExcel}
         />
@@ -325,58 +332,48 @@ export default function ExpReport() {
       <table className="w-full text-left border">
         <thead className="bg-gray-100">
           <tr>
-            <th className="px-4 py-2 border">Date</th>
-            <th className="px-4 py-2 border">Category</th>
-
-            <th className="px-4 py-2 border hidden sm:table-cell">
-              Amount
-            </th>
-
-            <th className="px-4 py-2 border hidden md:table-cell">
-              Remarks
-            </th>
-          </tr>
+          <th className={`p-3 ${textAlign}`}>{t("date")}</th>
+          <th className={`p-3 ${textAlign}`}>{t("category")}</th>
+          <th className={`p-3 ${textAlign} hidden sm:table-cell`}>{t("amount")}</th>
+          <th className={`p-3 ${textAlign} hidden md:table-cell`}>{t("remarks")}</th>
+        </tr>
         </thead>
 
         <tbody>
           {paginated.length === 0 ? (
             <tr>
               <td colSpan={4} className="px-4 py-2 text-center text-gray-500">
-                No expenses found.
+                {t("noexpensesfound")}
               </td>
             </tr>
           ) : (
             paginated.map(e => (
-              <tr
-                key={e.id}
-                className="border-b hover:bg-gray-50"
-              >
+              <tr key={e.id} className="border-b hover:bg-gray-50">
                 {/* DATE */}
-                <td className="px-2 py-1 sm:px-4 sm:py-2">
+                <td className={`p-2 sm:p-4 ${textAlign}`}>
                   {new Date(e.date).toLocaleDateString()}
                 </td>
 
                 {/* CATEGORY */}
-                <td className="px-2 py-1 sm:px-4 sm:py-2 font-medium">
+                <td className={`p-2 sm:p-4 font-medium ${textAlign}`}>
                   {e.category}
                 </td>
 
                 {/* AMOUNT */}
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell">
+                <td className={`p-2 sm:p-4 hidden sm:table-cell ${textAlign}`}>
                   {e.amount.toLocaleString()}
                 </td>
 
                 {/* REMARKS */}
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell">
+                <td className={`p-2 sm:p-4 hidden md:table-cell ${textAlign}`}>
                   {e.description}
                 </td>
 
                 {/* MOBILE STACKED INFO */}
-                <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1">
-                  <span>Amount: {e.amount.toLocaleString()}</span>
-                  <span>Remarks: {e.description || "-"}</span>
+                <td className={`p-2 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1 ${textAlign}`}>
+                  <span>{t("amount")}: {e.amount.toLocaleString()}</span>
+                  <span>{t("remarks")}: {e.description || "-"}</span>
                 </td>
-
               </tr>
             ))
           )}
@@ -392,11 +389,11 @@ export default function ExpReport() {
         onClick={() => setPage(page - 1)}
         className="px-3 py-1 border rounded"
       >
-        Prev
+        {t("prev")}
       </button>
 
       <span>
-        Page {page} / {totalPages || 1}
+        {t("page")} {page} / {totalPages || 1}
       </span>
 
       <button
@@ -404,7 +401,7 @@ export default function ExpReport() {
         onClick={() => setPage(page + 1)}
         className="px-3 py-1 border rounded"
       >
-        Next
+        {t("next")}
       </button>
 
     </div>

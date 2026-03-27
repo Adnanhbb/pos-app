@@ -4,6 +4,7 @@ import { FaPlus, FaEdit, FaTrash } from "react-icons/fa";
 // ✅ Add
 import { brandsRepository as brandsRepo } from "./repositories/brandsRepository";
 import {Brand} from "./db";
+import { useLang } from "./i18n/LanguageContext";
 
 export default function BrandsPage() {
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -11,9 +12,12 @@ export default function BrandsPage() {
   const [editingBrand, setEditingBrand] = useState<Brand | null>(null);
   const [newBrand, setNewBrand] = useState("");
 
+  const { t, lang, setLang } = useLang();
+
   /* ===========================
         LOAD BRANDS
      =========================== */
+  
   async function loadBrands() {
     const data = await brandsRepo.getAll();
     setBrands(data);
@@ -89,17 +93,19 @@ export default function BrandsPage() {
     await loadBrands();
   }
 
+    const textAlign = lang === "ur" ? "text-right" : "text-left";
+
   return (
     <div className="p-2 sm:p-4 lg:p-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-        <h1 className="text-lg font-semibold">Brands</h1>
+        <h1 className="text-lg font-semibold">{t("brands")}</h1>
 
         <button
           onClick={openCreate}
           className="inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded shadow"
         >
-          <FaPlus /> Create New
+          <FaPlus /> {t("createnew")}
         </button>
       </div>
 
@@ -108,10 +114,10 @@ export default function BrandsPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-gray-200 text-gray-700">
             <tr>
-              <th className="p-3 text-left">Brand Name</th>
-              <th className="p-3 text-left">No. of Items</th>
-              <th className="p-3 text-center">Actions</th>
-            </tr>
+            <th className={`p-3 ${textAlign}`}>{t("brandname")}</th>
+            <th className={`p-3 ${textAlign}`}>{t("numberofitems")}</th>
+            <th className="p-3 text-center">{t("actions")}</th>
+          </tr>
           </thead>
           <tbody>
             {brands.map((brand) => (
@@ -138,7 +144,7 @@ export default function BrandsPage() {
             {brands.length === 0 && (
               <tr>
                 <td colSpan={3} className="text-center p-4 text-gray-500">
-                  No brands found
+                  {t("nobrandsfound")}
                 </td>
               </tr>
             )}
@@ -151,12 +157,12 @@ export default function BrandsPage() {
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50">
           <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md">
             <h2 className="text-xl font-bold mb-4">
-              {editingBrand ? "Edit Brand" : "Create Brand"}
+              {editingBrand ? t("editbrand") : t("createbrand")}
             </h2>
 
             <div>
               <label className="block text-xs font-medium mb-1">
-                Brand Name
+                {t("brandname")}
               </label>
               <input
                 type="text"
@@ -171,13 +177,13 @@ export default function BrandsPage() {
                 onClick={closeForm}
                 className="px-4 py-2 bg-gray-300 rounded"
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 onClick={handleSave}
                 className="px-4 py-2 bg-indigo-600 text-white rounded"
               >
-                Save
+                {t("save")}
               </button>
             </div>
           </div>

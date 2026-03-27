@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { validateUser, getSettings, getUserByUsername } from "./db";
 import { FaUser, FaLock } from "react-icons/fa";
+import { useLang } from "./i18n/LanguageContext";
 
 interface LoginProps {
   onLogin: (name: string, role: "admin" | "saleboy") => void;
@@ -15,6 +16,8 @@ export default function Login({ onLogin }: LoginProps) {
   const [rememberMe, setRememberMe] = useState(false);
   const [settings, setSettings] = useState<{ businessName: string; logo?: string } | null>(null);
 
+  const { t, lang, setLang } = useLang();
+  
   useEffect(() => {
     const r = localStorage.getItem("rememberedUser");
     if (r) setUsername(r);
@@ -95,22 +98,22 @@ export default function Login({ onLogin }: LoginProps) {
           {/* Role */}
           <div>
             <label className="block mb-1 text-sm uppercase" style={labelStyle}>
-              Role
+              {t("role")}
             </label>
             <select
               value={role}
               onChange={(e) => setRole(e.target.value as "admin" | "saleboy")}
               className="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
-              <option value="admin">Admin</option>
-              <option value="saleboy">Saleboy</option>
+              <option value="admin">{t("admin")}</option>
+              <option value="saleboy">{t("saleboy")}</option>
             </select>
           </div>
 
           {/* Username */}
           <div>
             <label className="block mb-1 text-sm uppercase" style={labelStyle}>
-              Username
+              {t("username")}
             </label>
             <div className="flex items-center border border-gray-300 rounded-xl focus-within:ring-2 focus-within:ring-indigo-400">
               <span className="px-3 text-gray-400"><FaUser /></span>
@@ -118,7 +121,7 @@ export default function Login({ onLogin }: LoginProps) {
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
+                placeholder={t("enterusername")}
                 className="w-full p-3 rounded-r-xl focus:outline-none"
                 required
               />
@@ -136,7 +139,7 @@ export default function Login({ onLogin }: LoginProps) {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
+                placeholder={t("enterpassword")}
                 className="w-full p-3 rounded-r-xl focus:outline-none"
                 required
               />
@@ -152,14 +155,14 @@ export default function Login({ onLogin }: LoginProps) {
                 onChange={() => setRememberMe(!rememberMe)}
                 className="form-checkbox h-4 w-4 text-indigo-600"
               />
-              <span>Remember Me</span>
+              <span>{t("rememberme")}</span>
             </label>
             <button
               type="button"
               onClick={handleForgotPassword}
               className="text-indigo-600 hover:underline"
             >
-              Forgot Password?
+              {t("forgotpassword")}
             </button>
           </div>
 
@@ -169,7 +172,7 @@ export default function Login({ onLogin }: LoginProps) {
             type="submit"
             className="w-full bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700 transition-all duration-200"
           >
-            Login
+            {t("login")}
           </button>
         </form>
       </div>

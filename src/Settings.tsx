@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from "react";
 import { getSettings, saveSettings, Settings, updateItem } from "./db";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { itemsRepository } from "./repositories/itemsRepository";
+import { useLang } from "./i18n/LanguageContext";
 
 const placeholderImg = "https://via.placeholder.com/150?text=No+Logo";
 
@@ -29,7 +30,7 @@ export default function SettingsPage() {
   discount1kg: "",     // calculated
   wholesale1kg: "",     // calculated
   printer: "pos",
-  language:"eng"
+  language:"en"
 });
 
 
@@ -37,6 +38,8 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<"general" | "gas">("general");
   const [hasGasCategory, setHasGasCategory] = useState(false);
 
+  const { t, lang, setLang } = useLang();
+  
   // Load settings
   useEffect(() => {
     async function load() {
@@ -98,6 +101,7 @@ const saveGeneralSettings = async () => {
   await saveSettings(updated);
 
   // ⭐ ADD THIS LINE
+  setLang(formData.language);
   window.dispatchEvent(new Event("settingsUpdated"));
 
   alert("General settings saved!");
@@ -141,7 +145,7 @@ const saveGasPrices = async () => {
 
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-screen-lg mx-auto">
-      <h2 className="text-xl font-semibold mb-4 text-center">SETTINGS</h2>
+      <h2 className="text-xl font-semibold mb-4 text-center">{t("settings_title")}</h2>
 
       {/* Tabs */}
       <div className="flex border-b mb-6">
@@ -149,14 +153,14 @@ const saveGasPrices = async () => {
           onClick={() => setActiveTab("general")}
           className={`px-4 py-2 font-medium ${activeTab === "general" ? "border-b-2 border-blue-600 text-blue-600" : ""}`}
         >
-          General
+          {t("tab_general")}
         </button>
         {hasGasCategory && (
           <button
             onClick={() => setActiveTab("gas")}
             className={`px-4 py-2 font-medium ${activeTab === "gas" ? "border-b-2 border-blue-600 text-blue-600" : ""}`}
           >
-            Gas Cylinder Prices
+            {t("tab_gas")}
           </button>
         )}
       </div>
@@ -179,7 +183,7 @@ const saveGasPrices = async () => {
               onClick={() => fileInputRef.current?.click()}
               className="mt-3 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-500"
             >
-              Choose Logo
+              {t("choose_logo")}
             </button>
           </div>
 
@@ -188,7 +192,7 @@ const saveGasPrices = async () => {
             
             {/* <label className="font-large text-red-500">Business Settings</label> */}
             <div className="grid grid-cols-3 items-center gap-4">
-              <label className="font-medium col-span-1">Business Name</label>
+              <label className="font-medium col-span-1">{t("business_name")}</label>
               <input
                 type="text"
                 className="border rounded px-3 py-2 w-full col-span-2"
@@ -199,7 +203,7 @@ const saveGasPrices = async () => {
             </div>
 
             <div className="grid grid-cols-3 items-center gap-4">
-              <label className="font-medium col-span-1">Email</label>
+              <label className="font-medium col-span-1">{t("email")}</label>
               <input
                 type="email"
                 className="border rounded px-3 py-2 w-full col-span-2"
@@ -209,7 +213,7 @@ const saveGasPrices = async () => {
             </div>
 
             <div className="grid grid-cols-3 items-center gap-4">
-              <label className="font-medium col-span-1">Contact</label>
+              <label className="font-medium col-span-1">{t("contact")}</label>
               <input
                 type="text"
                 className="border rounded px-3 py-2 w-full col-span-2"
@@ -219,7 +223,7 @@ const saveGasPrices = async () => {
             </div>
 
             <div className="grid grid-cols-3 items-start gap-4">
-              <label className="font-medium col-span-1 pt-2">Address</label>
+              <label className="font-medium col-span-1 pt-2">{t("address")}</label>
               <textarea
                 className="border rounded px-3 py-2 w-full col-span-2"
                 value={formData.address}
@@ -230,7 +234,7 @@ const saveGasPrices = async () => {
             {/* <label className="font-large text-red-500">Printer Settings</label> */}
             <div className="grid grid-cols-3 items-center gap-4">
 
-                <label className="font-medium col-span-1">Printer Settings</label>
+                <label className="font-medium col-span-1">{t("printer_settings")}</label>
                   <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="radio"
@@ -242,7 +246,7 @@ const saveGasPrices = async () => {
                     }
                     className="accent-indigo-600"
                   />
-                  <span>POS Printer</span>
+                  <span>{t("printer_pos")}</span>
                 </label>
 
                 <label className="flex items-center gap-2 cursor-pointer">
@@ -256,7 +260,7 @@ const saveGasPrices = async () => {
                     }
                     className="accent-indigo-600"
                   />
-                  <span>A4 Printer</span>
+                  <span>{t("printer_a4")}</span>
                 </label>
 
             </div>
@@ -266,33 +270,33 @@ const saveGasPrices = async () => {
             {/* <label className="font-large text-red-500">Language Settings</label> */}
             <div className="grid grid-cols-3 items-center gap-4">
 
-                <label className="font-medium col-span-1">Language Settings</label>
+                <label className="font-medium col-span-1">{t("language_settings")}</label>
               <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="radio"
                 name="langType"
-                value="eng"
-                checked={formData.language === "eng"}
+                value="en"
+                checked={formData.language === "en"}
                 onChange={(e) =>
-                  setFormData(p => ({ ...p, language: e.target.value as "eng" | "urd" }))
+                  setFormData(p => ({ ...p, language: e.target.value as "en" | "ur" }))
                 }
                 className="accent-indigo-600"
               />
-              <span>English</span>
+              <span>{t("language_en")}</span>
             </label>
 
 <label className="flex items-center gap-2 cursor-pointer">
   <input
     type="radio"
     name="langType"
-    value="urd"
-    checked={formData.language === "urd"}
+    value="ur"
+    checked={formData.language === "ur"}
     onChange={(e) =>
-      setFormData(p => ({ ...p, language: e.target.value as "eng" | "urd" }))
+      setFormData(p => ({ ...p, language: e.target.value as "en" | "ur" }))
     }
     className="accent-indigo-600"
   />
-  <span>Urdu</span>
+  <span>{t("language_ur")}</span>
 </label>
 
             </div>
@@ -303,7 +307,7 @@ const saveGasPrices = async () => {
                 onClick={saveGeneralSettings}
                 className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-500"
               >
-                Update
+                {t("update")}
               </button>
             </div>
           </div>
@@ -316,13 +320,13 @@ const saveGasPrices = async () => {
 
     <div className="grid grid-cols-3 gap-4 items-center font-medium text-green-500">
       <div></div>
-      <div className="text-center font-bold">11.8 Kg</div>
-      <div className="text-center font-bold">1 Kg</div>
+      <div className="text-center font-bold">11.8 {t("kg")}</div>
+      <div className="text-center font-bold">1 {t("kg")}</div>
     </div>
 
     {/* Purchase Price */}
     <div className="grid grid-cols-3 gap-4 items-center">
-      <div className="font-medium text-red-500">Purchase Price</div>
+      <div className="font-medium text-red-500">{t("cyl_purchase_price")}</div>
       <input
         type="number"
         className="border rounded px-3 py-2 w-full"
@@ -346,7 +350,7 @@ const saveGasPrices = async () => {
 
     {/* Retail Price */}
     <div className="grid grid-cols-3 gap-4 items-center">
-      <div className="font-medium text-red-500">Retail Price</div>
+      <div className="font-medium text-red-500">{t("cyl_retail_price")}</div>
       <input
         type="number"
         className="border rounded px-3 py-2 w-full"
@@ -370,7 +374,7 @@ const saveGasPrices = async () => {
 
     {/* Discount Price */}
 <div className="grid grid-cols-3 gap-4 items-center">
-  <div className="font-medium text-red-500">Discount Price</div>
+  <div className="font-medium text-red-500">{t("cyl_discount_price")}</div>
   <input
     type="number"
     className="border rounded px-3 py-2 w-full"
@@ -394,7 +398,7 @@ const saveGasPrices = async () => {
 
 {/* Wholesale Price */}
 <div className="grid grid-cols-3 gap-4 items-center">
-  <div className="font-medium text-red-500">Wholesale Price</div>
+  <div className="font-medium text-red-500">{t("cyl_wholesale_price")}</div>
   <input
     type="number"
     className="border rounded px-3 py-2 w-full"
@@ -423,7 +427,7 @@ const saveGasPrices = async () => {
         onClick={saveGasPrices}
         className="px-6 py-2 bg-green-600 text-white rounded hover:bg-green-500"
       >
-        Update
+        {t("update")}
       </button>
     </div>
   </div>

@@ -27,6 +27,8 @@ import { settingsRepository } from "./repositories/settingsRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
 import { unitRepository } from "./repositories/unitRepository";
+import { useLang } from "./i18n/LanguageContext";
+
 const PAGE_SIZE = 8;
 
 export default function ItemsPage() {
@@ -70,6 +72,8 @@ export default function ItemsPage() {
   const [gasSellPrice, setGasSellPrice] = useState<number>(0);
   const [showGasFields, setShowGasFields] = useState(false);
 
+  const { t, lang, setLang } = useLang();
+  
   // Load items for table/cards
   async function loadPage() {
     const { total: t, data } = await getItemsPaged(page, PAGE_SIZE, query || null);
@@ -306,7 +310,7 @@ const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 const conversionLabel =
             form.minunit && form.maxunit
               ? `No. of ${form.minunit} per ${form.maxunit}`
-              : "Unit Conversion Qty";
+              : t("unitconversionqty");
 
 function splitStock(
 totalMinUnits: number,
@@ -322,12 +326,14 @@ convQty: number
   return { maxQty, minQty };
 }
 
+    const textAlign = lang === "ur" ? "text-right" : "text-left";
+
   return (
     <div className="p-2 sm:p-4 lg:p-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="text-lg font-semibold">Items</div>
+          <div className="text-lg font-semibold">{t("items")}</div>
           <div className="ml-3 flex items-center gap-2">
             <button
               onClick={() => setView("table")}
@@ -349,7 +355,7 @@ convQty: number
             <FaSearch className="text-gray-500" />
             <input
               className="p-2 outline-none w-48"
-              placeholder="Search by name / barcode / brand / category"
+              placeholder={t("searchitems")}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -362,7 +368,7 @@ convQty: number
             onClick={openCreate}
             className="ml-2 inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded shadow"
           >
-            <FaPlus /> Create New
+            <FaPlus /> {t("createnew")}
           </button>
         </div>
       </div>
@@ -373,139 +379,129 @@ convQty: number
     <table className="w-full text-sm table-auto">
       <thead className="bg-gray-100 text-gray-700">
         <tr>
-          <th className="p-3 text-left">Name</th>
+            <th className={`p-3 ${textAlign}`}>{t("name")}</th>
 
-          <th className="p-3 text-left hidden sm:table-cell">
-            Barcode
-          </th>
+            <th className={`p-3 ${textAlign} hidden sm:table-cell`}>
+              {t("barcode")}
+            </th>
 
-          <th className="p-3 text-left hidden md:table-cell">
-            Purchase
-          </th>
+            <th className={`p-3 ${textAlign} hidden md:table-cell`}>
+              {t("purchaseprice")}
+            </th>
 
-          <th className="p-3 text-left hidden md:table-cell">
-            Retail
-          </th>
+            <th className={`p-3 ${textAlign} hidden md:table-cell`}>
+              {t("retailprice")}
+            </th>
 
-          <th className="p-3 text-left hidden lg:table-cell">
-            Discount
-          </th>
+            <th className={`p-3 ${textAlign} hidden lg:table-cell`}>
+              {t("discountprice")}
+            </th>
 
-          <th className="p-3 text-left hidden lg:table-cell">
-            Wholesale
-          </th>
+            <th className={`p-3 ${textAlign} hidden lg:table-cell`}>
+              {t("wholesaleprice")}
+            </th>
 
-          <th className="p-3 text-left">
-            Stock
-          </th>
+            <th className={`p-3 ${textAlign}`}>
+              {t("stock")}
+            </th>
 
-          <th className="p-3 text-center w-[120px]">
-            Actions
-          </th>
-        </tr>
+            <th className="p-3 text-center w-[120px]">
+              {t("actions")}
+            </th>
+          </tr>
       </thead>
 
       <tbody>
         {items.map((it) => (
           <tr key={it.id} className="border-t hover:bg-gray-50 align-middle">
 
-            {/* NAME */}
-            <td className="p-3 font-medium whitespace-nowrap">
-              {it.name}
-            </td>
+              {/* NAME */}
+              <td className={`p-3 font-medium whitespace-nowrap ${textAlign}`}>
+                {it.name}
+              </td>
 
-            {/* BARCODE */}
-            <td className="p-3 hidden sm:table-cell">
-              <div className="flex items-center gap-2">
-                <svg
-                  ref={(el: SVGSVGElement | null) => {
-                    svgRefs.current[it.id ?? it.barcode] = el ?? null;
-                  }}
-                  aria-hidden
-                />
-                <span className="text-xs text-gray-600 break-all">
-                  {it.barcode}
-                </span>
-              </div>
-            </td>
+              {/* BARCODE */}
+              <td className={`p-3 hidden sm:table-cell ${textAlign}`}>
+                <div className={`flex items-center gap-2 ${textAlign === 'text-right' ? 'text-left' : 'justify-start'}`}>
+                  <svg
+                    ref={(el: SVGSVGElement | null) => {
+                      svgRefs.current[it.id ?? it.barcode] = el ?? null;
+                    }}
+                    aria-hidden
+                  />
+                  <span className="text-xs text-gray-600 break-all">
+                    {it.barcode}
+                  </span>
+                </div>
+              </td>
 
-            {/* PURCHASE */}
-            <td className="p-3 hidden md:table-cell">
-              {it.purchasePrice}
-            </td>
+              {/* PURCHASE */}
+              <td className={`p-3 hidden md:table-cell ${textAlign}`}>
+                {it.purchasePrice}
+              </td>
 
-            {/* RETAIL */}
-            <td className="p-3 hidden md:table-cell">
-              {it.retailPrice}
-            </td>
+              {/* RETAIL */}
+              <td className={`p-3 hidden md:table-cell ${textAlign}`}>
+                {it.retailPrice}
+              </td>
 
-            {/* DISCOUNT */}
-            <td className="p-3 hidden lg:table-cell">
-              {it.discountPrice || 0}
-            </td>
+              {/* DISCOUNT */}
+              <td className={`p-3 hidden lg:table-cell ${textAlign}`}>
+                {it.discountPrice || 0}
+              </td>
 
-            {/* WHOLESALE */}
-            <td className="p-3 hidden lg:table-cell">
-              {it.wholesalePrice}
-            </td>
+              {/* WHOLESALE */}
+              <td className={`p-3 hidden lg:table-cell ${textAlign}`}>
+                {it.wholesalePrice}
+              </td>
 
-            {/* STOCK */}
-            <td className="p-3 text-blue-500">
-              {(() => {
-                const { maxQty, minQty } = splitStock(
-                  it.availableStock,
-                  it.ConvQty
-                );
+              {/* STOCK */}
+              <td className={`p-3 text-blue-500 ${textAlign}`}>
+                {(() => {
+                  const { maxQty, minQty } = splitStock(it.availableStock, it.ConvQty);
+                  return (
+                    <div className="leading-tight">
+                      {maxQty > 0 && (
+                        <div className="font-medium">{maxQty} {it.maxunit}s</div>
+                      )}
+                      {minQty > 0 && (
+                        <div className="text-green-600 text-xs">
+                          {minQty.toFixed(1)} {it.minunit}s
+                        </div>
+                      )}
+                      {maxQty === 0 && minQty === 0 && (
+                        <div className="text-red-500 text-xs">{t("outofstock")}</div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </td>
 
-                return (
-                  <div className="leading-tight">
-                    {maxQty > 0 && (
-                      <div className="font-medium">
-                        {maxQty} {it.maxunit}s
-                      </div>
-                    )}
+              {/* ACTIONS */}
+              <td className="p-3">
+                <div className="flex justify-center gap-2">
+                  <button
+                    onClick={() => openEdit(it)}
+                    className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+                  >
+                    <FaEdit />
+                  </button>
 
-                    {minQty > 0 && (
-                      <div className="text-green-600 text-xs">
-                        {minQty.toFixed(1)} {it.minunit}s
-                      </div>
-                    )}
-
-                    {maxQty === 0 && minQty === 0 && (
-                      <div className="text-red-500 text-xs">
-                        Out of stock
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
-            </td>
-
-            {/* ACTIONS */}
-            <td className="p-3">
-              <div className="flex justify-center gap-2">
-                <button
-                  onClick={() => openEdit(it)}
-                  className="p-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-                >
-                  <FaEdit />
-                </button>
-
-                <button
-                  onClick={() => handleDelete(it.id)}
-                  className="p-2 bg-red-500 text-white rounded hover:bg-red-600"
-                >
-                  <FaTrash />
-                </button>
-              </div>
-            </td>
-          </tr>
+                  <button
+                    onClick={() => handleDelete(it.id)}
+                    className="p-2 bg-red-500 text-white rounded hover:bg-red-600"
+                  >
+                    <FaTrash />
+                  </button>
+                </div>
+              </td>
+            </tr>
         ))}
 
         {items.length === 0 && (
           <tr>
             <td colSpan={8} className="text-center p-6 text-gray-500">
-              No items found
+              {t("noitemsfound")}
             </td>
           </tr>
         )}
@@ -547,36 +543,36 @@ convQty: number
   {/* DETAILS */}
   <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
     <div>
-      <span className="text-gray-500 text-xs">Brand</span>
+      <span className="text-gray-500 text-xs">{t("brand")}</span>
       <div className="font-medium leading-tight">
         {brands.find(b => b.name === it.brand)?.name || "-"}
       </div>
     </div>
 
     <div>
-      <span className="text-gray-500 text-xs">Category</span>
+      <span className="text-gray-500 text-xs">{t("category")}</span>
       <div className="font-medium leading-tight">
         {categories.find(c => c.name === it.category)?.name || "-"}
       </div>
     </div>
 
     <div>
-      <span className="text-gray-500 text-xs">Min Unit</span>
+      <span className="text-gray-500 text-xs">{t("minunit")}</span>
       <div className="leading-tight">{it.minunit}</div>
     </div>
 
     <div>
-      <span className="text-gray-500 text-xs">Max Unit</span>
+      <span className="text-gray-500 text-xs">{t("maxunit")}</span>
       <div className="leading-tight">{it.maxunit}</div>
     </div>
 
     <div>
-      <span className="text-gray-500 text-xs">Conversion</span>
+      <span className="text-gray-500 text-xs">{t("conversion")}</span>
       <div className="leading-tight">{it.ConvQty}</div>
     </div>
 
     <div>
-      <span className="text-gray-500 text-xs">Stock</span>
+      <span className="text-gray-500 text-xs">{t("stock")}</span>
       <div className="leading-tight text-blue-600">
         {(() => {
           const { maxQty, minQty } = splitStock(it.availableStock, it.ConvQty);
@@ -590,7 +586,7 @@ convQty: number
                 </div>
               )}
               {maxQty === 0 && minQty === 0 && (
-                <span className="text-red-500 text-[11px]">Out of stock</span>
+                <span className="text-red-500 text-[11px]">{t("outofstock")}</span>
               )}
             </>
           );
@@ -602,22 +598,22 @@ convQty: number
   {/* PRICES */}
   <div className="border-t mt-2 pt-2 text-sm grid grid-cols-2 gap-1">
     <div>
-      <span className="text-gray-500 text-xs">Purchase</span>
+      <span className="text-gray-500 text-xs">{t("purchase")}</span>
       <div className="font-semibold">Rs. {it.purchasePrice}</div>
     </div>
 
     <div>
-      <span className="text-gray-500 text-xs">Retail</span>
+      <span className="text-gray-500 text-xs">{t("retail")}</span>
       <div className="font-semibold">Rs. {it.retailPrice}</div>
     </div>
 
     <div>
-      <span className="text-gray-500 text-xs">Discount</span>
+      <span className="text-gray-500 text-xs">{t("discount")}</span>
       <div className="font-semibold">Rs. {it.discountPrice || 0}</div>
     </div>
 
     <div>
-      <span className="text-gray-500 text-xs">Wholesale</span>
+      <span className="text-gray-500 text-xs">{t("wholesale")}</span>
       <div className="font-semibold">Rs. {it.wholesalePrice}</div>
     </div>
   </div>
@@ -635,14 +631,14 @@ convQty: number
       onClick={() => openEdit(it)}
       className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded text-sm"
     >
-      Edit
+      {t("edit")}
     </button>
 
     <button
       onClick={() => handleDelete(it.id)}
       className="flex-1 bg-red-500 hover:bg-red-600 text-white py-2 rounded text-sm"
     >
-      Delete
+      {t("delete")}
     </button>
   </div>
 </div>
@@ -658,17 +654,17 @@ convQty: number
           onClick={() => setPage(page - 1)}
           className={`px-3 py-1 rounded ${page === 1 ? "bg-gray-300" : "bg-indigo-500 text-white"}`}
         >
-          Prev
+          {t("prev")}
         </button>
         <span className="px-3 py-1 bg-gray-200 rounded">
-          Page {page} / {totalPages}
+          {t("page")} {page} / {totalPages}
         </span>
         <button
           disabled={page === totalPages}
           onClick={() => setPage(page + 1)}
           className={`px-3 py-1 rounded ${page === totalPages ? "bg-gray-300" : "bg-indigo-500 text-white"}`}
         >
-          Next
+          {t("next")}
         </button>
       </div>
 
@@ -679,7 +675,7 @@ convQty: number
       
       {/* HEADER */}
       <div className="p-4 border-b flex justify-between items-center">
-        <h2 className="text-xl font-bold">{editingItem ? "Edit Item" : "Create Item"}</h2>
+        <h2 className="text-xl font-bold">{editingItem ? t("edititem") : t("createitem")}</h2>
         <button onClick={closeForm} className="text-gray-500 hover:text-gray-700 text-2xl leading-none">&times;</button>
       </div>
 
@@ -688,7 +684,7 @@ convQty: number
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
           <div>
-            <label className="block text-xs font-medium mb-1">Name</label>
+            <label className="block text-xs font-medium mb-1">{t("name")}</label>
             <input
               className="w-full p-2 border rounded"
               value={form.name}
@@ -697,7 +693,7 @@ convQty: number
           </div>
 
           <div>
-            <label className="block text-xs font-medium mb-1">Barcode</label>
+            <label className="block text-xs font-medium mb-1">{t("barcode")}</label>
             <input
               className="w-full p-2 border rounded"
               value={form.barcode}
@@ -712,7 +708,7 @@ convQty: number
               value={form.brand}
               onChange={(e) => setForm({ ...form, brand: e.target.value })}
             >
-              <option value="">Select Brand</option>
+              <option value="">{t("selectbrand")}</option>
               {brands.map((b) => (
                 <option key={b.id} value={b.name}>{b.name}</option>
               ))}
@@ -760,7 +756,7 @@ convQty: number
                 }
               }}
             >
-              <option value="">Select Category</option>
+              <option value="">{t("selectcategory")}</option>
               {categories.map(c => (
                 <option key={c.id} value={c.name}>{c.name}</option>
               ))}
@@ -774,7 +770,7 @@ convQty: number
               value={form.minunit}
               onChange={(e) => setForm({ ...form, minunit: e.target.value })}
             >
-              <option value="">Select Min Unit</option>
+              <option value="">{t("selectminunit")}</option>
               {units.map((u) => (
                 <option key={u.id} value={u.name}>{u.name}</option>
               ))}
@@ -788,7 +784,7 @@ convQty: number
               value={form.maxunit}
               onChange={(e) => setForm({ ...form, maxunit: e.target.value })}
             >
-              <option value="">Select Max Unit</option>
+              <option value="">{t("selectmaxunit")}</option>
               {units.map((u) => (
                 <option key={u.id} value={u.name}>{u.name}</option>
               ))}
@@ -808,7 +804,7 @@ convQty: number
 
           {/* Prices */}
           <div>
-            <label className="block text-xs font-medium mb-1">{form.minunit} Purchase Price</label>
+            <label className="block text-xs font-medium mb-1">{form.minunit} {t("purchaseprice")}</label>
             <input
               type="number"
               className="w-full p-2 border rounded"
@@ -818,7 +814,7 @@ convQty: number
           </div>
 
           <div>
-            <label className="block text-xs font-medium mb-1">{form.minunit} Retail Price</label>
+            <label className="block text-xs font-medium mb-1">{form.minunit} {t("retailprice")}</label>
             <input
               type="number"
               className="w-full p-2 border rounded"
@@ -828,7 +824,7 @@ convQty: number
           </div>
 
           <div>
-            <label className="block text-xs font-medium mb-1">{form.minunit} Discount Price</label>
+            <label className="block text-xs font-medium mb-1">{form.minunit} {t("discountprice")}</label>
             <input
               type="number"
               className="w-full p-2 border rounded"
@@ -838,7 +834,7 @@ convQty: number
           </div>
 
           <div>
-            <label className="block text-xs font-medium mb-1">{form.minunit} Wholesale Price</label>
+            <label className="block text-xs font-medium mb-1">{form.minunit} {t("wholesaleprice")}</label>
             <input
               type="number"
               className="w-full p-2 border rounded"
@@ -849,7 +845,7 @@ convQty: number
 
           {/* Stock */}
           <div className="sm:col-span-2">
-            <label className="block text-xs font-medium mb-1">Opening Stock ({form.minunit})</label>
+            <label className="block text-xs font-medium mb-1">{t("openingstock")} ({form.minunit})</label>
             <input
               type="number"
               className="w-full p-2 border rounded"
@@ -860,7 +856,7 @@ convQty: number
 
           {/* Description */}
           <div className="sm:col-span-2">
-            <label className="block text-xs font-medium mb-1">Description</label>
+            <label className="block text-xs font-medium mb-1">{t("description")}</label>
             <textarea
               className="w-full p-2 border rounded"
               value={form.description}
@@ -873,8 +869,8 @@ convQty: number
 
       {/* ACTION BUTTONS */}
       <div className="p-4 border-t flex justify-end gap-2">
-        <button onClick={closeForm} className="px-4 py-2 bg-gray-300 rounded">Cancel</button>
-        <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded">Save</button>
+        <button onClick={closeForm} className="px-4 py-2 bg-gray-300 rounded">{t("cancel")}</button>
+        <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded">{t("save")}</button>
       </div>
 
     </div>

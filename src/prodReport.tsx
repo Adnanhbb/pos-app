@@ -3,6 +3,7 @@ import { DBSale, Item } from "./db";
 import { salesRepository } from "./repositories/salesRepository";
 import { saleItemsRepository } from "./repositories/saleItemsRepository";
 import { itemsRepository } from "./repositories/itemsRepository";
+import { useLang } from "./i18n/LanguageContext";
 
 import {
   FaFilePdf,
@@ -58,6 +59,8 @@ export default function ProdReport() {
     page * PAGE_SIZE
     );
 
+  const { t, lang, setLang } = useLang();
+    
   /* ---------------- LOAD PRODUCTS ---------------- */
 
   useEffect(() => {
@@ -345,6 +348,8 @@ const exportExcel = () => {
     gap: 12
   };
 
+      const textAlign = lang === "ur" ? "text-right" : "text-left";
+
   return (
   <div className="p-4 sm:p-6">
 
@@ -354,7 +359,7 @@ const exportExcel = () => {
       <div style={cardStyle}>
         <FaArrowUp color="#10b981" size={24}/>
         <div>
-          <div>Top Selling</div>
+          <div>{t("topselling")}</div>
           <strong>{summary.top}</strong>
         </div>
       </div>
@@ -362,7 +367,7 @@ const exportExcel = () => {
       <div style={cardStyle}>
         <FaArrowDown color="#f59e0b" size={24}/>
         <div>
-          <div>Least Selling</div>
+          <div>{t("leastselling")}</div>
           <strong>{summary.least}</strong>
         </div>
       </div>
@@ -370,7 +375,7 @@ const exportExcel = () => {
       <div style={cardStyle}>
         <FaBan color="#ef4444" size={24}/>
         <div>
-          <div>Dead Stock Items</div>
+          <div>{t("deadstockitems")}</div>
           <strong>{summary.dead}</strong>
         </div>
       </div>
@@ -382,7 +387,7 @@ const exportExcel = () => {
 
       {/* DATE FILTERS */}
       <div className="flex flex-wrap items-center gap-2">
-        <span>From</span>
+        <span>{t("from")}</span>
         <input
           type="date"
           value={fromDate}
@@ -390,7 +395,7 @@ const exportExcel = () => {
           className="border rounded px-2 py-1"
         />
 
-        <span>To</span>
+        <span>{t("to")}</span>
         <input
           type="date"
           value={toDate}
@@ -404,7 +409,7 @@ const exportExcel = () => {
 
         <input
           type="text"
-          placeholder="Search product..."
+          placeholder={t("searchproduct")}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="border rounded px-3 py-1 w-full sm:w-56"
@@ -413,7 +418,7 @@ const exportExcel = () => {
         <FaFilePdf
           size={22}
           color="#dc2626"
-          title="Export PDF"
+          title={t("exportpdf")}
           className="cursor-pointer"
           onClick={exportPDF}
         />
@@ -421,7 +426,7 @@ const exportExcel = () => {
         <FaFileExcel
           size={22}
           color="#16a34a"
-          title="Export Excel"
+          title={t("exportexcel")}
           className="cursor-pointer"
           onClick={exportExcel}
         />
@@ -434,45 +439,45 @@ const exportExcel = () => {
       <table className="w-full text-left border">
         <thead className="bg-gray-100">
           <tr>
-            <th className="px-4 py-2 border">Product</th>
-            <th className="px-4 py-2 border hidden sm:table-cell">Net Qty Sold</th>
-            <th className="px-4 py-2 border hidden md:table-cell">Net Sales</th>
-          </tr>
+          <th className={`px-4 py-2 border ${textAlign}`}>{t("product")}</th>
+          <th className={`px-4 py-2 border hidden sm:table-cell ${textAlign}`}>{t("netqtysold")}</th>
+          <th className={`px-4 py-2 border hidden md:table-cell ${textAlign}`}>{t("netsales")}</th>
+        </tr>
         </thead>
 
         <tbody>
           {paginatedRows.length === 0 ? (
             <tr>
               <td colSpan={3} className="px-4 py-2 text-center text-gray-500">
-                No records found.
+                {t("norecordsfound")}
               </td>
             </tr>
           ) : (
             paginatedRows.map(r => (
               <tr
-                key={r.product}
-                className="border-b hover:bg-gray-50"
-                style={{ opacity: r.dead ? 0.6 : 1 }}
-              >
-                <td className="px-2 py-1 sm:px-4 sm:py-2 font-medium">
-                  {r.product}
-                </td>
+              key={r.product}
+              className="border-b hover:bg-gray-50"
+              style={{ opacity: r.dead ? 0.6 : 1 }}
+            >
+              <td className={`px-2 py-1 sm:px-4 sm:py-2 font-medium ${textAlign}`}>
+                {r.product}
+              </td>
 
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell">
-                  {r.qty}
-                </td>
+              <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell ${textAlign}`}>
+                {r.qty}
+              </td>
 
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell">
-                  {r.sales.toFixed(0)}
-                </td>
+              <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell ${textAlign}`}>
+                {r.sales.toFixed(0)}
+              </td>
 
-                {/* MOBILE STACKED DETAILS */}
-                <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1">
-                  <span>Qty Sold: {r.qty}</span>
-                  <span>Sales: {r.sales.toFixed(0)}</span>
-                  {r.dead && <span className="text-red-500">Dead Stock</span>}
-                </td>
-              </tr>
+              {/* MOBILE STACKED DETAILS */}
+              <td className={`px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1 ${textAlign}`}>
+                <span>{t("qtysold")}: {r.qty}</span>
+                <span>{t("sales")}: {r.sales.toFixed(0)}</span>
+                {r.dead && <span className="text-red-500">{t("deadstock")}</span>}
+              </td>
+            </tr>
             ))
           )}
         </tbody>
@@ -487,7 +492,7 @@ const exportExcel = () => {
         onClick={() => setPage(1)}
         className="px-3 py-1 border rounded"
       >
-        First
+        {t("first")}
       </button>
 
       <button
@@ -495,11 +500,11 @@ const exportExcel = () => {
         onClick={() => setPage(p => p - 1)}
         className="px-3 py-1 border rounded"
       >
-        Prev
+        {t("prev")}
       </button>
 
       <span>
-        Page {page} / {totalPages || 1}
+        {t("page")} {page} / {totalPages || 1}
       </span>
 
       <button
@@ -507,7 +512,7 @@ const exportExcel = () => {
         onClick={() => setPage(p => p + 1)}
         className="px-3 py-1 border rounded"
       >
-        Next
+        {t("next")}
       </button>
 
       <button
@@ -515,7 +520,7 @@ const exportExcel = () => {
         onClick={() => setPage(totalPages)}
         className="px-3 py-1 border rounded"
       >
-        Last
+        {t("last")}
       </button>
 
     </div>

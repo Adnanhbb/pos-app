@@ -9,6 +9,7 @@ import {
   deleteTax,
   searchTaxes,
 } from "./db";
+import { useLang } from "./i18n/LanguageContext";
 
 export default function Taxes() {
   const [taxes, setTaxes] = useState<Tax[]>([]);
@@ -23,6 +24,8 @@ export default function Taxes() {
     value: 0,
   });
 
+  const { t, lang, setLang } = useLang();
+  
   const loadTaxes = async () => {
     const data = searchQuery
       ? await searchTaxes(searchQuery)
@@ -78,15 +81,17 @@ export default function Taxes() {
     }
   };
 
+      const textAlign = lang === "ur" ? "text-right" : "text-left";
+
   return (
     <div className="bg-white p-6 rounded-lg shadow-lg">
-      <h2 className="text-xl font-semibold mb-4">Taxes</h2>
+      <h2 className="text-xl font-semibold mb-4">{t("taxes")}</h2>
 
       {/* Search & Add */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4">
         <input
           type="text"
-          placeholder="Search taxes..."
+          placeholder={t("searchtaxes")}
           className="flex-1 border rounded px-3 py-2"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -95,7 +100,7 @@ export default function Taxes() {
           className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-500"
           onClick={openAddModal}
         >
-          <FaPlus /> Add New
+          <FaPlus /> {t("addnew")}
         </button>
       </div>
 
@@ -103,24 +108,24 @@ export default function Taxes() {
       <div className="overflow-x-auto">
         <table className="w-full text-left border">
           <thead className="bg-gray-100">
-            <tr>
-              <th className="px-4 py-2 border">#</th>
-              <th className="px-4 py-2 border">Name</th>
-              <th className="px-4 py-2 border">Type</th>
-              <th className="px-4 py-2 border">Value</th>
-              <th className="px-4 py-2 border">Actions</th>
-            </tr>
+          <tr>
+            <th className={`px-4 py-2 border ${textAlign}`}>{t("number")}</th>
+            <th className={`px-4 py-2 border ${textAlign}`}>{t("name")}</th>
+            <th className={`px-4 py-2 border ${textAlign}`}>{t("type")}</th>
+            <th className={`px-4 py-2 border ${textAlign}`}>{t("value")}</th>
+            <th className="px-4 py-2 border text-center">{t("actions")}</th>
+          </tr>
           </thead>
           <tbody>
             {taxes.map((d, idx) => (
               <tr key={d.id} className="hover:bg-gray-50">
-                <td className="px-4 py-2 border">{idx + 1}</td>
-                <td className="px-4 py-2 border">{d.name}</td>
-                <td className="px-4 py-2 border">
-                  {d.type === "amount" ? "Amount" : "Percentage"}
+                <td className={`px-4 py-2 border ${textAlign}`}>{idx + 1}</td>
+                <td className={`px-4 py-2 border ${textAlign}`}>{d.name}</td>
+                <td className={`px-4 py-2 border ${textAlign}`}>
+                  {d.type === "amount" ? t("amount") : t("percentage")}
                 </td>
-                <td className="px-4 py-2 border">{d.value}</td>
-                <td className="px-4 py-2 border flex gap-2">
+                <td className={`px-4 py-2 border ${textAlign}`}>{d.value}</td>
+                <td className={`px-4 py-2 border flex gap-2 justify-center`}>
                   <button
                     onClick={() => openEditModal(d)}
                     className="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-400"
@@ -139,7 +144,7 @@ export default function Taxes() {
             {taxes.length === 0 && (
               <tr>
                 <td colSpan={5} className="px-4 py-2 text-center text-gray-500">
-                  No taxes found.
+                  {t("notaxesfound")}
                 </td>
               </tr>
             )}
@@ -152,12 +157,12 @@ export default function Taxes() {
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
             <h3 className="text-lg font-semibold mb-4">
-              {editingTax ? "Edit Tax" : "Add Tax"}
+              {editingTax ? t("edittax") : t("addtax")}
             </h3>
 
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block mb-1 font-medium">Name</label>
+                <label className="block mb-1 font-medium">{t("name")}</label>
                 <input
                   type="text"
                   className="border rounded px-3 py-2 w-full"
@@ -170,7 +175,7 @@ export default function Taxes() {
               </div>
 
               <div>
-                <label className="block mb-1 font-medium">Type</label>
+                <label className="block mb-1 font-medium">{t("type")}</label>
                 <select
                   className="border rounded px-3 py-2 w-full"
                   value={formData.type}
@@ -181,13 +186,13 @@ export default function Taxes() {
                     }))
                   }
                 >
-                  <option value="percentage">Percentage</option>
-                  <option value="amount">Amount</option>
+                  <option value="percentage">{t("percentage")}</option>
+                  <option value="amount">{t("amount")}</option>
                 </select>
               </div>
 
               <div>
-                <label className="block mb-1 font-medium">Value</label>
+                <label className="block mb-1 font-medium">{t("value")}</label>
                 <input
                   type="number"
                   className="border rounded px-3 py-2 w-full"
@@ -208,14 +213,14 @@ export default function Taxes() {
                   className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500"
                   onClick={() => setShowModal(false)}
                 >
-                  Cancel
+                  {t("cancel")}
                 </button>
 
                 <button
                   type="submit"
                   className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500"
                 >
-                  {editingTax ? "Update" : "Save"}
+                  {editingTax ? t("update") : t("save")}
                 </button>
               </div>
             </form>

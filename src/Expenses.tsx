@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { FaEdit, FaTrash, FaPlus } from "react-icons/fa";
 
 import { expenseRepository, Expense } from "./repositories/expenseRepository";
+import { useLang } from "./i18n/LanguageContext";
 
 export default function Expenses() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -11,6 +12,8 @@ export default function Expenses() {
   const [categories, setCategories] = useState<string[]>([]);
   const [newCategory, setNewCategory] = useState("");
 
+  const { t, lang, setLang } = useLang();
+  
   const loadCategories = async () => {
   try {
     const data = await expenseRepository.getCategories();
@@ -98,16 +101,18 @@ export default function Expenses() {
     }
   };
 
+      const textAlign = lang === "ur" ? "text-right" : "text-left";
+
   return (
   <div className="bg-white p-4 sm:p-6 rounded-lg shadow-lg">
 
-    <h2 className="text-xl font-semibold mb-4">Expenses</h2>
+    <h2 className="text-xl font-semibold mb-4">{t("expenses")}</h2>
 
     {/* Search + Add */}
     <div className="flex flex-col sm:flex-row gap-3 mb-4 flex-wrap">
       <input
         type="text"
-        placeholder="Search expenses..."
+        placeholder={t("searchexpenses")}
         className="flex-1 border rounded px-3 py-2 min-w-[150px]"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
@@ -117,7 +122,7 @@ export default function Expenses() {
         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-500 flex-none"
         onClick={openAddModal}
       >
-        <FaPlus /> Add New
+        <FaPlus /> {t("addnew")}
       </button>
     </div>
 
@@ -126,51 +131,58 @@ export default function Expenses() {
       <table className="w-full text-left border">
         <thead className="bg-gray-100">
           <tr>
-            <th className="px-4 py-2 border">#</th>
-            <th className="px-4 py-2 border">Date</th>
-            <th className="px-4 py-2 border">Category</th>
-            <th className="px-4 py-2 border hidden sm:table-cell">Amount</th>
-            <th className="px-4 py-2 border hidden md:table-cell">Remarks</th>
-            <th className="px-4 py-2 border">Actions</th>
-          </tr>
+          <th className={`px-4 py-2 border ${textAlign}`}>#</th>
+          <th className={`px-4 py-2 border ${textAlign}`}>{t("date")}</th>
+          <th className={`px-4 py-2 border ${textAlign}`}>{t("category")}</th>
+          <th className={`px-4 py-2 border hidden sm:table-cell ${textAlign}`}>{t("amount")}</th>
+          <th className={`px-4 py-2 border hidden md:table-cell ${textAlign}`}>{t("remarks")}</th>
+          <th className="px-4 py-2 border text-center">{t("actions")}</th>
+        </tr>
         </thead>
 
         <tbody>
           {expenses.length === 0 ? (
             <tr>
               <td colSpan={6} className="px-4 py-2 text-center text-gray-500">
-                No expenses found.
+                {t("noexpensesfound")}
               </td>
             </tr>
           ) : (
             expenses.map((exp, idx) => (
               <tr key={exp.id} className="hover:bg-gray-50 border-b">
-                <td className="px-2 py-1 sm:px-4 sm:py-2">{idx + 1}</td>
-                <td className="px-2 py-1 sm:px-4 sm:py-2">{new Date(exp.date).toLocaleDateString()}</td>
-                <td className="px-2 py-1 sm:px-4 sm:py-2">{exp.category}</td>
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell">{exp.amount}</td>
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell">{exp.description || ""}</td>
-                <td className="px-2 py-1 sm:px-4 sm:py-2 flex gap-2">
-                  <button
-                    className="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-400 flex-1 sm:flex-none"
-                    onClick={() => openEditModal(exp)}
-                  >
-                    <FaEdit />
-                  </button>
-                  <button
-                    className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-400 flex-1 sm:flex-none"
-                    onClick={() => handleDelete(exp.id)}
-                  >
-                    <FaTrash />
-                  </button>
-                </td>
+              <td className={`px-2 py-1 sm:px-4 sm:py-2 ${textAlign}`}>{idx + 1}</td>
+              <td className={`px-2 py-1 sm:px-4 sm:py-2 ${textAlign}`}>
+                {new Date(exp.date).toLocaleDateString()}
+              </td>
+              <td className={`px-2 py-1 sm:px-4 sm:py-2 ${textAlign}`}>{exp.category}</td>
+              <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell ${textAlign}`}>
+                {exp.amount}
+              </td>
+              <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell ${textAlign}`}>
+                {exp.description || ""}
+              </td>
 
-                {/* Mobile stacked info */}
-                <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 mt-1 gap-1">
-                  <span>Amount: {exp.amount}</span>
-                  <span>Remarks: {exp.description || "-"}</span>
-                </td>
-              </tr>
+              <td className="px-2 py-1 sm:px-4 sm:py-2 flex gap-2 justify-center">
+                <button
+                  className="bg-yellow-500 text-white px-2 py-1 rounded hover:bg-yellow-400 flex-1 sm:flex-none"
+                  onClick={() => openEditModal(exp)}
+                >
+                  <FaEdit />
+                </button>
+                <button
+                  className="bg-red-500 text-white px-2 py-1 rounded hover:bg-red-400 flex-1 sm:flex-none"
+                  onClick={() => handleDelete(exp.id)}
+                >
+                  <FaTrash />
+                </button>
+              </td>
+
+              {/* Mobile stacked info */}
+              <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 mt-1 gap-1">
+                <span>{t("amount")}: {exp.amount}</span>
+                <span>{t("remarks")}: {exp.description || "-"}</span>
+              </td>
+            </tr>
             ))
           )}
         </tbody>
@@ -182,14 +194,14 @@ export default function Expenses() {
       <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50">
         <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
           <h3 className="text-lg font-semibold mb-4">
-            {editingExpense ? "Edit Expense" : "Add Expense"}
+            {editingExpense ? t("editexpense") : t("addexpense")}
           </h3>
 
           <form onSubmit={handleSubmit} className="space-y-4">
 
             {/* Date */}
             <div>
-              <label className="block mb-1 font-medium">Date</label>
+              <label className="block mb-1 font-medium">{t("date")}</label>
               <input
                 type="date"
                 className="border rounded px-3 py-2 w-full"
@@ -201,7 +213,7 @@ export default function Expenses() {
 
             {/* Category */}
             <div>
-              <label className="block mb-1 font-medium">Category</label>
+              <label className="block mb-1 font-medium">{t("category")}</label>
               <div className="flex gap-2 flex-wrap">
                 <select
                   className="border rounded px-3 py-2 flex-1 min-w-[120px]"
@@ -209,7 +221,7 @@ export default function Expenses() {
                   onChange={(e) => setFormData(p => ({ ...p, category: e.target.value }))}
                   required
                 >
-                  <option value="">Select category</option>
+                  <option value="">{t("selectcategory")}</option>
                   {categories.map((c, i) => (
                     <option key={i} value={c}>{c}</option>
                   ))}
@@ -234,7 +246,7 @@ export default function Expenses() {
 
             {/* Amount */}
             <div>
-              <label className="block mb-1 font-medium">Amount</label>
+              <label className="block mb-1 font-medium">{t("amount")}</label>
               <input
                 type="number"
                 className="border rounded px-3 py-2 w-full"
@@ -246,7 +258,7 @@ export default function Expenses() {
 
             {/* Remarks */}
             <div>
-              <label className="block mb-1 font-medium">Remarks</label>
+              <label className="block mb-1 font-medium">{t("remarks")}</label>
               <textarea
                 className="border rounded px-3 py-2 w-full"
                 value={formData.description}
@@ -261,13 +273,13 @@ export default function Expenses() {
                 className="px-4 py-2 bg-gray-400 text-white rounded hover:bg-gray-500 flex-1 sm:flex-none"
                 onClick={() => setShowModal(false)}
               >
-                Cancel
+                {t("cancel")}
               </button>
               <button
                 type="submit"
                 className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-500 flex-1 sm:flex-none"
               >
-                {editingExpense ? "Update" : "Save"}
+                {editingExpense ? t("update") : t("save")}
               </button>
             </div>
 

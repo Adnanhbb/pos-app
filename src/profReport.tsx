@@ -2,11 +2,14 @@ import React, { useEffect, useState } from "react";
 import { salesRepository } from "./repositories/salesRepository";
 import { expenseRepository } from "./repositories/expenseRepository"; // assuming you have this
 import { FaMoneyBillWave, FaShoppingCart, FaDollarSign } from "react-icons/fa";
+import { useLang } from "./i18n/LanguageContext";
 
 export default function ProfReport() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
+  const { t, lang, setLang } = useLang();
+  
   const [totals, setTotals] = useState({
     totalProfit: 0,
     totalExpenses: 0,
@@ -30,7 +33,7 @@ export default function ProfReport() {
     let profit = 0;
     filteredSales.forEach(s => {
       if (s.transactionType === "Sale") profit += s.profit || 0;
-      if (s.transactionType === "Return" && s.invoiceNo?.startsWith("RET-C")) profit -= s.profit || 0;
+      if (s.transactionType === "Return" && s.invoiceNo?.startsWith("RET-C")) profit += s.profit || 0;
     });
 
     // Fetch expenses within date range
@@ -61,14 +64,14 @@ export default function ProfReport() {
 
     {/* TITLE */}
     <h2 className="text-2xl font-semibold text-center mb-6">
-      Profit Report
+      {t("profit_report")}
     </h2>
 
     {/* DATE RANGE */}
     <div className="flex flex-col sm:flex-row justify-center items-center gap-4 mb-8 flex-wrap">
 
       <div className="flex items-center gap-2">
-        <span>From</span>
+        <span>{t("from")}</span>
         <input
           type="date"
           value={fromDate}
@@ -78,7 +81,7 @@ export default function ProfReport() {
       </div>
 
       <div className="flex items-center gap-2">
-        <span>To</span>
+        <span>{t("to")}</span>
         <input
           type="date"
           value={toDate}
@@ -95,7 +98,7 @@ export default function ProfReport() {
       <div style={cardStyle}>
         <FaShoppingCart size={36} color="#3b82f6" />
         <div>
-          <div>Net Profit</div>
+          <div>{t("net_profit")}</div>
           <strong>
             Rs. {totals.totalProfit.toFixed().toLocaleString()}
           </strong>
@@ -105,7 +108,7 @@ export default function ProfReport() {
       <div style={cardStyle}>
         <FaMoneyBillWave size={36} color="#ef4444" />
         <div>
-          <div>Total Expenses</div>
+          <div>{t("total_expenses")}</div>
           <strong>
             Rs. {totals.totalExpenses.toFixed().toLocaleString()}
           </strong>
@@ -115,7 +118,7 @@ export default function ProfReport() {
       <div style={cardStyle}>
         <FaDollarSign size={36} color="#10b981" />
         <div>
-          <div>Final Profit</div>
+          <div>{t("final_profit")}</div>
           <strong>
             Rs. {totals.netProfit.toFixed().toLocaleString()}
           </strong>

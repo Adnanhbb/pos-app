@@ -8,7 +8,7 @@ const DEFAULT_SETTINGS: Omit<Settings, "id"> = {
   contact: "",
   address: "",
   printer: "pos",
-  language: "eng",
+  language: "en",
   logo: "/images/logo.png", // fallback logo path
   cylBPrice: "",
   cylSPrice: "",

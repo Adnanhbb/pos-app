@@ -4,6 +4,7 @@ import { FaPlus, FaEdit, FaTrash } from "react-icons/fa";
 // ✅ Add
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { Category } from "db";
+import { useLang } from "./i18n/LanguageContext";
 
 export default function CategoriesPage() {
   const [categories, setCategories] = useState<Category[]>([]);
@@ -11,6 +12,8 @@ export default function CategoriesPage() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [newCategory, setNewCategory] = useState("");
 
+    const { t, lang, setLang } = useLang();
+  
   // Load categories
   async function loadCategories() {
     const data = await categoriesRepository.getAll();
@@ -59,16 +62,18 @@ export default function CategoriesPage() {
     await loadCategories();
   }
 
+  const textAlign = lang === "ur" ? "text-right" : "text-left";
+
   return (
     <div className="p-2 sm:p-4 lg:p-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-        <div className="text-lg font-semibold">Categories</div>
+        <div className="text-lg font-semibold">{t("categories")}</div>
         <button
           onClick={openCreate}
           className="ml-0 sm:ml-2 inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded shadow"
         >
-          <FaPlus /> Create New
+          <FaPlus /> {t("createnew")}
         </button>
       </div>
 
@@ -77,10 +82,10 @@ export default function CategoriesPage() {
         <table className="min-w-full text-sm">
           <thead className="bg-gray-200 text-gray-700">
             <tr>
-              <th className="p-3 text-left">Category Name</th>
-              <th className="p-3 text-left">No. of Items</th>
-              <th className="p-3 text-center">Actions</th>
-            </tr>
+          <th className={`p-3 ${textAlign}`}>{t("categoryname")}</th>
+          <th className={`p-3 ${textAlign}`}>{t("numberofitems")}</th>
+          <th className="p-3 text-center">{t("actions")}</th>
+        </tr>
           </thead>
           <tbody>
             {categories.map((cat) => (
@@ -107,7 +112,7 @@ export default function CategoriesPage() {
             {categories.length === 0 && (
               <tr>
                 <td colSpan={3} className="text-center p-4 text-gray-500">
-                  No categories found
+                  {t("nocategoriesfound")}
                 </td>
               </tr>
             )}
@@ -120,10 +125,10 @@ export default function CategoriesPage() {
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50">
           <div className="bg-white p-6 rounded-xl shadow-xl w-full max-w-md">
             <h2 className="text-xl font-bold mb-4">
-              {editingCategory ? "Edit Category" : "Create Category"}
+              {editingCategory ? t("editcategory") : t("createcategory")}
             </h2>
             <div>
-              <label className="block text-xs font-medium mb-1">Category Name</label>
+              <label className="block text-xs font-medium mb-1">{t("categoryname")}</label>
               <input
                 type="text"
                 value={newCategory}
@@ -133,10 +138,10 @@ export default function CategoriesPage() {
             </div>
             <div className="mt-4 flex justify-end gap-2">
               <button onClick={closeForm} className="px-4 py-2 bg-gray-300 rounded">
-                Cancel
+                {t("cancel")}
               </button>
               <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded">
-                Save
+                {t("save")}
               </button>
             </div>
           </div>

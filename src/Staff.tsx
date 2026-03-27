@@ -3,6 +3,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { staffRepository, StaffForm } from "./repositories/staffRepository";
 import { User, Role } from "./db";
 import { FaPlus, FaEdit, FaTrash, FaSearch, FaTh, FaList } from "react-icons/fa";
+import { useLang } from "./i18n/LanguageContext";
 
 const PAGE_SIZE = 8;
 
@@ -29,6 +30,8 @@ export default function Staff() {
 
   const roles = useMemo(() => ["all", "admin", "saleboy"] as const, []);
 
+  const { t, lang, setLang } = useLang();
+  
   /** Load current page of users */
   const loadPage = async () => {
     const { total: t, data } = await staffRepository.getPaged(
@@ -101,13 +104,15 @@ export default function Staff() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const textAlign = lang === "ur" ? "text-right" : "text-left";
+
   return (
   <div className="p-4 lg:p-8">
 
     {/* Header Controls */}
     <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
       <div className="flex items-center gap-3 w-full lg:w-auto flex-wrap">
-        <div className="text-lg font-semibold">Staff</div>
+        {/* <div className="text-lg font-semibold">{t("staff")}</div> */}
         <div className="ml-3 flex items-center gap-2 flex-wrap">
           <button
             onClick={() => setView("table")}
@@ -129,7 +134,7 @@ export default function Staff() {
           <FaSearch className="text-gray-500" />
           <input
             className="p-2 outline-none w-full"
-            placeholder="Search"
+            placeholder={t("search")}
             value={query}
             onChange={(e) => {
               setQuery(e.target.value);
@@ -148,7 +153,7 @@ export default function Staff() {
         >
           {roles.map((r) => (
             <option key={r} value={r}>
-              {r === "all" ? "All roles" : r}
+              {r === "all" ? t("allroles") : r}
             </option>
           ))}
         </select>
@@ -157,7 +162,7 @@ export default function Staff() {
           onClick={openCreate}
           className="ml-2 inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded shadow flex-none"
         >
-          <FaPlus /> Create New
+          <FaPlus /> {t("createnew")}
         </button>
       </div>
     </div>
@@ -168,12 +173,12 @@ export default function Staff() {
         <table className="min-w-full text-sm">
           <thead className="bg-gray-50">
             <tr>
-              <th className="px-4 py-3 text-left">#</th>
-              <th className="px-4 py-3 text-left">Name</th>
-              <th className="px-4 py-3 text-left">Mobile</th>
-              <th className="px-4 py-3 text-left hidden sm:table-cell">Role</th>
-              <th className="px-4 py-3 text-left hidden md:table-cell">Username</th>
-              <th className="px-4 py-3 text-left">Actions</th>
+              <th className={`px-4 py-3 ${textAlign}`}>#</th>
+              <th className={`px-4 py-3 ${textAlign}`}>{t("name")}</th>
+              <th className={`px-4 py-3 ${textAlign}`}>{t("mobile")}</th>
+              <th className={`px-4 py-3 hidden sm:table-cell ${textAlign}`}>{t("role")}</th>
+              <th className={`px-4 py-3 hidden md:table-cell ${textAlign}`}>{t("username")}</th>
+              <th className={`px-4 py-3 ${textAlign}`}>{t("actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -259,37 +264,37 @@ export default function Staff() {
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <div className="absolute inset-0 bg-black opacity-40" onClick={closeForm} />
         <div className="relative bg-white rounded-lg shadow-lg w-full max-w-xl p-6 z-50">
-          <h3 className="text-lg font-semibold mb-4">{editingUser ? "Edit User" : "Create New User"}</h3>
+          <h3 className="text-lg font-semibold mb-4">{editingUser ? "Edit User" : t("createnewuser")}</h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium mb-1">Name</label>
+              <label className="block text-xs font-medium mb-1">{t("name")}</label>
               <input className="w-full p-2 border rounded" value={form.Name} onChange={(e) => setForm({ ...form, Name: e.target.value })} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Mobile</label>
+              <label className="block text-xs font-medium mb-1">{t("mobile")}</label>
               <input className="w-full p-2 border rounded" value={form.Mobile} onChange={(e) => setForm({ ...form, Mobile: e.target.value })} />
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Role</label>
+              <label className="block text-xs font-medium mb-1">{t("role")}</label>
               <select className="w-full p-2 border rounded" value={form.Role} onChange={(e) => setForm({ ...form, Role: e.target.value as Role })}>
-                <option value="admin">admin</option>
-                <option value="saleboy">saleboy</option>
+                <option value="admin">{t("admin")}</option>
+                <option value="saleboy">{t("saleboy")}</option>
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium mb-1">Username</label>
+              <label className="block text-xs font-medium mb-1">{t("username")}</label>
               <input className="w-full p-2 border rounded" value={form.Username} onChange={(e) => setForm({ ...form, Username: e.target.value })} />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-xs font-medium mb-1">Password</label>
+              <label className="block text-xs font-medium mb-1">{t("password")}</label>
               <input type="password" className="w-full p-2 border rounded" value={form.Password} onChange={(e) => setForm({ ...form, Password: e.target.value })} />
             </div>
           </div>
 
           <div className="mt-4 flex justify-end gap-2 flex-wrap">
-            <button className="px-4 py-2 border rounded" onClick={closeForm}>Cancel</button>
-            <button className="px-4 py-2 bg-indigo-600 text-white rounded" onClick={handleSave}>Save</button>
+            <button className="px-4 py-2 border rounded" onClick={closeForm}>{t("cancel")}</button>
+            <button className="px-4 py-2 bg-indigo-600 text-white rounded" onClick={handleSave}>{t("save")}</button>
           </div>
         </div>
       </div>

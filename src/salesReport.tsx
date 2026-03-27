@@ -8,6 +8,7 @@ import * as XLSX from "xlsx";
 import { Tooltip } from "react-tooltip";
 import "react-tooltip/dist/react-tooltip.css";
 import { salesRepository } from "./repositories/salesRepository";
+import { useLang } from "./i18n/LanguageContext";
 
 type FilterType = "All" | "Sale" | "Purchase" | "Return" | "Quotation";
 
@@ -32,6 +33,8 @@ export default function SalesReport() {
     profit: 0
   });
 
+  const { t, lang, setLang } = useLang();
+  
 const exportPDF = () => {
 
   const doc = new jsPDF();
@@ -306,6 +309,8 @@ const calculateTotals = (data: DBSale[]) => {
   });
 };
 
+    const textAlign = lang === "ur" ? "text-right" : "text-left";
+
 return (
   <div className="p-4 sm:p-6">
 
@@ -314,7 +319,7 @@ return (
       <div style={cardStyle}>
         <FaShoppingCart size={26} color="#ef4444" />
         <div>
-          <div>Sales</div>
+          <div>{t("sales")}</div>
           <strong>Rs. {totals.sales.toFixed().toLocaleString()}</strong>
         </div>
       </div>
@@ -322,7 +327,7 @@ return (
       <div style={cardStyle}>
         <FaTruck size={26} color="#eab308" />
         <div>
-          <div>Purchases</div>
+          <div>{t("purchases")}</div>
           <strong>Rs. {totals.purchases.toFixed().toLocaleString()}</strong>
         </div>
       </div>
@@ -330,7 +335,7 @@ return (
       <div style={cardStyle}>
         <FaUndo size={26} color="#10b981" />
         <div>
-          <div>Cust. Returns</div>
+          <div>{t("cus")}. {t("return")}</div>
           <strong>Rs. {totals.customerReturns.toFixed().toLocaleString()}</strong>
         </div>
       </div>
@@ -338,7 +343,7 @@ return (
       <div style={cardStyle}>
         <FaUndo size={26} color="#3b82f6" />
         <div>
-          <div>Supp. Returns</div>
+          <div>{t("sup")}. {t("return")}</div>
           <strong>Rs. {totals.supplierReturns.toFixed().toLocaleString()}</strong>
         </div>
       </div>
@@ -346,7 +351,7 @@ return (
       <div style={cardStyle}>
         <FaFileInvoice size={26} color="#f59e0b" />
         <div>
-          <div>Profit</div>
+          <div>{t("profit")}</div>
           <strong>Rs. {totals.profit.toFixed().toLocaleString()}</strong>
         </div>
       </div>
@@ -364,7 +369,7 @@ return (
               style={radioStyle(type as FilterType)}
               onClick={() => setFilterType(type as FilterType)}
             >
-              {type}
+              {t(type.toLowerCase())}
             </button>
           ))}
         </div>
@@ -385,7 +390,7 @@ return (
                 }}
                 onClick={() => setReturnSubFilter(sub as "All" | "Cus" | "Sup")}
               >
-                {sub}
+                {t(sub.toLowerCase())}
               </button>
             ))}
           </div>
@@ -423,15 +428,23 @@ return (
       <table className="w-full text-left border">
         <thead className="bg-gray-100">
           <tr>
-            <th className="px-4 py-2 border">Invoice</th>
-            <th className="px-4 py-2 border">Date</th>
-            <th className="px-4 py-2 border">Customer/Supplier</th>
+            <th className={`px-4 py-2 border ${textAlign}`}>{t("invoice")}</th>
+            <th className={`px-4 py-2 border ${textAlign}`}>{t("date")}</th>
+            <th className={`px-4 py-2 border ${textAlign}`}>{t("customersupplier")}</th>
 
             {/* hide progressively */}
-            <th className="px-4 py-2 border hidden sm:table-cell">Grand Total</th>
-            <th className="px-4 py-2 border hidden md:table-cell">Paid</th>
-            <th className="px-4 py-2 border hidden lg:table-cell">Balance</th>
-            <th className="px-4 py-2 border hidden lg:table-cell">Profit</th>
+            <th className={`px-4 py-2 border hidden sm:table-cell ${textAlign}`}>
+              {t("grandtotal")}
+            </th>
+            <th className={`px-4 py-2 border hidden md:table-cell ${textAlign}`}>
+              {t("paid")}
+            </th>
+            <th className={`px-4 py-2 border hidden lg:table-cell ${textAlign}`}>
+              {t("balance")}
+            </th>
+            <th className={`px-4 py-2 border hidden lg:table-cell ${textAlign}`}>
+              {t("profit")}
+            </th>
           </tr>
         </thead>
 
@@ -439,47 +452,47 @@ return (
           {paginated.length === 0 ? (
             <tr>
               <td colSpan={7} className="px-4 py-2 text-center text-gray-500">
-                No records found.
+                {t("norecordsfound")}
               </td>
             </tr>
           ) : (
             paginated.map(s => (
               <tr key={s.id} className="hover:bg-gray-50 border-b">
 
-                <td className="px-2 py-1 sm:px-4 sm:py-2 font-medium">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 font-medium ${textAlign}`}>
                   {s.invoiceNo}
                 </td>
 
-                <td className="px-2 py-1 sm:px-4 sm:py-2">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 ${textAlign}`}>
                   {formatDate(s.date)}
                 </td>
 
-                <td className="px-2 py-1 sm:px-4 sm:py-2">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 ${textAlign}`}>
                   {s.customerName || s.supplierName}
                 </td>
 
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden sm:table-cell ${textAlign}`}>
                   {s.grandTotal.toLocaleString()}
                 </td>
 
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden md:table-cell ${textAlign}`}>
                   {s.paid.toLocaleString()}
                 </td>
 
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden lg:table-cell">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden lg:table-cell ${textAlign}`}>
                   {s.arrears.toLocaleString()}
                 </td>
 
-                <td className="px-2 py-1 sm:px-4 sm:py-2 hidden lg:table-cell">
+                <td className={`px-2 py-1 sm:px-4 sm:py-2 hidden lg:table-cell ${textAlign}`}>
                   {(s.profit || 0).toLocaleString()}
                 </td>
 
                 {/* MOBILE STACKED DETAILS */}
                 <td className="px-2 py-1 sm:hidden flex flex-col text-xs text-gray-600 gap-1 mt-1">
-                  <span>Total: {s.grandTotal.toLocaleString()}</span>
-                  <span>Paid: {s.paid.toLocaleString()}</span>
-                  <span>Balance: {s.arrears.toLocaleString()}</span>
-                  <span>Profit: {(s.profit || 0).toLocaleString()}</span>
+                  <span>{t("total")}: {s.grandTotal.toLocaleString()}</span>
+                  <span>{t("paid")}: {s.paid.toLocaleString()}</span>
+                  <span>{t("balance")}: {s.arrears.toLocaleString()}</span>
+                  <span>{t("profit")}: {(s.profit || 0).toLocaleString()}</span>
                 </td>
 
               </tr>
@@ -496,17 +509,17 @@ return (
         onClick={() => setPage(page - 1)}
         className="px-3 py-1 border rounded"
       >
-        Prev
+        {t("prev")}
       </button>
 
-      <span>Page {page} / {totalPages || 1}</span>
+      <span>{t("page")} {page} / {totalPages || 1}</span>
 
       <button
         disabled={page === totalPages || totalPages === 0}
         onClick={() => setPage(page + 1)}
         className="px-3 py-1 border rounded"
       >
-        Next
+        {t("next")}
       </button>
     </div>
 

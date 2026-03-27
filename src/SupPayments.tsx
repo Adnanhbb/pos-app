@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react";
 import { indexedDbSupplierPaymentRepository as supplierPayRepo } from "./repositories/indexedDbSupplierPaymentRepository";
 import { indexedDbSupplierRepository as supplierRepo } from "./repositories/indexedDbSupplierRepository";
 import { SupplierPayment, Supplier } from "./db";
+import { useLang } from "./i18n/LanguageContext";
 
 import {
   FaPlus,
@@ -44,6 +45,8 @@ export default function SupPayments() {
 
   const [form, setForm] = useState<PaymentForm>(emptyForm);
 
+  const { t, lang, setLang } = useLang();
+  
   useEffect(() => {
     loadSuppliers();
     loadPage();
@@ -157,13 +160,15 @@ async function handleSave() {
     await loadSuppliers();
   }
 
+      const textAlign = lang === "ur" ? "text-right" : "text-left";
+
  return (
   <div className="p-2 sm:p-4 lg:p-8">
 
     {/* HEADER */}
     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 gap-3 flex-wrap">
       <div className="flex items-center gap-2 flex-wrap">
-        <h2 className="text-lg font-semibold">Supplier Payments</h2>
+        <h2 className="text-lg font-semibold">{t("supplierpayments")}</h2>
         <button
           className={`p-2 rounded ${view === "table" ? "bg-indigo-600 text-white" : "bg-gray-200"}`}
           onClick={() => setView("table")}
@@ -183,7 +188,7 @@ async function handleSave() {
           <FaSearch className="text-gray-500" />
           <input
             className="p-2 outline-none w-full sm:w-48"
-            placeholder="Search supplier..."
+            placeholder={t("searchsupplier")}
             value={query}
             onChange={e => { setQuery(e.target.value); setPage(1); }}
           />
@@ -193,7 +198,7 @@ async function handleSave() {
           onClick={openCreate}
           className="bg-green-600 text-white px-4 py-2 rounded shadow flex items-center gap-2 flex-none"
         >
-          <FaPlus /> Add Payment
+          <FaPlus /> {t("addpayment")}
         </button>
       </div>
     </div>
@@ -204,19 +209,19 @@ async function handleSave() {
         <table className="min-w-full text-sm">
           <thead className="bg-gray-200">
             <tr>
-              <th className="p-3 text-left">Date</th>
-              <th className="p-3 text-left">Supplier</th>
-              <th className="p-3 text-left hidden sm:table-cell">Payable</th>
-              <th className="p-3 text-left hidden sm:table-cell">Paid</th>
-              <th className="p-3 text-left hidden sm:table-cell">Balance</th>
-              <th className="p-3 text-left hidden md:table-cell">Remarks</th>
-              <th className="p-3 text-center">Actions</th>
-            </tr>
+            <th className={`p-3 ${textAlign}`}>{t("date")}</th>
+            <th className={`p-3 ${textAlign}`}>{t("supplier")}</th>
+            <th className={`p-3 ${textAlign} hidden sm:table-cell`}>{t("payable")}</th>
+            <th className={`p-3 ${textAlign} hidden sm:table-cell`}>{t("paid")}</th>
+            <th className={`p-3 ${textAlign} hidden sm:table-cell`}>{t("balance")}</th>
+            <th className={`p-3 ${textAlign} hidden md:table-cell`}>{t("remarks")}</th>
+            <th className="p-3 text-center">{t("actions")}</th>
+          </tr>
           </thead>
           <tbody>
             {payments.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-4 text-center text-gray-500">No payments found</td>
+                <td colSpan={7} className="p-4 text-center text-gray-500">{t("nopaymentsfound")}</td>
               </tr>
             ) : (
               payments.map(p => {
@@ -246,10 +251,10 @@ async function handleSave() {
 
                     {/* Mobile stacked info */}
                     <td className="p-2 md:p-3 sm:hidden flex flex-col gap-1 text-xs text-gray-600">
-                      <span>Payable: {p.payableSnapshot}</span>
-                      <span>Paid: {p.amount}</span>
-                      <span>Balance: {p.balanceSnapshot}</span>
-                      <span>Remarks: {p.remarks}</span>
+                      <span>{t("payable")}: {p.payableSnapshot}</span>
+                      <span>{t("paid")}: {p.amount}</span>
+                      <span>{t("balance")}: {p.balanceSnapshot}</span>
+                      <span>{t("remarks")}: {p.remarks}</span>
                     </td>
                   </tr>
                 );
@@ -269,15 +274,15 @@ async function handleSave() {
             <div key={p.id} className="bg-white rounded-xl shadow border p-4 flex flex-col justify-between">
               <div className="flex flex-col gap-1">
                 <div className="font-semibold">{s?.name}</div>
-                <div className="text-xs text-gray-600">Date: {new Date(p.paymentDate).toLocaleDateString()}</div>
-                <div className="text-xs text-gray-600">Payable: {p.payableSnapshot}</div>
-                <div className="text-xs text-gray-600">Paid: {p.amount}</div>
-                <div className="text-xs text-gray-600">Balance: {p.balanceSnapshot}</div>
-                <div className="text-xs text-gray-600">Remarks: {p.remarks}</div>
+                <div className="text-xs text-gray-600">{t("date")}: {new Date(p.paymentDate).toLocaleDateString()}</div>
+                <div className="text-xs text-gray-600">{t("payable")}: {p.payableSnapshot}</div>
+                <div className="text-xs text-gray-600">{t("paid")}: {p.amount}</div>
+                <div className="text-xs text-gray-600">{t("balance")}: {p.balanceSnapshot}</div>
+                <div className="text-xs text-gray-600">{t("remarks")}: {p.remarks}</div>
               </div>
               <div className="flex gap-2 mt-3">
                 <button onClick={() => handleDelete(p.id!)} className="flex-1 bg-red-500 text-white p-2 rounded text-sm">
-                  Delete
+                  {t("delete")}
                 </button>
               </div>
             </div>
@@ -288,16 +293,16 @@ async function handleSave() {
 
     {/* PAGINATION */}
     <div className="mt-4 flex justify-center gap-2 flex-wrap">
-      <button disabled={page === 1} onClick={() => setPage(page - 1)} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Prev</button>
-      <span className="px-3 py-1 bg-gray-200 rounded">Page {page} / {totalPages}</span>
-      <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">Next</button>
+      <button disabled={page === 1} onClick={() => setPage(page - 1)} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">{t("prev")}</button>
+      <span className="px-3 py-1 bg-gray-200 rounded">{t("page")} {page} / {totalPages}</span>
+      <button disabled={page === totalPages} onClick={() => setPage(page + 1)} className="px-3 py-1 bg-gray-200 rounded disabled:opacity-50">{t("next")}</button>
     </div>
 
     {/* MODAL */}
     {isFormOpen && (
       <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50">
         <div className="bg-white p-6 rounded-xl w-full max-w-md">
-          <h2 className="text-xl font-bold mb-4">{editingPayment ? "Edit Payment" : "Add Payment"}</h2>
+          <h2 className="text-xl font-bold mb-4">{editingPayment ? t("editpayment") : t("addpayment")}</h2>
 
           <select
             className="w-full p-2 border rounded mb-2"
@@ -316,16 +321,16 @@ async function handleSave() {
               });
             }}
           >
-            <option value={0}>Select Supplier</option>
+            <option value={0}>{t("selectsupplier")}</option>
             {suppliers.map(s => (
               <option key={s.id} value={s.id}>{s.name}</option>
             ))}
           </select>
 
-          <label className="text-sm text-gray-600">Total Payable</label>
+          <label className="text-sm text-gray-600">{t("totalpayable")}</label>
           <input className="w-full p-2 border rounded mb-2" disabled value={form.payableSnapshot} />
 
-          <label className="text-sm text-gray-600">Amount Paid</label>
+          <label className="text-sm text-gray-600">{t("amountpaid")}</label>
           <input
             type="number"
             className="w-full p-2 border rounded mb-2"
@@ -333,7 +338,7 @@ async function handleSave() {
             onChange={e => setForm({ ...form, amount: Number(e.target.value) })}
           />
 
-          <label className="text-sm text-gray-600">Payment Date</label>
+          <label className="text-sm text-gray-600">{t("paymentdate")}</label>
           <input
             type="date"
             className="w-full p-2 border rounded mb-2"
@@ -343,14 +348,14 @@ async function handleSave() {
 
           <textarea
             className="w-full p-2 border rounded mb-2"
-            placeholder="Remarks"
+            placeholder={t("remarks")}
             value={form.remarks}
             onChange={e => setForm({ ...form, remarks: e.target.value })}
           />
 
           <div className="flex justify-end gap-2 flex-wrap">
-            <button onClick={closeForm} className="px-4 py-2 bg-gray-300 rounded flex-1 sm:flex-none">Cancel</button>
-            <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded flex-1 sm:flex-none">Save</button>
+            <button onClick={closeForm} className="px-4 py-2 bg-gray-300 rounded flex-1 sm:flex-none">{t("cancel")}</button>
+            <button onClick={handleSave} className="px-4 py-2 bg-indigo-600 text-white rounded flex-1 sm:flex-none">{t("save")}</button>
           </div>
         </div>
       </div>

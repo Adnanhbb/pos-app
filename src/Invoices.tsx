@@ -8,6 +8,7 @@ import { customerPaymentRepository } from "./repositories/customerPaymentReposit
 import { indexedDbSupplierRepository as suppliersRepository } from "./repositories/indexedDbSupplierRepository";
 import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
 import { printInvoice } from "./services/printing/printService";
+import { useLang } from "./i18n/LanguageContext";
 
 const PAGE_SIZE = 10;
 const TRANSACTION_TYPES = ["All", "Sale", "Purchase", "Return", "Quotation"] as const;
@@ -49,6 +50,8 @@ export default function Invoices() {
   // Helper to get the correct party name (customer or supplier)
   const getPartyName = resolvePartyName;
 
+  const { t, lang, setLang } = useLang();
+  
   // Load total count on mount or filter change
   useEffect(() => {
     // Reset return sub-filter when switching type
@@ -164,8 +167,8 @@ const handleDeleteInvoice = async (invoice: DBSale) => {
   if (!invoice.id) return;
 
   const confirmDelete = window.confirm(
-    `Are you sure you want to delete Invoice #${invoice.invoiceNo}?`
-  );
+  `${t("areyousuredeleteinvoice")} ${invoice.invoiceNo}`
+);
   if (!confirmDelete) return;
 
   try {
@@ -313,7 +316,7 @@ if (
 
 const handlePrintInvoice = async (invoice: DBSale) => {
 
-  const confirmed = window.confirm("Do you want to print this invoice?");
+  const confirmed = window.confirm(t("doyouwanttoprintinvoice"));
   if (!confirmed) return;
 
   try {
@@ -348,12 +351,14 @@ const handlePrintInvoice = async (invoice: DBSale) => {
   }
 };
 
+    const textAlign = lang === "ur" ? "text-right" : "text-left";
+
   return (
     <div className="p-4 flex flex-col lg:flex-row gap-4">
       
       {/* LEFT PANEL */}
       <div className="w-full lg:w-4/5 bg-white shadow rounded-lg p-4 flex flex-col gap-4">
-        <h1 className="text-xl font-semibold">View Invoices</h1>
+        <h1 className="text-xl font-semibold">{t("viewinvoices")}</h1>
 
         <div className="flex items-center justify-between gap-4">
 
@@ -381,14 +386,14 @@ const handlePrintInvoice = async (invoice: DBSale) => {
           }}
           className="hidden"
         />
-        {type}
+        {t(type.toLowerCase())}
       </label>
     ))}
   </div>
 
 <input
       type="text"
-      placeholder="Search Inv/Cus/Sup ..."
+      placeholder={t("searchinvoice")}
       className={`border rounded px-2 py-1 text-sm transition-all duration-200
         ${transactionTypeFilter === "Return" ? "w-40" : "w-64"}
       `}
@@ -419,7 +424,7 @@ const handlePrintInvoice = async (invoice: DBSale) => {
               onChange={() => setReturnSubFilter(type as any)}
               className="hidden"
             />
-            {type}
+            {t(type.toLowerCase())}
           </label>
         ))}
 
@@ -431,16 +436,16 @@ const handlePrintInvoice = async (invoice: DBSale) => {
 </div>
 
 
-        {loading ? <div>Loading invoices...</div> : (
+        {loading ? <div>{t("loadinginvoices")}</div> : (
           <table className="w-full border-collapse border mt-2 text-sm">
             <thead>
-              <tr className="bg-gray-100">
-                <th className="border p-2">Invoice # </th>
-                <th className="border p-2">Cust/Supp Name</th>
-                <th className="border p-2">Date</th>
-                <th className="border p-2">Payable</th>
-                <th className="border p-2">Action</th>
-              </tr>
+             <tr className="bg-gray-100">
+              <th className={`border p-2 ${textAlign}`}>{t("invoice")} #</th>
+              <th className={`border p-2 ${textAlign}`}>{t("custsuppname")}</th>
+              <th className={`border p-2 ${textAlign}`}>{t("date")}</th>
+              <th className={`border p-2 ${textAlign}`}>{t("payable")}</th>
+              <th className="border p-2 text-center">{t("actions")}</th>
+            </tr>
             </thead>
             <tbody>
               {filteredInvoices.map(filteredInvoices => (
@@ -485,7 +490,7 @@ const handlePrintInvoice = async (invoice: DBSale) => {
               ))}
               {sales.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-4 text-center">No invoices found</td>
+                  <td colSpan={4} className="p-4 text-center">{t("noinvoicesfound")}</td>
                 </tr>
               )}
             </tbody>
@@ -496,7 +501,7 @@ const handlePrintInvoice = async (invoice: DBSale) => {
         <div className="flex justify-center items-center gap-2 mt-2">
           <button onClick={() => goToPage(1)} disabled={currentPage === 1} className="p-1 border rounded hover:bg-gray-100"><FaAngleDoubleLeft /></button>
           <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1} className="p-1 border rounded hover:bg-gray-100"><FaAngleLeft /></button>
-          <span className="px-2">Page {currentPage} of {totalPages}</span>
+          <span className="px-2">{t("page")} {currentPage} {t("of")} {totalPages}</span>
           <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage === totalPages} className="p-1 border rounded hover:bg-gray-100"><FaAngleRight /></button>
           <button onClick={() => goToPage(totalPages)} disabled={currentPage === totalPages} className="p-1 border rounded hover:bg-gray-100"><FaAngleDoubleRight /></button>
         </div>
@@ -509,9 +514,9 @@ const handlePrintInvoice = async (invoice: DBSale) => {
             {/* Header: invoice info */}
             <div className="flex justify-between items-start mb-4 text-sm">
               <div >
-                <h2 className="text-lg font-semibold">Invoice #: {selectedInvoice.invoiceNo}</h2>
-                <p><strong>Date:</strong> {new Date(selectedInvoice.date).toLocaleDateString()}</p>
-                <p><strong>Cust/Supp Name:</strong> {getPartyName(selectedInvoice)}</p>
+                <h2 className="text-lg font-semibold">{t("invoice")} #: {selectedInvoice.invoiceNo}</h2>
+                <p><strong>{t("date")}:</strong> {new Date(selectedInvoice.date).toLocaleDateString()}</p>
+                <p><strong>{t("custsuppname")}:</strong> {getPartyName(selectedInvoice)}</p>
               </div>
               <div>
                 {/* <p><strong>Transaction:</strong> {selectedInvoice.transactionType}</p> */}
@@ -521,16 +526,16 @@ const handlePrintInvoice = async (invoice: DBSale) => {
 
             {/* Items */}
             <div className="flex-2 overflow-auto text-xs">
-              {itemsLoading ? <div>Loading items...</div> : invoiceItems.length > 0 ? (
+              {itemsLoading ? <div>{t("loadingitems")}</div> : invoiceItems.length > 0 ? (
                 <table className="w-full border-collapse border">
                   <thead>
                     <tr className="bg-gray-100">
-                      <th className="border p-2">Name</th>
-                      <th className="border p-2">Qty</th>
-                      <th className="border p-2">Price</th>
-                      <th className="border p-2">Disc</th>
-                      <th className="border p-2">Tax</th>
-                      <th className="border p-2">Total</th>
+                      <th className="border p-2">{t("name")}</th>
+                      <th className="border p-2">{t("qty")}</th>
+                      <th className="border p-2">{t("price")}</th>
+                      <th className="border p-2">{t("discount")}</th>
+                      <th className="border p-2">{t("tax")}</th>
+                      <th className="border p-2">{t("total")}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -553,31 +558,31 @@ const handlePrintInvoice = async (invoice: DBSale) => {
                     ))}
                   </tbody>
                 </table>
-              ) : <div>No items found</div>}
+              ) : <div>{t("noitemsfound")}</div>}
             </div>
 
             {/* Totals */}
            <div className="border-t pt-2 mt-2 grid grid-cols-2 gap-4 text-sm">
                 {/* Left column */}
                 <div className="flex flex-col gap-1">
-                  <p><strong>Subtotal:</strong> {selectedInvoice.subtotal.toFixed()}</p>
-                  <p><strong>Discount:</strong> {selectedInvoice.discount}</p>
-                  <p><strong>Tax:</strong> {selectedInvoice.tax}</p>
-                  <p><strong>Prev. Dues:</strong> {selectedInvoice.dues}</p>
+                  <p><strong>{t("subtotal")}:</strong> {selectedInvoice.subtotal.toFixed()}</p>
+                  <p><strong>{t("discount")}:</strong> {selectedInvoice.discount}</p>
+                  <p><strong>{t("tax")}:</strong> {selectedInvoice.tax}</p>
+                  <p><strong>{t("prevtdues")}:</strong> {selectedInvoice.dues}</p>
                 </div>
 
                 {/* Right column */}
                 <div className="flex flex-col gap-1 text-right">
-                  <p><strong>Grand Total:</strong> {selectedInvoice.grandTotal.toFixed()}</p>
-                  <p><strong>Paid:</strong> {selectedInvoice.paid}</p>
-                  <p><strong>Balance:</strong> {selectedInvoice.arrears.toFixed()}</p>
-                  <p><strong>Profit:</strong> {selectedInvoice.profit.toFixed()}</p>
+                  <p><strong>{t("grandtotal")}:</strong> {selectedInvoice.grandTotal.toFixed()}</p>
+                  <p><strong>{t("paid")}:</strong> {selectedInvoice.paid}</p>
+                  <p><strong>{t("balance")}:</strong> {selectedInvoice.arrears.toFixed()}</p>
+                  <p><strong>{t("profit")}:</strong> {selectedInvoice.profit.toFixed()}</p>
 
                 </div>
               </div>
 
           </>
-        ) : <div className="text-center text-gray-500">Select an invoice to view details</div>}
+        ) : <div className="text-center text-gray-500">{t("selectinvoice")}</div>}
       </div>
     </div>
   );
