@@ -449,12 +449,11 @@ const saveEditedUser = async () => {
   return (
     <div className="flex min-h-screen bg-gray-100 relative">
       {/* MOBILE TOP BAR */}
-<div className="lg:hidden fixed inset-x-0 top-0 h-14 flex items-center justify-between bg-white shadow px-4 z-40">
-            <h2 className="text-xl font-bold">{activeItem ? t(activeItem) : ""} </h2>
+<div className="lg:hidden fixed top-0 inset-x-0 flex items-center justify-between bg-white shadow p-4 z-50 overflow-x-hidden">
+                  <h2 className="text-xl font-bold">{activeItem ? t(activeItem) : ""} </h2>
 
-    <div className="flex items-center gap-3">
-          <div className="relative overflow-visible" ref={mobileUserMenuRef}
->
+          <div className="flex items-center gap-3">
+          <div className="relative" ref={mobileUserMenuRef}>
             <div className="flex items-center gap-1 cursor-pointer" onClick={() => setUserMenuOpen(!userMenuOpen)}>
               <FaUserCircle size={28} className="text-gray-700" />
               <span className="text-gray-700 font-medium">{currentUser ? currentUser.Name : "Guest"}</span>
@@ -489,22 +488,16 @@ const saveEditedUser = async () => {
 
 {/* SIDEBAR */}
 <aside
-  className={`
-    w-64 bg-white shadow-lg p-4
-    fixed lg:static top-0 h-screen z-50 overflow-y-auto
-    transform transition-all duration-300 ease-in-out
-    lg:translate-x-0
-
+  className={`w-64 bg-white shadow-lg p-4 lg:block fixed lg:static top-0 h-screen z-50 overflow-y-auto transform transition-transform duration-300
     ${lang === "ur" ? "right-0" : "left-0"}
-
     ${
       sidebarOpen
-        ? "translate-x-0 opacity-100 pointer-events-auto"
+        ? "translate-x-0"
         : lang === "ur"
-        ? "translate-x-full opacity-0 pointer-events-none"
-        : "-translate-x-full opacity-0 pointer-events-none"
+        ? "translate-x-full"
+        : "-translate-x-full"
     }
-  `}
+    lg:translate-x-0`}
 >
   {/* Mobile Header */}
   <div className="flex justify-between items-center mb-4 lg:hidden">
@@ -705,9 +698,9 @@ const saveEditedUser = async () => {
             </div>
            {userMenuOpen && (
   <div
-  className={`absolute top-full mt-1 bg-white shadow-lg rounded p-2 w-44 z-[9999]
-    ${lang === "ur" ? "left-0" : "right-0"}`}
->
+    className={`absolute top-full mt-1 bg-white shadow-lg rounded p-2 w-44 z-50
+      ${lang === "ur" ? "left-0" : "right-0"}`}
+  >
     {currentUser?.Role === "admin" && (
       <button
         onClick={openEditCurrentUser}
