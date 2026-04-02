@@ -277,7 +277,7 @@ ${data.previousDues && data.previousDues > 0 ? `
 
 <div class="footer">
   Thank you for your business<br>
-  Software by DEVEX Technologies | 03339485125
+  Software by XCOP Technologies | 03339485125
 </div>
 
 </body>

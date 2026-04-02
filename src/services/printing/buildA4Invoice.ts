@@ -318,7 +318,7 @@ ${data.previousDues && data.previousDues > 0 ? `
 <!-- ================= FOOTER ================= -->
 
 <div class="footer">
-  <span>Thank you for your business | Software provided by DEVEX Technologies | 03339485125</span>
+  <span>Thank you for your business | Software provided by XCOP Technologies | 03339485125</span>
 </div>
 
 </body>

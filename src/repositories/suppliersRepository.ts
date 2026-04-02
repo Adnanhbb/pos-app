@@ -1,3 +1,4 @@
+// src/supplierRepository.ts
 import { Supplier, SupplierPayment } from "../db";
 import {
   addSupplier,
@@ -22,11 +23,19 @@ export type SuppliersRepository = {
   // Suppliers
   getAll: () => Promise<Supplier[]>;
   getById: (id: number) => Promise<Supplier | undefined>;
-  getPaged: (page: number, pageSize: number, query?: string) => Promise<{ data: Supplier[]; total: number }>;
+  getPaged: (
+    page: number,
+    pageSize: number,
+    query?: string,
+    includeDeleted?: boolean
+  ) => Promise<{ data: Supplier[]; total: number }>;
   search: (q: string) => Promise<Supplier[]>;
   create: (supplier: Omit<Supplier, "id">) => Promise<number>;
   update: (supplier: Supplier) => Promise<void>;
   remove: (id: number) => Promise<void>;
+  restore?: (id: number) => Promise<void>;
+  permanentDelete?: (id: number) => Promise<void>;
+  getDeleted?: () => Promise<Supplier[]>;
 
   // Payments
   addPayment?: (payment: Omit<SupplierPayment, "id">) => Promise<void>;
@@ -40,23 +49,37 @@ export type SuppliersRepository = {
 export const suppliersRepository: SuppliersRepository = {
   // ---------------- Suppliers ----------------
   getAll: async (): Promise<Supplier[]> => {
-    return await getAllSuppliers();
+    const all = await getAllSuppliers();
+    return all.filter(s => !s.isDeleted);
   },
 
   getById: async (id: number): Promise<Supplier | undefined> => {
     return await getSupplierById(id);
   },
 
-  getPaged: async (page: number, pageSize: number, query?: string) => {
-    return await getSuppliersPaged(page, pageSize, query ?? null);
+  getPaged: async (
+    page: number,
+    pageSize: number,
+    query?: string,
+    includeDeleted: boolean = false
+  ) => {
+    const { total, data } = await getSuppliersPaged(page, pageSize, query ?? null);
+    const filtered = includeDeleted ? data : data.filter(s => !s.isDeleted);
+    return { total: filtered.length, data: filtered };
   },
 
   search: async (q: string): Promise<Supplier[]> => {
-    return await searchSuppliers(q);
+    const all = await searchSuppliers(q);
+    return all.filter(s => !s.isDeleted);
   },
 
   create: async (supplier: Omit<Supplier, "id">): Promise<number> => {
-    return await addSupplier(supplier);
+    const sup: Omit<Supplier, "id"> = {
+      ...supplier,
+      isDeleted: supplier.isDeleted ?? false,
+      deletedAt: supplier.deletedAt ?? null,
+    };
+    return await addSupplier(sup);
   },
 
   update: async (supplier: Supplier): Promise<void> => {
@@ -64,13 +87,30 @@ export const suppliersRepository: SuppliersRepository = {
   },
 
   remove: async (id: number): Promise<void> => {
+    const supplier = await getSupplierById(id);
+    if (!supplier) throw new Error("Supplier not found");
+    await updateSupplier({ ...supplier, isDeleted: true, deletedAt: Date.now() });
+  },
+
+  restore: async (id: number): Promise<void> => {
+    const supplier = await getSupplierById(id);
+    if (!supplier) throw new Error("Supplier not found");
+    await updateSupplier({ ...supplier, isDeleted: false, deletedAt: null });
+  },
+
+  permanentDelete: async (id: number): Promise<void> => {
     await deleteSupplier(id);
 
-    // Ensure related supplier payments are also deleted
+    // Delete related supplier payments
     const allPayments = await getAllSupplierPayments();
     for (const p of allPayments.filter(p => p.supplierId === id)) {
       await deleteSupplierPayment(p.id!);
     }
+  },
+
+  getDeleted: async (): Promise<Supplier[]> => {
+    const all = await getAllSuppliers();
+    return all.filter(s => s.isDeleted);
   },
 
   // ---------------- Payments ----------------

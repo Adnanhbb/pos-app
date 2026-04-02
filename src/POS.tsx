@@ -1,6 +1,6 @@
 // src/POS.tsx
 import { useEffect, useMemo, useState,useRef } from "react";
-import { FaBarcode, FaEdit, FaTrash, FaTimes, FaCheck, FaPlus } from "react-icons/fa";
+import { FaBarcode, FaEdit, FaTrash, FaTimes, FaCheck, FaPlus, FaHandHolding, FaHandHoldingUsd, FaClock } from "react-icons/fa";
 
 // 🔹 DB INTEGRATION
 import { itemsRepository } from "./repositories/itemsRepository";
@@ -251,7 +251,7 @@ function InvoiceAdjustmentModal({
 // =====================
 
 interface POSProps {
-  currentUser: { username: string; role: "admin" | "saleboy" };
+  currentUser: { username: string; role: "admin" | "saleboy" | "Dev" };
   // ...other props if any
 }
 
@@ -1111,7 +1111,7 @@ function addToCart(item: Item) {
     transactionType === "Purchase" || isSupplierReturn;
 
   // ❌ Block ONLY when stock must decrease
-  if (stockDecreases && item.availableStock <= 0) return;
+  // if (stockDecreases && item.availableStock <= 0) return;
 
   // 1️⃣ Update UI stock (UNCHANGED)
   setItems(prev =>
@@ -1541,7 +1541,7 @@ function formatStockDisplay(
     return `${minQty} ${minUnit}`;
   }
 
-  const max = Math.floor(minQty / convQty);
+  const max = Math.trunc(minQty / convQty);
   const min = minQty % convQty;
 
   if (max > 0 && min > 0) {
@@ -1550,6 +1550,10 @@ function formatStockDisplay(
 
   if (max > 0) {
     return `${max}${maxUnit}`;
+  }
+
+  if (max < 0 || min < 0) {
+    return `${max}${maxUnit} ${min.toFixed(1)}${minUnit}`;
   }
 
   return `${min}${minUnit}`;
@@ -1678,14 +1682,16 @@ return (
 
           <div className="text-xs text-green-500">
             <span className="text-yellow-500">Rs {displayPrice.toFixed(1)}</span> |{" "}
-            {item.availableStock > 0
-              ? formatStockDisplay(
+            {/* {item.availableStock > 0
+              ?  */
+              formatStockDisplay(
                   item.availableStock,
                   item.ConvQty,
                   item.minunit,
                   item.maxunit
                 )
-              : "0"}
+              // : item.availableStock
+            }
           </div>
 
           {item.availableStock <= 0 && (
@@ -1903,17 +1909,17 @@ return (
               <button
                   onClick={() => {
                    const item = items.find(i => i.id === ci.originalItemId);
-  if (!item) return;
+                    if (!item) return;
 
-  setEditing({
-    ...ci,
+                    setEditing({
+                      ...ci,
 
-    // ✅ convert qty BACK for display
-    qty:
-      ci.unit === "max"
-        ? ci.qty / item.ConvQty
-        : ci.qty,
-  });
+                      // ✅ convert qty BACK for display
+                      qty:
+                        ci.unit === "max"
+                          ? ci.qty / item.ConvQty
+                          : ci.qty,
+                    });
                   }}
                   className="p-2 bg-green-500 text-white rounded"
                 >
@@ -2023,7 +2029,7 @@ return (
   </div>
 
   {/* ACTION BUTTONS — UNCHANGED */}
-  <div className="flex gap-2 mt-6">
+  <div className="flex gap-2 mt-2">
     <button
       className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
       onClick={handleCompleteTransaction}
@@ -2036,6 +2042,22 @@ return (
       onClick={cancelSale}
     >
       <FaTimes /> {t("cancel")} {t(transactionType.toLowerCase())}
+    </button>
+  </div>
+
+  <div className="flex gap-2 mt-1">
+    <button
+      className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
+      onClick={handleCompleteTransaction}
+    >
+      <FaHandHoldingUsd /> {t("hold")} {t(transactionType.toLowerCase())}
+    </button>
+
+    <button
+      className="flex-1 flex items-center justify-center gap-2 bg-yellow-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
+      onClick={cancelSale}
+    >
+      <FaClock /> {t("postpone")} {t(transactionType.toLowerCase())}
     </button>
   </div>
 </div>
@@ -2286,6 +2308,8 @@ return (
                         cnic: newCustomer.cnic,
                         address: newCustomer.address,
                         balance: newCustomer.dues,
+                        isDeleted: false,
+                        deletedAt: null
                       });
 
                       // 3️⃣ Reload customers from DB (single source of truth)
@@ -2304,17 +2328,18 @@ return (
 
                       // 5️⃣ Reset modal
                       setNewCustomer({
-                        name: "",
-                        mobile: "",
-                        cnic: "",
-                        address: "",
-                        dues: 0,
-                      });
+                      name: "",
+                      mobile: "",
+                      cnic: "",
+                      address: "",
+                      dues: 0,
+                     
+                    });
                       setShowCustomerModal(false);
                     }}
                   >
   {t("save")}
-</button>
+        </button>
 
       </div>
     </div>
@@ -2415,6 +2440,8 @@ return (
               cnic: newSupplier.cnic,
               address: newSupplier.address,
               payable: newSupplier.dues,
+              isDeleted: false,
+              deletedAt: null
             });
 
             // 3️⃣ Reload suppliers

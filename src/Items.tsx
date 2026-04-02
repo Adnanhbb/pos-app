@@ -1,18 +1,18 @@
 // src/Items.tsx
 import React, { useEffect, useRef, useState } from "react";
-import {
-  getItemsPaged,
-  addItem,
-  updateItem,
-  deleteItem,
-  Item,
-  getBrands,
-  getAllCategories,
-  getUnits,
-  Brand,
-  Category,
-  Unit,
-} from "./db";
+// import {
+//   getItemsPaged,
+//   addItem,
+//   updateItem,
+//   deleteItem,
+//   Item,
+//   getBrands,
+//   getAllCategories,
+//   getUnits,
+//   Brand,
+//   Category,
+//   Unit,
+// } from "./db";
 import {
   FaPlus,
   FaEdit,
@@ -21,12 +21,15 @@ import {
   FaTh,
   FaList,
   FaBoxes,
+  FaUndo,
+  FaEye
 } from "react-icons/fa";
 
 import { settingsRepository } from "./repositories/settingsRepository";
-import { categoriesRepository } from "./repositories/categoriesRepository";
-import { brandsRepository } from "./repositories/brandsRepository";
-import { unitRepository } from "./repositories/unitRepository";
+import { categoriesRepository, Category } from "./repositories/categoriesRepository";
+import { Brand, brandsRepository } from "./repositories/brandsRepository";
+import { Unit, unitRepository } from "./repositories/unitRepository";
+import { Item, itemsRepository } from "./repositories/itemsRepository";
 import { useLang } from "./i18n/LanguageContext";
 
 const PAGE_SIZE = 8;
@@ -42,7 +45,8 @@ export default function ItemsPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
 
-
+  const [showDeletedModal, setShowDeletedModal] = useState(false);
+  const [deletedItems, setDeletedItems] = useState<Item[]>([]);
 
   const [isFormOpen, setFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
@@ -61,6 +65,8 @@ export default function ItemsPage() {
   wholesalePrice: 0,
   description: "",
   availableStock: 0,
+  isDeleted: false,
+  deletedAt: null
 };
 
 
@@ -76,7 +82,7 @@ export default function ItemsPage() {
   
   // Load items for table/cards
   async function loadPage() {
-    const { total: t, data } = await getItemsPaged(page, PAGE_SIZE, query || null);
+    const { total: t, data } = await itemsRepository.getPaged(page, PAGE_SIZE, query);
     setItems(data);
     setTotal(t);
   }
@@ -88,9 +94,9 @@ export default function ItemsPage() {
   // Load dropdown data
   useEffect(() => {
     async function loadDropdowns() {
-      const b = await getBrands();
-      const c = await getAllCategories();
-      const u = await getUnits();
+      const b = await brandsRepository.getAll();
+      const c = await categoriesRepository.getAll();
+      const u = await unitRepository.getAll();
 
       setBrands(b);
       setCategories(c);
@@ -170,7 +176,9 @@ async function openEdit(it: Item) {
       discountPrice: perKgDiscount,
       wholesalePrice: perKgWholesale,
       description: it.description || "",
-      availableStock: it.availableStock
+      availableStock: it.availableStock,
+      isDeleted: it.isDeleted,
+      deletedAt: it.deletedAt,
     });
   } else {
     // Non-Gas items, use existing item values
@@ -187,7 +195,9 @@ async function openEdit(it: Item) {
       discountPrice: it.discountPrice || 0,
       wholesalePrice: it.wholesalePrice,
       description: it.description || "",
-      availableStock: it.availableStock
+      availableStock: it.availableStock,
+      isDeleted: it.isDeleted,
+      deletedAt: it.deletedAt,
     });
   }
 
@@ -221,6 +231,20 @@ function getUnitIdByName(name: string) {
 async function handleSave() {
   if (!form.name.trim()) return alert("Name is required");
   if (!form.barcode.trim()) return alert("Barcode is required");
+
+  // --- Prevent duplicate item names ---
+const allItems = await itemsRepository.getAll();
+
+const duplicate = allItems.find(i =>
+  i.name.trim().toLowerCase() === form.name.trim().toLowerCase() &&
+  // allow same record during edit
+  (!editingItem || i.id !== editingItem.id)
+);
+
+if (duplicate) {
+  alert("This item name already exists");
+  return;
+}
 
   // Convert names to IDs for usage tracking
   const brandId = brands.find(b => b.name === form.brand)?.id;
@@ -258,9 +282,9 @@ async function handleSave() {
       if (maxunitId) await unitRepository.incrementItemCount(maxunitId);
     }
 
-    await updateItem({ ...editingItem, ...form });
+    await itemsRepository.update({ ...editingItem, ...form });
   } else {
-    await addItem(form as Item);
+    await itemsRepository.create(form as Item);
 
     if (categoryId) await categoriesRepository.incrementItemCount(categoryId);
     if (brandId) await brandsRepository.incrementItemCount(brandId);
@@ -273,6 +297,35 @@ async function handleSave() {
   await loadPage();
   closeForm();
 }
+
+const loadDeletedItems = async () => {
+  const data = await itemsRepository.getDeleted();
+  setDeletedItems(data);
+};
+
+const openDeletedModal = async () => {
+  await loadDeletedItems();
+  setShowDeletedModal(true);
+};
+
+const handleRestore = async (id?: number) => {
+  if (!id) return;
+
+  await itemsRepository.restore(id);
+  await loadDeletedItems();
+  await loadPage(); // refresh main list
+};
+
+const handlePermanentDelete = async (id?: number) => {
+  if (!id) return;
+
+  if (!window.confirm(t("deletePermanentlyConfirm")))
+    return;
+
+  await itemsRepository.permanentDelete(id);
+  await loadDeletedItems();
+  await loadPage();
+};
 
 async function handleDelete(id?: number) {
   if (!id) return;
@@ -295,7 +348,7 @@ async function handleDelete(id?: number) {
   if (maxunitId) await unitRepository.decrementItemCount(maxunitId);
 
   // Now delete the item
-  await deleteItem(id);
+  await itemsRepository.remove(id);
 
   // Adjust pagination
   const newTotal = Math.max(0, total - 1);
@@ -316,11 +369,11 @@ function splitStock(
 totalMinUnits: number,
 convQty: number
 ) {
-  if (!convQty || convQty <= 0) {
+  if (!convQty ) {
     return { maxQty: 0, minQty: totalMinUnits };
   }
 
-  const maxQty = Math.floor(totalMinUnits / convQty);
+  const maxQty = Math.trunc(totalMinUnits / convQty);
   const minQty = totalMinUnits % convQty;
 
   return { maxQty, minQty };
@@ -347,6 +400,14 @@ convQty: number
             >
               <FaTh />
             </button>
+
+             <button
+                onClick={openDeletedModal}
+                className="flex items-center gap-2 px-3 py-1 rounded bg-blue-600 hover:bg-blue-400 text-white "
+              >
+                <FaEye />{t("showDeleted")}
+              </button>
+        
           </div>
         </div>
 
@@ -372,6 +433,76 @@ convQty: number
           </button>
         </div>
       </div>
+
+{showDeletedModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div
+      className="absolute inset-0 bg-black opacity-40"
+      onClick={() => setShowDeletedModal(false)}
+    />
+
+    <div className="relative bg-white rounded-lg shadow-lg w-full max-w-lg p-6 z-50">
+
+      <h3 className="text-lg font-semibold mb-4">
+        {t("deletedItems")}
+      </h3>
+
+      {deletedItems.length === 0 ? (
+        <div className="text-gray-500 text-center py-6">
+          {t("noDeletedItems")}
+        </div>
+      ) : (
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {deletedItems.map(i => (
+            <div
+              key={i.id}
+              className="flex items-center justify-between border-b p-2"
+            >
+              <div>
+                <div className="font-medium">{i.name}</div>
+                <div className="text-xs text-gray-500">
+                  {t("deleted")}:
+                  {" "}
+                  {i.deletedAt
+                    ? new Date(i.deletedAt).toLocaleString()
+                    : "-"}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  className="p-2 rounded bg-green-100 hover:bg-green-200"
+                  onClick={() => handleRestore(i.id)}
+                  title={t("restore")}
+                >
+                  <FaUndo />
+                </button>
+
+                <button
+                  className="p-2 rounded bg-red-100 hover:bg-red-200"
+                  onClick={() => handlePermanentDelete(i.id)}
+                  title={t("deletePermanently")}
+                >
+                  <FaTrash />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex justify-end">
+        <button
+          className="px-4 py-2 border rounded"
+          onClick={() => setShowDeletedModal(false)}
+        >
+          {t("close")}
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
 
       {/* Table / Cards */}
       {view === "table" ? (
@@ -461,15 +592,15 @@ convQty: number
                   const { maxQty, minQty } = splitStock(it.availableStock, it.ConvQty);
                   return (
                     <div className="leading-tight">
-                      {maxQty > 0 && (
+                      { (
                         <div className="font-medium">{maxQty} {it.maxunit}s</div>
                       )}
-                      {minQty > 0 && (
+                      { (
                         <div className="text-green-600 text-xs">
                           {minQty.toFixed(1)} {it.minunit}s
                         </div>
                       )}
-                      {maxQty === 0 && minQty === 0 && (
+                      {maxQty <= 0 && minQty <= 0 && (
                         <div className="text-red-500 text-xs">{t("outofstock")}</div>
                       )}
                     </div>

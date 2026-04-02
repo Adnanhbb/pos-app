@@ -6,7 +6,7 @@ import { StackId } from "recharts/types/util/ChartUtils";
    DATA TYPES
    ========================================================== */
 
-export type Role = "admin" | "saleboy" | string;
+export type Role = "admin" | "saleboy" | "Dev" | string;
 
 export interface User {
   id?: number;
@@ -15,6 +15,8 @@ export interface User {
   Role: Role;
   Username: string;
   Password: string;
+  isDeleted: boolean;
+  deletedAt: number | null;
 }
 
 export interface Customer {
@@ -27,6 +29,8 @@ export interface Customer {
   payable?: number;
   paid?: number;
   balance?: number;
+  isDeleted: boolean;
+  deletedAt: number | null;
 }
 
 export interface Supplier {
@@ -39,6 +43,8 @@ export interface Supplier {
   payable?: number;
   paid?: number;
   balance?: number;
+  isDeleted: boolean;
+  deletedAt: number | null;
 }
 
 export interface Item {
@@ -56,6 +62,8 @@ export interface Item {
   wholesalePrice: number;
   description?: string;
   availableStock: number;
+  isDeleted: boolean;
+  deletedAt: number | null;
 }
 
 export interface Category {
@@ -97,6 +105,8 @@ export interface Expense {
   category: string;
   amount: number;
   description?: string;
+  isDeleted: boolean;
+  deletedAt: number | null;
 }
 
 export interface ExpCateg{
@@ -317,6 +327,8 @@ export async function initDB() {
           Role: "admin",
           Username: "admin",
           Password: "1234",
+          isDeleted: false,
+          deletedAt: null
         } as User);
       } else {
         const store = transaction.objectStore("users");
@@ -339,6 +351,8 @@ export async function initDB() {
           payable: 0,
           paid: 0,
           balance: 0,
+          isDeleted: false,
+          deletedAt: null
         } as Customer);
       } else {
         const cstore = transaction.objectStore("customers");
@@ -607,6 +621,11 @@ export async function getUsersPaged(
   return { total, data: pageData };
 }
 
+// db.ts
+export const getUserById = async (id: number): Promise<User | undefined> => {
+  const allUsers = await getAllUsers(); // or whatever fetches all users from DB
+  return allUsers.find(u => u.id === id);
+};
 /* ==========================================================
    CUSTOMERS API
    ========================================================== */
@@ -1013,6 +1032,8 @@ export async function addExpense(expense: Omit<Expense, "id">): Promise<number> 
     category: expense.category,
     amount: Number(expense.amount || 0),
     description: expense.description || "",
+    isDeleted: expense.isDeleted,
+    deletedAt: expense.deletedAt
   };
   return (await db.add("expenses", e as Expense)) as number;
 }
@@ -1026,6 +1047,8 @@ export async function updateExpense(expense: Expense): Promise<void> {
     category: expense.category,
     amount: Number(expense.amount || 0),
     description: expense.description || "",
+    isDeleted: expense.isDeleted,
+    deletedAt: expense.deletedAt
   };
   await db.put("expenses", e);
 }

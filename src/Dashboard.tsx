@@ -70,6 +70,7 @@ import SupReport from "./supReport";
 import ExpReport from "./expReport";
 import ProfReport from "./profReport";
 import CFReport from "./CFReport";
+import InvReport from "./invReport";
 
 // DB helpers
 import { authRepository } from "./repositories/authRepository";
@@ -87,7 +88,7 @@ import type { User } from "./db";
 interface Props {
   user: {
     username: string;
-    role: "admin" | "saleboy";
+    role: "admin" | "saleboy" |"Dev";
   };
   onLogout: () => void;
 }
@@ -95,7 +96,7 @@ interface Props {
 export default function Dashboard({ user, onLogout }: Props) {
   const [viewMode, setViewMode] = useState<"grid" | "stack">("stack");
   const [activeItem, setActiveItem] = useState(user.role === "saleboy" ? "POS" : "Dashboard");
-  const [timeFilter, setTimeFilter] = useState<"Today" | "Weekly" | "Monthly" | "Custom">("Today");
+  const [timeFilter, setTimeFilter] = useState<"Today" | "Weekly" | "Monthly" | "Yearly" | "Custom">("Today");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [entriesOpen, setEntriesOpen] = useState(false);
@@ -112,6 +113,8 @@ export default function Dashboard({ user, onLogout }: Props) {
   Role: "admin",
   Username: "",
   Password: "",
+  isDeleted: false,
+  deletedAt: null
 });
 
   const [customStart, setCustomStart] = useState<string>("");
@@ -138,7 +141,7 @@ export default function Dashboard({ user, onLogout }: Props) {
 ], [t, user?.role]);
   
 
-  const timeFilters = ["Today", "Weekly", "Monthly", "Custom"] as const;
+  const timeFilters = ["Today", "Weekly", "Monthly","Yearly", "Custom"] as const;
 
   const getTimeFilterLabel = (filter: typeof timeFilters[number]) => {
   switch (filter) {
@@ -148,6 +151,8 @@ export default function Dashboard({ user, onLogout }: Props) {
       return t("time_weekly");
     case "Monthly":
       return t("time_monthly");
+      case "Yearly":
+      return t("time_yearly");
     case "Custom":
       return t("time_custom");
   }
@@ -161,34 +166,44 @@ export default function Dashboard({ user, onLogout }: Props) {
   };
 
 const getDateRange = (filter: string): { start: Date; end: Date } => {
-  const now = new Date();
-  let start: Date;
-  let end: Date = new Date();
-  end.setHours(23, 59, 59, 999); // ensure end of day
 
-  switch (filter) {
-    case "Daily":
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      break;
+const now = new Date();
+let start: Date;
+let end: Date = new Date(now);
 
-    case "Weekly":
-      start = new Date();
-      start.setDate(now.getDate() - 7);
-      break;
+switch (filter) {
+  case "Daily":
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    break;
 
-    case "Monthly":
-      start = new Date(now.getFullYear(), now.getMonth(), 1);
-      break;
+  case "Weekly": {
+    // Monday as start of week (business standard)
+    const day = now.getDay(); // 0=Sun, 1=Mon...
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
 
-    case "Custom":
-      start = new Date(customStart);
-      end = new Date(customEnd);
-      end.setHours(23, 59, 59, 999); // include full day
-      break;
-
-    default:
-      start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    start = new Date(now);
+    start.setDate(diff);
+    start.setHours(0, 0, 0, 0);
+    break;
   }
+
+  case "Monthly":
+    start = new Date(now.getFullYear(), now.getMonth(), 1);
+    break;
+
+  case "Yearly":
+    start = new Date(now.getFullYear(), 0, 1);
+    break;
+
+  case "Custom":
+    start = new Date(customStart);
+    end = new Date(customEnd);
+    end.setHours(23, 59, 59, 999);
+    break;
+
+  default:
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
 
   return { start, end };
 };
@@ -401,6 +416,8 @@ useEffect(() => {
       Role: currentUser.Role ?? "admin",
       Username: currentUser.Username,
       Password: currentUser.Password,
+      isDeleted: currentUser.isDeleted,
+      deletedAt: currentUser.deletedAt
     });
     setEditUserOpen(true);
     setUserMenuOpen(false);
@@ -425,6 +442,8 @@ const saveEditedUser = async () => {
       Role: editForm.Role,
       Username: editForm.Username,
       Password: editForm.Password,
+      isDeleted: editForm.isDeleted,
+      deletedAt: editForm.deletedAt
     };
 
     await staffRepository.update(userToUpdate);
@@ -449,7 +468,7 @@ const saveEditedUser = async () => {
   return (
     <div className="flex min-h-screen bg-gray-100 relative">
       {/* MOBILE TOP BAR */}
-<div className="lg:hidden fixed top-0 inset-x-0 flex items-center justify-between bg-white shadow p-4 z-50 overflow-x-hidden">
+    <div className="lg:hidden fixed top-0 inset-x-0 flex items-center justify-between bg-white shadow p-4 z-50 overflow-visible">
                   <h2 className="text-xl font-bold">{activeItem ? t(activeItem) : ""} </h2>
 
           <div className="flex items-center gap-3">
@@ -488,16 +507,24 @@ const saveEditedUser = async () => {
 
 {/* SIDEBAR */}
 <aside
-  className={`w-64 bg-white shadow-lg p-4 lg:block fixed lg:static top-0 h-screen z-50 overflow-y-auto transform transition-transform duration-300
-    ${lang === "ur" ? "right-0" : "left-0"}
+  className={`
+    w-64 bg-white shadow-lg p-4
+    fixed lg:static top-0 h-screen z-50 overflow-y-auto
+
+    transform transition-transform duration-300 ease-in-out
+
+    ${lang === "ur" ? "left-0" : "right-0"}
+
     ${
       sidebarOpen
         ? "translate-x-0"
         : lang === "ur"
-        ? "translate-x-full"
-        : "-translate-x-full"
+        ? "-translate-x-full"
+        : "translate-x-full"
     }
-    lg:translate-x-0`}
+
+    lg:translate-x-0
+  `}
 >
   {/* Mobile Header */}
   <div className="flex justify-between items-center mb-4 lg:hidden">
@@ -629,6 +656,7 @@ const saveEditedUser = async () => {
                   { name: "expensesreport", icon: <FaDollarSign color="red" /> },
                   { name: "cashflowreport", icon: <FaMoneyBill color="green" /> },
                   { name: "profitreport", icon: <FaMoneyBill color="green" /> },
+                  { name: "inventoryreport", icon: <FaMoneyBill color="red" /> },
                 ].map((sub) => (
                   <SubMenuButton key={sub.name} {...sub} />
                 ))}
@@ -678,7 +706,7 @@ const saveEditedUser = async () => {
 
 {sidebarOpen && (
   <div
-    className="fixed inset-0 bg-black bg-opacity-30 z-40 lg:hidden"
+    className="fixed inset-0 bg-black/30 z-40 lg:hidden"
     onClick={() => setSidebarOpen(false)}
   />
 )}
@@ -806,7 +834,9 @@ const saveEditedUser = async () => {
           <CFReport />
         ) : activeItem === "profitreport" ? (
           <ProfReport />
-        ) : (
+        )  : activeItem === "inventoryreport" ? (
+          <InvReport />
+        ): (
           <>
             {/* Dashboard KPIs */}
             <div className="flex flex-wrap gap-2 mb-6">
@@ -818,13 +848,15 @@ const saveEditedUser = async () => {
                   ? t("time_weekly")
                   : filter === "Monthly"
                   ? t("time_monthly")
+                  : filter ==="Yearly"
+                  ? t("time_yearly")
                   : t("time_custom");
 
               return (
                 <button
                   key={filter}
                   onClick={() => setTimeFilter(filter)}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${
+                  className={`px-2 py-2 rounded-lg text-sm font-semibold transition ${
                     timeFilter === filter
                       ? "bg-blue-600 text-white shadow"
                       : "bg-gray-200 text-gray-700 hover:bg-gray-300"

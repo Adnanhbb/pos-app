@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { FaEdit, FaTrash, FaPlus } from "react-icons/fa";
+import { FaEdit, FaTrash, FaPlus, FaUndo, FaEye } from "react-icons/fa";
 
 import { expenseRepository, Expense } from "./repositories/expenseRepository";
 import { useLang } from "./i18n/LanguageContext";
@@ -11,6 +11,9 @@ export default function Expenses() {
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [categories, setCategories] = useState<string[]>([]);
   const [newCategory, setNewCategory] = useState("");
+
+  const [showDeletedModal, setShowDeletedModal] = useState(false);
+  const [deletedExpenses, setDeletedExpenses] = useState<Expense[]>([]);
 
   const { t, lang, setLang } = useLang();
   
@@ -28,12 +31,43 @@ export default function Expenses() {
     category: string;
     amount: number;
     description: string;
+    isDeleted: boolean;
+    deletedAt: number | null
   }>({
     date: "",
     category:"",
     amount: 0,
     description: "",
+    isDeleted: false,
+    deletedAt: null
   });
+
+  const loadDeletedExpenses = async () => {
+  const data = await expenseRepository.getDeleted();
+  setDeletedExpenses(data);
+};
+
+const openDeletedModal = async () => {
+  await loadDeletedExpenses();
+  setShowDeletedModal(true);
+};
+
+const handleRestore = async (id?: number) => {
+  if (!id) return;
+
+  await expenseRepository.restore(id);
+  await loadDeletedExpenses();
+  await loadExpenses(); // your main loader
+};
+
+const handlePermanentDelete = async (id?: number) => {
+  if (!id) return;
+
+  if (!confirm(t("deletePermanentlyConfirm"))) return;
+
+  await expenseRepository.permanentDelete(id);
+  await loadDeletedExpenses();
+};
 
   const loadExpenses = async () => {
     const data = searchQuery
@@ -54,6 +88,8 @@ export default function Expenses() {
       category:"",
       amount: 0,
       description: "",
+      isDeleted: false,
+      deletedAt: null
     });
     setEditingExpense(null);
   };
@@ -71,6 +107,8 @@ export default function Expenses() {
       category:exp.category,
       amount: exp.amount,
       description: exp.description || "", // <-- fix for string | undefined
+      isDeleted: exp.isDeleted,
+      deletedAt: exp.deletedAt
     });
     setShowModal(true);
   };
@@ -118,6 +156,13 @@ export default function Expenses() {
         onChange={(e) => setSearchQuery(e.target.value)}
       />
 
+        <button
+          onClick={openDeletedModal}
+          className="flex items-center gap-2 px-3 py-1 rounded bg-blue-600 hover:bg-blue-400 text-white "
+        >
+         <FaEye /> {t("showDeleted")}
+        </button>
+
       <button
         className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-500 flex-none"
         onClick={openAddModal}
@@ -125,6 +170,71 @@ export default function Expenses() {
         <FaPlus /> {t("addnew")}
       </button>
     </div>
+
+{showDeletedModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div
+      className="absolute inset-0 bg-black opacity-40"
+      onClick={() => setShowDeletedModal(false)}
+    />
+
+    <div className="relative bg-white rounded-lg shadow-lg w-full max-w-lg p-6 z-50">
+      <h3 className="text-lg font-semibold mb-4">
+        {t("deletedExpenses")}
+      </h3>
+
+      {deletedExpenses.length === 0 ? (
+        <div className="text-gray-500 text-center py-6">
+          {t("noDeletedExpenses")}
+        </div>
+      ) : (
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {deletedExpenses.map(e => (
+            <div key={e.id} className="flex justify-between border-b p-2">
+              <div>
+                <div className="font-medium">{e.category}</div>
+                <div className="text-xs text-gray-500">
+                  {t("deleted")}:
+                  {" "}
+                  {e.deletedAt
+                    ? new Date(e.deletedAt).toLocaleString()
+                    : "-"}
+                </div>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  className="p-2 bg-green-100 rounded"
+                  onClick={() => handleRestore(e.id)}
+                  title={t("restore")}
+                >
+                  <FaUndo />
+                </button>
+
+                <button
+                  className="p-2 bg-red-100 rounded"
+                  onClick={() => handlePermanentDelete(e.id)}
+                  title={t("deletePermanently")}
+                >
+                  <FaTrash />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex justify-end">
+        <button
+          className="px-4 py-2 border rounded"
+          onClick={() => setShowDeletedModal(false)}
+        >
+          {t("close")}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
     {/* Table */}
     <div className="overflow-x-auto">

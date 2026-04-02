@@ -227,7 +227,7 @@ const exportPDF = async () => {
       </h2>
 
       {/* DATE FILTERS */}
-      <div className="flex flex-wrap justify-center gap-4 mb-10">
+      <div className="flex flex-wrap justify-center gap-4">
         <div>
           {t("from")}
           <input

@@ -440,7 +440,7 @@ const handlePrintInvoice = async (invoice: DBSale) => {
           <table className="w-full border-collapse border mt-2 text-sm">
             <thead>
              <tr className="bg-gray-100">
-              <th className={`border p-2 ${textAlign}`}>{t("invoice")} #</th>
+              <th className={`border p-2 ${textAlign}`}>{t("invoice")} </th>
               <th className={`border p-2 ${textAlign}`}>{t("custsuppname")}</th>
               <th className={`border p-2 ${textAlign}`}>{t("date")}</th>
               <th className={`border p-2 ${textAlign}`}>{t("payable")}</th>

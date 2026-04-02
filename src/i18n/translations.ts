@@ -38,12 +38,14 @@ export const translations: Record<Lang, Record<string, string>> = {
     expensesreport: "Expenses Report",
     cashflowreport: "Cash-Flow Report",
     profitreport: "Profit Report",
-    settings_: "Settings",
+    inventoryreport: "Inventory Report",
+    settings: "Settings",
 
     //Dashboard
     time_today: "Today",
     time_weekly: "Weekly",
     time_monthly: "Monthly",
+    time_yearly: "Yearly",
     time_custom: "Custom",
     edituser: "Edit User",
     logout: "Log Out",
@@ -73,7 +75,15 @@ export const translations: Record<Lang, Record<string, string>> = {
     password: "Password",
     save: "Save",
     cancel: "Cancel",
-
+    showDeletedStaff: "Show Deleted Staff",
+    deletedStaff: "Deleted Staff",
+    noDeletedStaff: "No Deleted Staff",
+    close: "Close",
+    deleted: "Deleted",
+    restore: "Restore",
+    permanentDeleteConfirm: "Permanently delete this user?",
+    deletePermanently: "Delete Permanently",
+    
     //Customers
     showonlyduecustomers: "Show Only Due Customers",
     totalcustomers: "Total Customers",
@@ -93,6 +103,9 @@ export const translations: Record<Lang, Record<string, string>> = {
     page: "Page",
     customername: "Customer Name",
     previousdues: "Previous Dues",
+    deletedCustomers: "Deleted Customers",
+    noDeletedCustomers: "No Deleted Customers",
+    showDeletedCustomers: "Show Deleted Customers",
 
     //Suppliers
   showonlyduesuppliers: "Show Only Due Suppliers",
@@ -101,6 +114,9 @@ export const translations: Record<Lang, Record<string, string>> = {
   createsupplier: "Create Supplier",
   editsupplier: "Edit Supplier",
   suppliername: "Supplier Name",
+  showDeletedSuppliers: "Show Deleted Suppliers",
+  deletedSuppliers: "Deleted Suppliers",
+  noDeletedSuppliers: "No Deleted Suppliers",
 
   //Categories
   categoryname: "Category Name",
@@ -169,6 +185,10 @@ selectcategory: "Select Category",
 selectminunit: "Select Min Unit",
 selectmaxunit: "Select Max Unit",
 unitconversionqty: "Unit Conversion Qty",
+showDeletedItems: "Show Deleted Items",
+deletedItems: "Deleted Items",
+noDeletedItems: "No Deleted Items",
+deletePermanentlyConfirm: "Permanently delete this item?",
 
 //POS
 sale: "Sale",
@@ -198,6 +218,8 @@ unit: "Unit",
 quantity: "Quantity",
 buyprice: "Buy Price",
 price: "Price",
+hold: "Hold",
+postpone: "Postpone",
 
 //Invoices
 viewinvoices: "View Invoices",
@@ -247,6 +269,9 @@ editexpense: "Edit Expense",
 addexpense: "Add Expense",
 addcategory: "Add Category",
 enternewcategory: "Enter new category",
+showDeleted: "Show Deleted",
+deletedExpenses: "Deleted Expenses",
+noDeletedExpenses: "No Deleted Expenses",
 
 //Sales Report
 salereport: "Sale Report",
@@ -304,6 +329,17 @@ profit_report: "Profit Report",
 net_profit: "Net Profit",
 total_expenses: "Total Expenses",
 final_profit: "Final Profit",
+
+//Inventory Report
+item: "Item",
+availableQty: "Available Qty",
+purchaseValue: "Purchase Value",
+retailValue: "Retail Value",
+discountValue: "Discount Value",
+wholesaleValue: "Wholesale Value",
+totalZakat: "Total Zakat (2.5%)",
+loadingInventory: "Loading inventory...",
+noInventoryFound: "No inventory found",
 
 //Settings
 settings_title: "Settings",
@@ -364,11 +400,13 @@ kg: "Kg",
   cashflowreport: "رپورٹ کیش فلو",
   profitreport: "رپورٹ منافع",
   settings: "سیٹنگز",
+  inventoryreport: "انوینٹری رپورٹ",
 
   //Dashboard
   time_today: "آج",
   time_weekly: "ہفتہ وار",
   time_monthly: "ماہانہ",
+  time_yearly: "سالانہ",
   time_custom: "کسٹم",
   edituser: "صارف ترمیم کریں",
   logout: "لاگ آؤٹ",
@@ -398,6 +436,14 @@ createnewuser: "نیا صارف بنائیں",
 password: "پاس ورڈ",
 save: "محفوظ کریں",
 cancel: "منسوخ کریں",
+showDeletedStaff: "حذف شدہ اسٹاف دکھائیں",
+deletedStaff: "حذف شدہ اسٹاف",
+noDeletedStaff: "کوئی حذف شدہ اسٹاف نہیں",
+close: "بند کریں",
+deleted: "حذف شدہ",
+restore: "بحال کریں",
+permanentDeleteConfirm: "کیا آپ واقعی اس صارف کو مستقل طور پر حذف کرنا چاہتے ہیں؟",
+deletePermanently: "مستقل طور پر حذف کریں",
 
 //Customers
 showonlyduecustomers: "صرف بقایا والے گاہک دکھائیں",
@@ -418,6 +464,9 @@ next: "اگلا",
 page: "صفحہ",
 customername: "گاہک کا نام",
 previousdues: "پچھلا بقایا",
+deletedCustomers: "حذف شدہ گاہک",
+noDeletedCustomers: "کوئی حذف شدہ گاہک موجود نہیں",
+showDeletedCustomers: "حذف شدہ گاہک دکھائیں",
 
 //Suppliers
 showonlyduesuppliers: "صرف بقایا والے سپلائرز دکھائیں",
@@ -426,6 +475,9 @@ nosuppliersfound: "کوئی سپلائر نہیں ملا",
 createsupplier: "نیا سپلائر بنائیں",
 editsupplier: "سپلائر میں ترمیم کریں",
 suppliername: "سپلائر کا نام",
+showDeletedSuppliers: "حذف شدہ سپلائرز دکھائیں",
+deletedSuppliers: "حذف شدہ سپلائرز",
+noDeletedSuppliers: "کوئی حذف شدہ سپلائرز نہیں",
 
 //Categories
 categoryname: "کیٹیگری کا نام",
@@ -494,6 +546,10 @@ selectcategory: "زمرہ منتخب کریں",
 selectminunit: "کم یونٹ منتخب کریں",
 selectmaxunit: "زیادہ یونٹ منتخب کریں",
 unitconversionqty: "یونٹ تبدیلی کی مقدار",
+showDeletedItems: "حذف شدہ اشیاء دکھائیں",
+deletedItems: "حذف شدہ اشیاء",
+noDeletedItems: "کوئی حذف شدہ شے موجود نہیں",
+deletePermanentlyConfirm: "کیا آپ اس شے کو مستقل طور پر حذف کرنا چاہتے ہیں؟",
 
 //POS
 sale: "فروخت",
@@ -523,6 +579,8 @@ unit: "اکائی",
 quantity: "مقدار",
 buyprice: "خرید قیمت",
 price: "قیمت",
+hold: "ہولڈ پر رکھیں",
+postpone: "ملتوی کریں",
 
 //Invoices
 viewinvoices: "انوائس دیکھیں",
@@ -572,6 +630,9 @@ editexpense: "اخراجات ترمیم کریں",
 addexpense: "اخراجات شامل کریں",
 addcategory: "قسم شامل کریں",
 enternewcategory: "نئی قسم درج کریں",
+showDeleted: "حذف شدہ دکھائیں",
+deletedExpenses: "حذف شدہ اخراجات",
+noDeletedExpenses: "کوئی حذف شدہ اخراجات موجود نہیں",
 
 //Sales Report
 salereport: "سیل رپورٹ",
@@ -630,6 +691,17 @@ profit_report: "منافع کی رپورٹ",
 net_profit: "خالص منافع",
 total_expenses: "کل اخراجات",
 final_profit: "حتمی منافع",
+
+//Inventory Report
+item: "آئٹم",
+availableQty: "دستیاب مقدار",
+purchaseValue: "خریداری مالیت",
+retailValue: "ریٹیل مالیت",
+discountValue: "ڈسکاؤنٹ مالیت",
+wholesaleValue: "ہول سیل مالیت",
+totalZakat: "کل زکوٰۃ (2.5٪)",
+loadingInventory: "انویٹری لوڈ ہو رہی ہے...",
+noInventoryFound: "کوئی انویٹری نہیں ملی",
 
 //Settings
 settings_title: "سیٹنگز",

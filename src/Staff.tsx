@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { staffRepository, StaffForm } from "./repositories/staffRepository";
 import { User, Role } from "./db";
-import { FaPlus, FaEdit, FaTrash, FaSearch, FaTh, FaList } from "react-icons/fa";
+import { FaPlus, FaEdit, FaTrash, FaSearch, FaTh, FaList,FaUndo,FaEye } from "react-icons/fa";
 import { useLang } from "./i18n/LanguageContext";
 
 const PAGE_SIZE = 8;
@@ -25,6 +25,8 @@ export default function Staff() {
     Role: "saleboy",
     Username: "",
     Password: "",
+    isDeleted: false,
+    deletedAt: null
   };
   const [form, setForm] = useState<StaffForm>(emptyForm);
 
@@ -32,6 +34,11 @@ export default function Staff() {
 
   const { t, lang, setLang } = useLang();
   
+  const [showDeleted, setShowDeleted] = useState(false);
+
+  const [showDeletedModal, setShowDeletedModal] = useState(false);
+  const [deletedUsers, setDeletedUsers] = useState<User[]>([]); 
+
   /** Load current page of users */
   const loadPage = async () => {
     const { total: t, data } = await staffRepository.getPaged(
@@ -64,6 +71,8 @@ export default function Staff() {
       Role: user.Role,
       Username: user.Username,
       Password: user.Password,
+      isDeleted: user.isDeleted,
+      deletedAt: user.deletedAt
     });
     setFormOpen(true);
   };
@@ -102,6 +111,25 @@ export default function Staff() {
     await loadPage();
   };
 
+  const loadDeletedUsers = async () => {
+  const { data } = await staffRepository.getPaged(1, 1000, undefined, undefined, true); // includeDeleted = true
+  setDeletedUsers(data.filter(u => u.isDeleted));
+};
+
+const handleRestore = async (id?: number) => {
+  if (!id) return;
+  await staffRepository.restore(id);
+  await loadDeletedUsers();
+  await loadPage(); // refresh main table too
+};
+
+const handlePermanentDelete = async (id?: number) => {
+  if (!id) return;
+  if (!confirm(t("permanentDeleteConfirm"))) return;
+  await staffRepository.permanentDelete(id);
+  await loadDeletedUsers();
+};
+
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const textAlign = lang === "ur" ? "text-right" : "text-left";
@@ -126,6 +154,14 @@ export default function Staff() {
           >
             <FaTh />
           </button>
+
+          <button
+          onClick={() => { setShowDeletedModal(true); loadDeletedUsers(); }}
+          className="flex items-center gap-2 px-3 py-1 rounded bg-blue-600 hover:bg-blue-400 text-white "
+        >
+          <FaEye />{t("showDeleted")}
+        </button>
+
         </div>
       </div>
 
@@ -164,8 +200,56 @@ export default function Staff() {
         >
           <FaPlus /> {t("createnew")}
         </button>
+
       </div>
     </div>
+
+
+{showDeletedModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="absolute inset-0 bg-black opacity-40" onClick={() => setShowDeletedModal(false)} />
+    <div className="relative bg-white rounded-lg shadow-lg w-full max-w-lg p-6 z-50">
+      <h3 className="text-lg font-semibold mb-4">{t("deletedStaff")}</h3>
+      
+      {deletedUsers.length === 0 ? (
+        <div className="text-gray-500 text-center py-6">{t("noDeletedStaff")}</div>
+      ) : (
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {deletedUsers.map((u) => (
+            <div key={u.id} className="flex items-center justify-between border-b p-2">
+              <div>
+                <div className="font-medium">{u.Name}</div>
+                <div className="text-xs text-gray-500">{t("deleted")}: {u.deletedAt ? new Date(u.deletedAt).toLocaleString() : "-"}</div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="p-2 rounded bg-green-100 hover:bg-green-200"
+                  onClick={() => handleRestore(u.id)}
+                  title={t("restore")}
+                >
+                  <FaUndo />
+                </button>
+                <button
+                  className="p-2 rounded bg-red-100 hover:bg-red-200"
+                  onClick={() => handlePermanentDelete(u.id)}
+                  title={t("deletePermanently")}
+                >
+                  <FaTrash />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex justify-end">
+        <button className="px-4 py-2 border rounded" onClick={() => setShowDeletedModal(false)}>
+          {t("close")}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
     {/* Table / Card View */}
     {view === "table" ? (

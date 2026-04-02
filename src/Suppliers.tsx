@@ -16,6 +16,8 @@ import {
   FaMoneyBillWave,
   FaCreditCard,
   FaBalanceScale,
+  FaUndo,
+  FaEye
 } from "react-icons/fa";
 
 const PAGE_SIZE = 8;
@@ -39,6 +41,8 @@ export default function Suppliers() {
     payable: 0,
     paid: 0,
     balance: 0,
+    isDeleted: false,
+    deletedAt: null
   };
 
   const [form, setForm] = useState<Omit<Supplier, "id">>(emptyForm);
@@ -50,6 +54,9 @@ export default function Suppliers() {
   const [totalPayable, setTotalPayable] = useState(0);
   const [totalPaid, setTotalPaid] = useState(0);
   const [totalBalance, setTotalBalance] = useState(0);
+
+  const [deletedSuppliers, setDeletedSuppliers] = useState<Supplier[]>([]);
+  const [showDeletedModal, setShowDeletedModal] = useState(false);
 
   useEffect(() => {
     loadPage();
@@ -121,6 +128,8 @@ export default function Suppliers() {
       payable: c.payable ?? 0,
       paid: c.paid ?? 0,
       balance: c.balance ?? 0,
+      isDeleted: c.isDeleted,
+      deletedAt: c.deletedAt
     });
     setFormOpen(true);
   }
@@ -130,6 +139,35 @@ export default function Suppliers() {
     setForm(emptyForm);
     setFormOpen(false);
   }
+
+  async function loadDeletedSuppliers() {
+  if (!suppliersRepo.getDeleted) return;
+  const deleted = await suppliersRepo.getDeleted();
+  setDeletedSuppliers(deleted);
+}
+
+const openDeletedModal = async () => {
+  await loadDeletedSuppliers();
+  setShowDeletedModal(true);
+};
+
+const closeDeletedModal = () => setShowDeletedModal(false);
+
+const handleRestore = async (id?: number) => {
+  if (!id || !suppliersRepo.restore) return;
+  await suppliersRepo.restore(id);
+  await loadDeletedSuppliers(); // refresh modal list
+  await loadPage(); // refresh main cards/totals
+  await loadSummary();
+};
+
+const handlePermanentDelete = async (id?: number) => {
+  if (!id || !suppliersRepo.permanentDelete) return;
+  if (!window.confirm("Permanently delete this supplier?")) return;
+  await suppliersRepo.permanentDelete(id);
+  await loadDeletedSuppliers();
+  await loadPage();
+};
 
 async function handleSave() {
   if (!form.name?.trim()) return alert("Enter supplier name");
@@ -174,6 +212,8 @@ async function handleSave() {
       payable: payableNum,
       paid: 0,
       balance: payableNum, // initial balance = payable
+      isDeleted: false,
+      deletedAt: null
     };
     await suppliersRepo.create(newSupplier);
   }
@@ -268,6 +308,14 @@ async function handleSave() {
         >
           <FaTh />
         </button>
+
+        <button
+          onClick={openDeletedModal}
+          className="flex items-center gap-2 px-3 py-1 rounded bg-blue-600 hover:bg-blue-400 text-white "
+        >
+          <FaEye />{t("showDeleted")}
+        </button>
+
       </div>
 
       <div className="flex gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto">
@@ -287,8 +335,55 @@ async function handleSave() {
         >
           <FaPlus /> {t("createnew")}
         </button>
+
       </div>
     </div>
+
+{showDeletedModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="absolute inset-0 bg-black opacity-40" onClick={() => setShowDeletedModal(false)} />
+    <div className="relative bg-white rounded-lg shadow-lg w-full max-w-lg p-6 z-50">
+      <h3 className="text-lg font-semibold mb-4">{t("deletedSuppliers")}</h3>
+
+      {deletedSuppliers.length === 0 ? (
+        <div className="text-gray-500 text-center py-6">{t("noDeletedSuppliers")}</div>
+      ) : (
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {deletedSuppliers.map((c) => (
+            <div key={c.id} className="flex items-center justify-between border-b p-2">
+              <div>
+                <div className="font-medium">{c.name}</div>
+                <div className="text-xs text-gray-500">{t("deleted")}: {c.deletedAt ? new Date(c.deletedAt).toLocaleString() : "-"}</div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="p-2 rounded bg-green-100 hover:bg-green-200"
+                  onClick={() => handleRestore(c.id)}
+                  title={t("restore")}
+                >
+                  <FaUndo />
+                </button>
+                <button
+                  className="p-2 rounded bg-red-100 hover:bg-red-200"
+                  onClick={() => handlePermanentDelete(c.id)}
+                  title={t("deletePermanently")}
+                >
+                  <FaTrash />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex justify-end">
+        <button className="px-4 py-2 border rounded" onClick={() => setShowDeletedModal(false)}>
+          {t("close")}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
 
     {/* ===================== TABLE VIEW ===================== */}
  

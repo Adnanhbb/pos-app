@@ -1,24 +1,30 @@
 // src/staffRepository.ts
-import { getUsersPaged, addUser, updateUser, deleteUser, User, Role } from "../db";
+import { getUsersPaged, addUser, updateUser,getUserById, deleteUser, User, Role } from "../db";
 
 export type StaffForm = Omit<User, "id">;
 
 export const staffRepository = {
   /** Fetch a paged list of users with optional search & role filter */
-  getPaged: async (
+    getPaged: async (
     page: number,
     pageSize: number,
     searchQuery?: string,
-    roleFilter?: Role
+    roleFilter?: Role,
+    includeDeleted: boolean = false // new param
   ): Promise<{ total: number; data: User[] }> => {
-    return getUsersPaged(
+    const { total, data } = await getUsersPaged(
       page,
       pageSize,
-      "Name",                  // sort by Name
-      "asc",                   // ascending
-      roleFilter ?? null,      // filter by role or null
-      searchQuery || null      // search or null
+      "Name",
+      "asc",
+      roleFilter ?? null,
+      searchQuery || null
     );
+
+    // filter out deleted unless requested
+    const filteredData = includeDeleted ? data : data.filter(u => !u.isDeleted);
+
+    return { total: filteredData.length, data: filteredData };
   },
 
   /** Create a new user */
@@ -31,10 +37,30 @@ export const staffRepository = {
     return updateUser(user);
   },
 
-  /** Delete a user by ID */
+
+  /** Soft-delete a user by ID */
   remove: async (id: number) => {
-    return deleteUser(id);
+    const user = await getUserById(id); // make sure this helper exists in db.ts
+    if (!user) throw new Error("User not found");
+
+    await updateUser({ 
+      ...user, 
+      isDeleted: true, 
+      deletedAt: Date.now() 
+    });
+
+    return true;
   },
+
+  restore: async (id: number) => {
+  const user = await getUserById(id);
+  if (!user) throw new Error("User not found");
+  await updateUser({ ...user, isDeleted: false, deletedAt: null });
+},
+
+permanentDelete: async (id: number) => {
+  return deleteUser(id);
+},
   
 };
 

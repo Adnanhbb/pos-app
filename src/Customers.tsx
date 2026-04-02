@@ -15,6 +15,8 @@ import {
   FaMoneyBillWave,
   FaCreditCard,
   FaBalanceScale,
+  FaUndo,
+  FaEye
 } from "react-icons/fa";
 
 const PAGE_SIZE = 8;
@@ -64,6 +66,9 @@ const [form, setForm] = useState<CustomerForm>(emptyForm);
 
   const { t, lang, setLang } = useLang();
 
+  const [showDeletedModal, setShowDeletedModal] = useState(false);
+  const [deletedCustomers, setDeletedCustomers] = useState<Customer[]>([]);
+  
   useEffect(() => {
     loadPage();
     loadSummary();
@@ -153,6 +158,36 @@ const [form, setForm] = useState<CustomerForm>(emptyForm);
     setFormOpen(false);
   }
 
+  // 2️⃣ Load deleted customers for modal
+const loadDeletedCustomers = async () => {
+  const deleted = await customersRepo.getDeleted();
+setDeletedCustomers(deleted);
+};
+
+// 3️⃣ Open deleted customers modal
+const openDeletedModal = async () => {
+  await loadDeletedCustomers();
+  setShowDeletedModal(true);
+};
+
+// 4️⃣ Restore customer
+const handleRestore = async (id?: number) => {
+  if (!id) return;
+  await customersRepo.restore(id);
+  await loadDeletedCustomers(); // refresh list
+  await loadPage(); // optional: refresh main customer list
+  await loadSummary();
+};
+
+// 5️⃣ Permanently delete customer
+const handlePermanentDelete = async (id?: number) => {
+  if (!id) return;
+  if (!confirm("Permanently delete this customer?")) return;
+  await customersRepo.permanentDelete(id);
+  await loadDeletedCustomers(); // refresh list
+  await loadPage();
+};
+
   // handleSave
 async function handleSave() {
   if (!form.name.trim()) return alert("Name is required");
@@ -185,6 +220,8 @@ async function handleSave() {
     payable: payableNum,
     paid: paidNum,
     balance: balanceNum,
+    isDeleted: false,
+    deletedAt: null,
   };
 
   if (editingCustomer) {
@@ -280,12 +317,21 @@ async function handleSave() {
         >
           <FaList />
         </button>
+
         <button
           className={`p-2 rounded ${view === "cards" ? "bg-indigo-600 text-white" : "bg-gray-200"}`}
           onClick={() => setView("cards")}
         >
           <FaTh />
         </button>
+
+        <button
+          onClick={openDeletedModal}
+          className="flex items-center gap-2 px-3 py-1 rounded bg-blue-600 hover:bg-blue-400 text-white "
+        >
+          <FaEye />{t("showDeleted")}
+        </button>
+
       </div>
 
       <div className="flex gap-2 flex-wrap sm:flex-nowrap w-full sm:w-auto">
@@ -359,6 +405,51 @@ async function handleSave() {
       </div>
     )}
 
+{showDeletedModal && (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="absolute inset-0 bg-black opacity-40" onClick={() => setShowDeletedModal(false)} />
+    <div className="relative bg-white rounded-lg shadow-lg w-full max-w-lg p-6 z-50">
+      <h3 className="text-lg font-semibold mb-4">{t("deletedCustomers")}</h3>
+
+      {deletedCustomers.length === 0 ? (
+        <div className="text-gray-500 text-center py-6">{t("noDeletedCustomers")}</div>
+      ) : (
+        <div className="space-y-2 max-h-96 overflow-y-auto">
+          {deletedCustomers.map((c) => (
+            <div key={c.id} className="flex items-center justify-between border-b p-2">
+              <div>
+                <div className="font-medium">{c.name}</div>
+                <div className="text-xs text-gray-500">{t("deleted")}: {c.deletedAt ? new Date(c.deletedAt).toLocaleString() : "-"}</div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  className="p-2 rounded bg-green-100 hover:bg-green-200"
+                  onClick={() => handleRestore(c.id)}
+                  title={t("restore")}
+                >
+                  <FaUndo />
+                </button>
+                <button
+                  className="p-2 rounded bg-red-100 hover:bg-red-200"
+                  onClick={() => handlePermanentDelete(c.id)}
+                  title={t("deletePermanently")}
+                >
+                  <FaTrash />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="mt-4 flex justify-end">
+        <button className="px-4 py-2 border rounded" onClick={() => setShowDeletedModal(false)}>
+          {t("close")}
+        </button>
+      </div>
+    </div>
+  </div>
+)}
     {/* CARDS VIEW */}
     {view === "cards" && (
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
