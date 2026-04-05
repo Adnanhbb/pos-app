@@ -621,7 +621,7 @@ const saveEditedUser = async () => {
       case "sales":
         return (
           <li key="Sales">
-            <CollapsibleButton label="sales" open={posOpen} setOpen={setPosOpen} />
+            <CollapsibleButton label="transactions" open={posOpen} setOpen={setPosOpen} />
             {posOpen && (
               <ul className="ml-6 mt-1 space-y-1">
                 <SubMenuButton name="pos" icon={<FaReceipt />} />

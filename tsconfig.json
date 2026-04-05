@@ -9,12 +9,12 @@
     "allowSyntheticDefaultImports": true,
     "strict": true,
     "forceConsistentCasingInFileNames": true,
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "react-jsx",
-    "baseUrl": "./src"
+    "paths": {"@/*": ["./src/*"]},
   },
   "include": ["src/**/*", "postcss.config.cjs", "tailwind.config.cjs"],
   "exclude": ["node_modules", "dist"]

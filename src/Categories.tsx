@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { FaPlus, FaEdit, FaTrash } from "react-icons/fa";
 // ✅ Add
 import { categoriesRepository } from "./repositories/categoriesRepository";
-import { Category } from "db";
+import { Category } from "./db";
 import { useLang } from "./i18n/LanguageContext";
 
 export default function CategoriesPage() {

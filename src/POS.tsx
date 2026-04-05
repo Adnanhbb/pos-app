@@ -1,6 +1,6 @@
 // src/POS.tsx
 import { useEffect, useMemo, useState,useRef } from "react";
-import { FaBarcode, FaEdit, FaTrash, FaTimes, FaCheck, FaPlus, FaHandHolding, FaHandHoldingUsd, FaClock } from "react-icons/fa";
+import { FaBarcode, FaEdit, FaTrash, FaTimes, FaCheck, FaPlus, FaHandHolding, FaHandHoldingUsd, FaClock, FaEye } from "react-icons/fa";
 
 // 🔹 DB INTEGRATION
 import { itemsRepository } from "./repositories/itemsRepository";
@@ -8,7 +8,7 @@ import { customersRepository } from "./repositories/customerRepository";
 import { suppliersRepository as supplierRepo } from "./repositories/suppliersRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
-import type { Brand, Category,Item } from "./db";
+import type { Brand, Category,DBHeld,DBHeldItem,Item } from "./db";
 import { salesRepository } from "./repositories/salesRepository";
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
 import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
@@ -17,6 +17,8 @@ import { taxRepository } from "./repositories/taxRepository";
 import type { Discount, Tax } from "./db";
 import { printInvoice } from "./services/printing/printService";
 import { useLang } from "./i18n/LanguageContext";
+import { heldRepository } from "./repositories/heldRepository";
+
 
 // =====================
 // Types
@@ -278,6 +280,9 @@ export default function SalesPOS({ currentUser }: POSProps) {
   const selectedCustomer = customers.find(c => c.id === selectedCustomerId) || null;
   const [customerArrears, setCustomerArrears] = useState(0);
 
+  const [resumeCustomerId, setResumeCustomerId] = useState<number | null>(null);
+  const [resumeSupplierId, setResumeSupplierId] = useState<number | null>(null);
+
   const [showCustomerModal, setShowCustomerModal] = useState(false);
   const [newCustomer, setNewCustomer] = useState({
     name: "",
@@ -374,6 +379,11 @@ export default function SalesPOS({ currentUser }: POSProps) {
   const showSupplierDropdown = isPurchase || (transactionType === "Return" && returnMode === "supplier");
   const showCustomerDropdown = !isPurchase && !(transactionType === "Return" && returnMode === "supplier");
   
+  const [heldList, setHeldList] = useState<DBHeld[]>([]);
+  const [showHeld, setShowHeld] = useState(false);
+
+  const customersLoadedRef = useRef(false);
+
 useEffect(() => {
   if (transactionType !== "Return") return;
   if (!selectedCustomerId) return;
@@ -407,11 +417,65 @@ useEffect(() => {
   }
 }, [returnMode]);
 
+/* -----------------------------
+   EFFECT TO RESTORE CUSTOMER
+------------------------------*/
+useEffect(() => {
+  if (resumeCustomerId == null) return;
+  if (!customers.length) return;
+
+  const customer = customers.find(
+    c => c.id === resumeCustomerId
+  );
+
+  if (!customer) return;
+
+  requestAnimationFrame(() => {
+    setSelectedCustomerId(customer.id);
+    setCustomerInput(customer.name);
+    setResumeCustomerId(null);
+  });
+
+}, [customers, resumeCustomerId]);
+
+/* -----------------------------
+   EFFECT TO RESTORE SUPPLIER
+------------------------------*/
+useEffect(() => {
+  if (resumeSupplierId === null) return;
+  if (suppliers.length === 0) return;
+
+  const supplier = suppliers.find(s => s.id === resumeSupplierId);
+  setSelectedSupplierId(resumeSupplierId);
+  setSupplierInput(supplier?.name ?? "Direct Purchase");
+
+  // reset the temporary ID
+  setResumeSupplierId(null);
+}, [suppliers, resumeSupplierId]);
+
 useEffect(() => {
   if (transactionType === "Return" && !returnMode) {
     setReturnMode("customer");
   }
 }, [transactionType]);
+
+// ✅ Normalize DB customer → POS customer
+function mapDbCustomerToPosCustomer(dbCustomer: any): Customer {
+  return {
+    id: dbCustomer.id,
+    name: dbCustomer.name,
+    phone: dbCustomer.phone,
+
+    // VERY IMPORTANT
+    arrears:
+      dbCustomer.arrears ??
+      dbCustomer.dues ??
+      dbCustomer.balance ??
+      0,
+
+    invoices: dbCustomer.invoices ?? 0,
+  };
+}
 
 async function handleCompleteTransaction() {
   if (cart.length === 0) {
@@ -708,6 +772,12 @@ for (const ci of cart) {
   });
 }
 
+// ✅ refresh customers so latest dues appear
+const updatedCustomers = await customersRepository.getAll();
+
+setCustomers(
+  updatedCustomers.map(mapDbCustomerToPosCustomer)
+);
 
   /* --------------------------------------------------
      1️⃣1️⃣ RESET UI
@@ -779,6 +849,142 @@ if (shouldPrint) {
 // alert(`${transactionType} completed successfully. Invoice #${invoiceNo}`);
 }
 
+async function handleHoldTransaction() {
+  if (cart.length === 0) {
+    alert("Cart is empty");
+    return;
+  }
+
+  /* -----------------------------
+     CALCULATE TOTALS
+  ------------------------------*/
+  let subtotal = 0;
+
+  cart.forEach(item => {
+    const line = calcLine(item);
+    subtotal += line.total;
+  });
+
+  const discount =
+    discountMode === "percentage"
+      ? (subtotal * Number(discountValue)) / 100
+      : Number(discountValue) || 0;
+
+  const afterDiscount = subtotal - discount;
+
+  const tax =
+    taxMode === "percentage"
+      ? (afterDiscount * Number(taxValue)) / 100
+      : Number(taxValue) || 0;
+
+  const grandTotal = afterDiscount + tax;
+
+  /* -----------------------------
+     PREPARE ITEMS
+  ------------------------------*/
+  const heldItems: Omit<DBHeldItem, "id" | "heldId">[] = cart.map(ci => ({
+    originalItemId: ci.originalItemId,
+    name: ci.name,
+    qty: ci.qty,
+    price: ci.minUnitPrice,
+
+    convQty: ci.convQty,
+
+    priceCategory: ci.priceCategory,
+
+    discountType: ci.discountType,
+    discountValue: ci.discountValue,
+    taxType: ci.taxType,
+    taxValue: ci.taxValue,
+
+    // ✅ separation restored
+    unitMode: ci.unit,
+    unit: ci.unit === "min" ? ci.minunit : ci.maxunit,
+
+    costPrice: ci.costPrice,
+  }));
+
+  /* -----------------------------
+     SAVE HOLD
+  ------------------------------*/
+heldRepository.addHeld(
+  {
+    invoiceNo,
+    date: selectedDate.toString(),
+    transactionType,
+    customerId: selectedCustomerId ?? null,
+    supplierId: selectedSupplierId ?? null,
+    customerName: selectedCustomer?.name ?? "Walk-in Customer",
+    supplierName: selectedSupplier?.name ?? "Direct Purchase",
+    subtotal,
+    discount,
+    tax,
+    grandTotal,
+    paid: Number(paid) || 0,
+    discountMode: discountMode === "percentage" ? "%" : "flat",
+    discountValue,
+    taxMode: taxMode === "percentage" ? "%" : "flat",
+    taxValue,
+    returnMode: returnMode ?? undefined,
+  } as Omit<DBHeld, "items">, // ⚡ correct
+  heldItems
+);
+
+  // refresh held list
+  const updatedHeldList = await heldRepository.getAll();
+  setHeldList(updatedHeldList);
+  
+  cancelSale();
+
+  alert("Transaction placed on HOLD");
+}
+
+async function resumeHeld(heldId: number) {
+  const held = heldList.find(h => h.id === heldId);
+  if (!held) return;
+
+  const items = await heldRepository.getItemsByHeldId(heldId);
+
+  setPaid(held.paid);
+  setReturnMode(held.returnMode ?? "customer");
+
+  // TEMP: just store IDs, actual objects will be restored by useEffect
+  setResumeCustomerId(held.customerId ?? null);
+  setResumeSupplierId(held.supplierId ?? null);
+
+  setDiscountMode(held.discountMode === "%" ? "percentage" : "Fixed Amount");
+  setDiscountValue(held.discountValue);
+
+  setTaxMode(held.taxMode === "%" ? "percentage" : "Fixed Amount");
+  setTaxValue(held.taxValue);
+
+  setSelectedDate(held.date);
+
+  const restoredCart: CartItem[] = items.map(heldItem => ({
+    id: heldItem.id ?? 0,
+    originalItemId: heldItem.originalItemId,
+    name: heldItem.name,
+    unit: heldItem.unitMode,
+    minunit: heldItem.unit,
+    maxunit: heldItem.unit,
+    convQty: heldItem.convQty ?? 1,
+    qty: heldItem.qty,
+    minUnitPrice: heldItem.price,
+    priceCategory: heldItem.priceCategory,
+    discountType: heldItem.discountType,
+    discountValue: heldItem.discountValue,
+    taxType: heldItem.taxType,
+    taxValue: heldItem.taxValue,
+    uiDeductedQty: 0,
+    costPrice: heldItem.costPrice ?? heldItem.price,
+  }));
+
+  setCart(restoredCart);
+
+  await heldRepository.deleteHeld(heldId);
+  setShowHeld(false);
+}
+
 interface UnitPriceContext {
   unit: UnitType;        // which unit the entered price belongs to
   price: number;         // price for THAT unit
@@ -816,25 +1022,26 @@ function priceForUnit(
     })();
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      const dbCustomers = await customersRepository.getAll();
-      const mapped = dbCustomers.map(c => ({
-        id: c.id!,
-        name: c.name,
-        phone: c.mobile,
-        arrears: c.balance ?? 0,
-        invoices: c.invoices ?? 0,
-      }));
+  // ✅ After loading customers
+useEffect(() => {
+  (async () => {
+    const dbCustomers = await customersRepository.getAll();
+    const mapped = dbCustomers.map(c => ({
+      id: c.id!,
+      name: c.name,
+      phone: c.mobile,
+      arrears: c.balance ?? 0,
+      invoices: c.invoices ?? 0,
+    }));
 
-      setCustomers(mapped);
+    setCustomers(
+  mapped.map(mapDbCustomerToPosCustomer)
+);
+    customersLoadedRef.current = true;
 
-      setSelectedCustomerId(null);
-      setSelectedCustomerId(null);
-      setCustomerInput(isPurchase ? "Direct Purchase" : "Walk-in Customer");
+  })();
+}, []);
 
-    })();
-  }, []);
 
   useEffect(() => {
     const customer = customers.find(c => c.id === selectedCustomerId);
@@ -1083,6 +1290,11 @@ if (isReturn) {
   setReturnMode("customer"); // default return
 }
 
+}
+
+async function loadHeldTransactions() {
+  const held = await heldRepository.getAllHeld();
+  setHeldList(held.reverse()); // newest first
 }
 
 function handleTransactionTypeChange(
@@ -1648,6 +1860,14 @@ return (
   ))}
 </select>
 
+    <button
+      className="w-full flex items-center justify-center gap-2 bg-white-600 text-black border-2 px-4 py-2 rounded hover:bg-gray-100 transition"
+      onClick={async () => {await loadHeldTransactions();
+                              setShowHeld(true);
+  }}
+    >
+      <FaEye />  Held {transactionType}s
+    </button>
   </div>
 
 {/* Items grid */}
@@ -2048,7 +2268,7 @@ return (
   <div className="flex gap-2 mt-1">
     <button
       className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
-      onClick={handleCompleteTransaction}
+      onClick={handleHoldTransaction}
     >
       <FaHandHoldingUsd /> {t("hold")} {t(transactionType.toLowerCase())}
     </button>
@@ -2220,6 +2440,60 @@ return (
   </div>
 )}
 
+{showHeld && (
+  <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
+    <div className="bg-white w-[600px] max-h-[80vh] overflow-auto rounded shadow-lg p-4">
+
+     <h2 className="flex justify-between items-center text-lg font-semibold mb-3">
+  Held Transactions
+  <button
+    onClick={() => setShowHeld(false)}
+    className="px-3 py-1 border rounded"
+    title="Close"
+  >
+    X
+  </button>
+</h2>
+
+      {heldList.length === 0 && (
+        <p className="text-sm text-gray-500">
+          No held transactions
+        </p>
+        
+      )}
+
+      {heldList.map(h => (
+        <div
+          key={h.id}
+          className="border p-3 rounded mb-2 flex justify-between items-center"
+        >
+          <div>
+            <div className="font-medium">
+              {h.customerName}
+            </div>
+
+            <div className="text-xs text-gray-500">
+              {new Date(h.date).toLocaleString()}
+            </div>
+
+            <div className="text-sm">
+              Rs {h.grandTotal}
+            </div>
+          </div>
+
+          <button
+            onClick={() => resumeHeld(h.id!)}
+            className="bg-green-600 text-white px-3 py-1 rounded"
+          >
+            Resume
+          </button>
+        </div>
+      ))}
+
+      
+    </div>
+  </div>
+)}
 
       {showCustomerModal && (
   <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">

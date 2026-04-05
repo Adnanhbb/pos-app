@@ -186,9 +186,115 @@ export interface DBSaleItem {
   taxValue: number;
 }
 
+/* ---------------------------------------
+   HELD TRANSACTION
+----------------------------------------*/
+export interface DBHeld {
+  id?: number;
+
+  invoiceNo: string;
+  date: string;
+
+  transactionType: "Sale" | "Purchase" | "Return" | "Quotation";
+
+  customerId: number | null;
+  supplierId: number | null;
+
+  customerName: string;
+  supplierName: string;
+
+  subtotal: number;
+  discount: number;
+  tax: number;
+  grandTotal: number;
+
+  paid: number;
+
+  discountMode: "%" | "flat";
+  discountValue: number;
+  taxMode: "%" | "flat";
+  taxValue: number;
+
+  returnMode?: "customer" | "supplier";
+
+  items: DBHeldItem[];
+}
+
+export interface DBHeldItem {
+  id?: number;
+  heldId: number;
+
+  originalItemId: number;
+  name: string;
+
+  qty: number;
+  price: number; // min unit price
+
+  convQty: number;
+
+  priceCategory: "Retail" | "Discount" | "Wholesale";
+
+  discountType: "%" | "flat";
+  discountValue: number;
+  taxType: "%" | "flat";
+  taxValue: number;
+
+  /** unit selector (logic) */
+  unitMode: "min" | "max";
+
+  /** actual label (Kg, Box, etc) */
+  unit: string;
+
+  costPrice?: number;
+}
+
 /* ==========================================================
    DATABASE SCHEMA
    ========================================================== */
+
+   export interface DBHeld {
+  id?: number;
+  invoiceNo: string;
+  date: string;
+  transactionType: "Sale" | "Purchase" | "Return" | "Quotation";
+
+  customerId: number | null;
+  supplierId: number | null;
+
+  customerName: string;
+  supplierName: string;
+
+  discountMode: "%" | "flat";
+  discountValue: number;
+  taxMode: "%" | "flat";
+  taxValue: number;
+
+  subtotal: number;
+  discount: number;
+  tax: number;
+  grandTotal: number;
+}
+
+export interface DBHeldItem {
+  id?: number;
+  heldId: number;
+
+  originalItemId: number;
+  name: string;
+  qty: number;
+  price: number;
+
+  priceCategory: "Retail" | "Discount" | "Wholesale";
+
+  discountType: "%" | "flat";
+  discountValue: number;
+
+  taxType: "%" | "flat";
+  taxValue: number;
+
+  unit: string; 
+  costPrice?: number;
+}
 
  interface POSDB extends DBSchema {
   users: {
@@ -298,6 +404,27 @@ export interface DBSaleItem {
     value: ExpCateg;
     indexes: { "by-category": string };
   };
+
+    /* ----------------------------------
+     HELD TRANSACTIONS (NEW)
+  ---------------------------------- */
+
+  held: {
+    key: number;
+    value: DBHeld;
+    indexes: {
+      "by-invoiceNo": string;
+      "by-date": string;
+    };
+  };
+
+  held_items: {
+    key: number;
+    value: DBHeldItem;
+    indexes: {
+      "by-heldId": number;
+    };
+  };
 }
 
 
@@ -311,7 +438,7 @@ let _db: IDBPDatabase<POSDB> | null = null;
 export async function initDB() {
   if (_db) return _db;
 
-  _db = await openDB<POSDB>("POSDatabase", 12,{
+  _db = await openDB<POSDB>("POSDatabase", 13,{
     // bumped version to 9 to include expenses store
     upgrade(db, oldVersion, newVersion, transaction) {
       /* ---------------- USERS STORE ---------------- */
@@ -515,12 +642,45 @@ if (!db.objectStoreNames.contains("sale_items")) {
   store.createIndex("by-saleId", "saleId");
 }
 
+/* ---------------------------------------
+   HELD TRANSACTIONS
+----------------------------------------*/
+if (!db.objectStoreNames.contains("held")) {
+  const heldStore = db.createObjectStore("held", {
+    keyPath: "id",
+    autoIncrement: true,
+  });
+  heldStore.createIndex("by-invoiceNo", "invoiceNo");
+  heldStore.createIndex("by-date", "date");
+} else {
+  const heldStore = transaction.objectStore("held");
+  if (!heldStore.indexNames.contains("by-invoiceNo")) {
+    heldStore.createIndex("by-invoiceNo", "invoiceNo");
+  }
+  if (!heldStore.indexNames.contains("by-date")) {
+    heldStore.createIndex("by-date", "date");
+  }
+}
+
+if (!db.objectStoreNames.contains("held_items")) {
+  const heldItemsStore = db.createObjectStore("held_items", {
+    keyPath: "id",
+    autoIncrement: true,
+  });
+  heldItemsStore.createIndex("by-heldId", "heldId");
+} else {
+  const heldItemsStore = transaction.objectStore("held_items");
+  if (!heldItemsStore.indexNames.contains("by-heldId")) {
+    heldItemsStore.createIndex("by-heldId", "heldId");
+  }
+}
 
     },
   });
 
   return _db;
 }
+
 
 /* ==========================================================
    USERS API
@@ -1434,7 +1594,7 @@ export const addExpCategory = async (category: string): Promise<number> => {
 };
 
 const DB_NAME = "POSDatabase";
-const DB_VERSION = 12;
+const DB_VERSION = 13;
 
 class Database {
   private conn: IDBDatabase | null = null;
