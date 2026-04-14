@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { salesRepository } from "./repositories/salesRepository";
 import type { DBSale, DBSaleItem } from "./db";
-import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight, FaTrash,FaPrint } from "react-icons/fa";
+import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight, FaTrash,FaPrint, FaEye } from "react-icons/fa";
 import { customersRepository } from "./repositories/customerRepository";
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
 import { indexedDbSupplierRepository as suppliersRepository } from "./repositories/indexedDbSupplierRepository";
@@ -52,49 +52,65 @@ export default function Invoices() {
 
   const { t, lang, setLang } = useLang();
   
+  const [showPostponedOnly, setShowPostponedOnly] = useState(false);
+
   // Load total count on mount or filter change
-  useEffect(() => {
-    // Reset return sub-filter when switching type
-    if (transactionTypeFilter !== "Return") {
-      setReturnSubFilter("All");
-    }
-    async function loadCount() {
-      if (transactionTypeFilter === "All") {
-        const count = await salesRepository.getSalesCount();
-        setTotalRecords(count);
-      } else {
-        const { total } = await salesRepository.getSalesPaged(1, PAGE_SIZE, transactionTypeFilter as any);
-        setTotalRecords(total);
-      }
-      setCurrentPage(1);
-    }
-    loadCount();
-  }, [transactionTypeFilter]);
+ useEffect(() => {
+  async function loadCount() {
+    const total = await salesRepository.getSalesCountFiltered({
+      transactionType: transactionTypeFilter,
+      search,
+      showPostponedOnly,
+    });
+
+    setTotalRecords(total);
+    setCurrentPage(1);
+  }
+
+  loadCount();
+}, [
+  transactionTypeFilter,
+  search,
+  showPostponedOnly,
+  returnSubFilter
+]);
 
   // Load current page
-  useEffect(() => {
-    let cancelled = false;
+ useEffect(() => {
+  let cancelled = false;
 
-    async function loadPage() {
-      setLoading(true);
-      let data: DBSale[] = [];
-      if (transactionTypeFilter === "All") {
-        data = await salesRepository.getSalesPage(currentPage, PAGE_SIZE);
-      } else {
-        const res = await salesRepository.getSalesPaged(currentPage, PAGE_SIZE, transactionTypeFilter as any);
-        data = res.data;
+  async function loadPage() {
+    setLoading(true);
+
+    const res = await salesRepository.getSalesPagedFiltered(
+      currentPage,
+      PAGE_SIZE,
+      {
+        transactionType: transactionTypeFilter,
+        search,
+        showPostponedOnly,
+        returnSubFilter,
       }
-      if (!cancelled) {
-        // Sort ascending by invoiceNo (assuming numeric)
-        data.sort((a, b) => Number(a.invoiceNo ?? 0) - Number(b.invoiceNo ?? 0));
-        setSales(data);
-        setLoading(false);
-      }
+    );
+
+    if (!cancelled) {
+      setSales(res.data);
+      setTotalRecords(res.total);
+      setLoading(false);
     }
+  }
 
-    loadPage();
-    return () => { cancelled = true; };
-  }, [currentPage, transactionTypeFilter]);
+  loadPage();
+  return () => {
+    cancelled = true;
+  };
+}, [
+  currentPage,
+  transactionTypeFilter,
+  search,
+  showPostponedOnly,
+  returnSubFilter
+]);
 
   // Load selected invoice items
   useEffect(() => {
@@ -126,42 +142,6 @@ export default function Invoices() {
     if (page < 1 || page > totalPages) return;
     setCurrentPage(page);
   };
-
-  // 🔽 AFTER all useEffect / useMemo blocks
-const filteredInvoices = sales.filter(inv => {
-
-  // Transaction type filter
-  if (transactionTypeFilter !== "All") {
-    if (inv.transactionType !== transactionTypeFilter) return false;
-  }
-
-  // Return sub-filter (RET-C / RET-S)
-  if (transactionTypeFilter === "Return") {
-
-    if (returnSubFilter === "Cus" && !inv.invoiceNo?.startsWith("RET-C")) {
-      return false;
-    }
-
-    if (returnSubFilter === "Sup" && !inv.invoiceNo?.startsWith("RET-S")) {
-      return false;
-    }
-
-    // "All" = show both
-  }
-
-  // Search filter
-  if (search.trim()) {
-    const q = search.toLowerCase();
-
-    return (
-      inv.invoiceNo?.toLowerCase().includes(q) ||
-      inv.customerName?.toLowerCase().includes(q) ||
-      inv.supplierName?.toLowerCase().includes(q)
-    );
-  }
-
-  return true;
-});
 
 const handleDeleteInvoice = async (invoice: DBSale) => {
   if (!invoice.id) return;
@@ -351,6 +331,49 @@ const handlePrintInvoice = async (invoice: DBSale) => {
   }
 };
 
+async function handleRemovePostponed(inv: DBSale) {
+  if (!inv.id) return;
+
+  const confirmRemove = window.confirm(
+    `Are you sure you want to remove Invoice #${inv.invoiceNo} from postponed list?`
+  );
+
+  if (!confirmRemove) return;
+
+  try {
+    // 1️⃣ Update DB
+    await salesRepository.update({
+      ...inv,
+      isPostponed: false,
+    });
+
+    // 2️⃣ Reload CURRENT PAGE with SAME filters (IMPORTANT FIX)
+    const res = await salesRepository.getSalesPagedFiltered(
+      currentPage,
+      PAGE_SIZE,
+      {
+        transactionType: transactionTypeFilter,
+        search,
+        showPostponedOnly,
+        returnSubFilter,
+      }
+    );
+
+    // 3️⃣ Update UI state
+    setSales(res.data);
+    setTotalRecords(res.total);
+
+    // 4️⃣ Clear selection if needed
+    if (selectedInvoice?.id === inv.id) {
+      setSelectedInvoice(null);
+    }
+
+  } catch (err) {
+    console.error("Failed to update postponed status:", err);
+    alert("Failed to remove from postponed list");
+  }
+}
+
     const textAlign = lang === "ur" ? "text-right" : "text-left";
 
   return (
@@ -358,7 +381,20 @@ const handlePrintInvoice = async (invoice: DBSale) => {
       
       {/* LEFT PANEL */}
       <div className="w-full lg:w-4/5 bg-white shadow rounded-lg p-4 flex flex-col gap-4">
-        <h1 className="text-xl font-semibold">{t("viewinvoices")}</h1>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h1 className="text-xl font-semibold">
+            {t("viewinvoices")}
+          </h1>
+
+           <label className="flex items-center gap-2 text-xs">
+          <input
+            type="checkbox"
+            checked={showPostponedOnly}
+            onChange={(e) => setShowPostponedOnly(e.target.checked)}
+          />
+          Show Postponed Invoices
+        </label>
+        </div>
 
         <div className="flex items-center justify-between gap-4">
 
@@ -448,26 +484,27 @@ const handlePrintInvoice = async (invoice: DBSale) => {
             </tr>
             </thead>
             <tbody>
-              {filteredInvoices.map(filteredInvoices => (
+              {sales.map(inv => (
                 <tr
-                  key={filteredInvoices.id}
-                  className={`cursor-pointer hover:bg-gray-100 ${selectedInvoice?.id === filteredInvoices.id ? "bg-blue-50" : ""}`}
-                  onClick={() => setSelectedInvoice(filteredInvoices)}
+                  key={inv.id}
+                  className={`cursor-pointer hover:bg-gray-100 ${selectedInvoice?.id === inv.id ? "bg-blue-50" : ""}`}
+                  onClick={() => setSelectedInvoice(inv)}
                 >
-                  <td className="border p-2">{filteredInvoices.invoiceNo}</td>
-                  <td className="border p-2">{getPartyName(filteredInvoices)}</td>
+                  <td className="border p-2">{inv.invoiceNo}</td>
+                  <td className="border p-2">{getPartyName(inv)}</td>
                   <td className="border p-2">
-                    {new Date(filteredInvoices.date).toLocaleDateString()}
+                    {new Date(inv.date).toLocaleDateString()}
                   </td>
-                  <td className="border p-2 text-right">{filteredInvoices.grandTotal.toFixed()}</td>
+                  <td className="border p-2 text-right">{inv.grandTotal.toFixed()}</td>
                   <td className="border p-2 text-center space-x-1">
 
                       {/* PRINT */}
                       <button
                         onClick={e => {
                           e.stopPropagation();
-                          handlePrintInvoice(filteredInvoices);
+                          handlePrintInvoice(inv);
                         }}
+                        title={t("print")}
                         className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
                       >
                         🖨
@@ -477,8 +514,9 @@ const handlePrintInvoice = async (invoice: DBSale) => {
                       <button
                         onClick={e => {
                           e.stopPropagation();
-                          handleDeleteInvoice(filteredInvoices);
+                          handleDeleteInvoice(inv);
                         }}
+                        title={t("delete")}
                         className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
                       >
                         <FaTrash />
@@ -490,7 +528,7 @@ const handlePrintInvoice = async (invoice: DBSale) => {
               ))}
               {sales.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-4 text-center">{t("noinvoicesfound")}</td>
+                  <td colSpan={5} className="p-4 text-center">{t("noinvoicesfound")}</td>
                 </tr>
               )}
             </tbody>
@@ -513,10 +551,32 @@ const handlePrintInvoice = async (invoice: DBSale) => {
           <>
             {/* Header: invoice info */}
             <div className="flex justify-between items-start mb-4 text-sm">
-              <div >
-                <h2 className="text-lg font-semibold">{t("invoice")} #: {selectedInvoice.invoiceNo}</h2>
-                <p><strong>{t("date")}:</strong> {new Date(selectedInvoice.date).toLocaleDateString()}</p>
-                <p><strong>{t("custsuppname")}:</strong> {getPartyName(selectedInvoice)}</p>
+              <div>
+                <h2 className="text-lg font-semibold">
+                  {t("invoice")}: {selectedInvoice.invoiceNo}
+                </h2>
+
+                <p>
+                  <strong>{t("date")}:</strong>{" "}
+                  {new Date(selectedInvoice.date).toLocaleDateString()}
+                </p>
+
+                <p>
+                  <strong>{t("custsuppname")}:</strong>{" "}
+                  {getPartyName(selectedInvoice)}
+                </p>
+
+                {selectedInvoice.isPostponed && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemovePostponed(selectedInvoice); // ✅ correct object
+                    }}
+                    className="flex items-center gap-2 bg-blue-100 text-gray-600 border-2 px-2 py-1 rounded hover:bg-gray-200 transition"
+                  >
+                    <FaEye /> Remove from Postponed List
+                  </button>
+                )}
               </div>
               <div>
                 {/* <p><strong>Transaction:</strong> {selectedInvoice.transactionType}</p> */}

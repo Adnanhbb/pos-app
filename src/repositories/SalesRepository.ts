@@ -10,6 +10,9 @@ function promisify<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
+type TransactionFilter = "All" | DBSale["transactionType"];
+type ReturnSubFilter = "All" | "Cus" | "Sup";
+
 export const salesRepository = {
   /**
    * Add a SALE or PURCHASE transaction
@@ -41,6 +44,30 @@ async addTransaction(
     };
 
     saleReq.onerror = () => reject(saleReq.error);
+    tx.onerror = () => reject(tx.error);
+  });
+},
+
+async update(sale: DBSale): Promise<void> {
+  const conn = await db.open();
+
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction(["sales"], "readwrite");
+    const store = tx.objectStore("sales");
+
+    // ⚠️ Important: sale MUST have id
+    if (!sale.id) {
+      reject(new Error("Sale ID is required for update"));
+      return;
+    }
+
+    const req = store.put(sale); // ✅ put = update or insert
+
+    req.onsuccess = () => {
+      tx.oncomplete = () => resolve();
+    };
+
+    req.onerror = () => reject(req.error);
     tx.onerror = () => reject(tx.error);
   });
 },
@@ -105,6 +132,169 @@ async addTransaction(
       };
     });
   },
+
+  async getSalesCountFiltered(filters: {
+  transactionType?: TransactionFilter;
+  search?: string;
+  showPostponedOnly?: boolean;
+  returnSubFilter?: ReturnSubFilter;
+}): Promise<number> {
+  const conn = await db.open();
+  const tx = conn.transaction("sales", "readonly");
+  const store = tx.objectStore("sales");
+
+  const q = filters.search?.toLowerCase() || "";
+  let count = 0;
+
+  return new Promise((resolve, reject) => {
+    const req = store.openCursor(null, "prev");
+
+    req.onerror = () => reject(req.error);
+
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return resolve(count);
+
+      const sale = cursor.value as DBSale;
+
+      // 🔹 postponed filter
+      if (filters.showPostponedOnly && !sale.isPostponed) {
+        cursor.continue();
+        return;
+      }
+
+      // 🔹 type filter
+      if (
+        filters.transactionType &&
+        filters.transactionType !== "All" &&
+        sale.transactionType !== filters.transactionType
+      ) {
+        cursor.continue();
+        return;
+      }
+
+      // 🔹 search filter
+      if (q) {
+        const match =
+          sale.invoiceNo?.toLowerCase().includes(q) ||
+          sale.customerName?.toLowerCase().includes(q) ||
+          sale.supplierName?.toLowerCase().includes(q);
+
+        if (!match) {
+          cursor.continue();
+          return;
+        }
+      }
+
+      count++;
+      cursor.continue();
+    };
+  });
+},
+
+async getSalesPagedFiltered(
+  page: number,
+  pageSize: number,
+  filters: {
+    transactionType?: TransactionFilter;
+    search?: string;
+    showPostponedOnly?: boolean;
+    returnSubFilter?: ReturnSubFilter;
+  }
+): Promise<{ data: DBSale[]; total: number }> {
+
+  const conn = await db.open();
+  const tx = conn.transaction("sales", "readonly");
+  const store = tx.objectStore("sales");
+
+  const offset = (page - 1) * pageSize;
+
+  const results: DBSale[] = [];
+  let skipped = 0;
+  let total = 0;
+
+  const q = filters.search?.toLowerCase() || "";
+
+  const isReturnFilter = filters.transactionType === "Return";
+
+  return new Promise((resolve, reject) => {
+    const req = store.openCursor(null, "prev");
+
+    req.onerror = () => reject(req.error);
+
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) return resolve({ data: results, total });
+
+      const sale = cursor.value as DBSale;
+
+      // 🔹 postponed filter
+      if (filters.showPostponedOnly && !sale.isPostponed) {
+        cursor.continue();
+        return;
+      }
+
+      // 🔹 type filter
+      if (
+        filters.transactionType &&
+        filters.transactionType !== "All" &&
+        sale.transactionType !== filters.transactionType
+      ) {
+        cursor.continue();
+        return;
+      }
+
+      // 🔹 return sub-filter (SAFE NARROWING)
+      if (isReturnFilter) {
+        const sub = filters.returnSubFilter ?? "All";
+
+        if (
+          sub === "Cus" &&
+          !sale.invoiceNo?.startsWith("RET-C")
+        ) {
+          cursor.continue();
+          return;
+        }
+
+        if (
+          sub === "Sup" &&
+          !sale.invoiceNo?.startsWith("RET-S")
+        ) {
+          cursor.continue();
+          return;
+        }
+      }
+
+      // 🔹 search filter
+      if (q) {
+        const match =
+          sale.invoiceNo?.toLowerCase().includes(q) ||
+          sale.customerName?.toLowerCase().includes(q) ||
+          sale.supplierName?.toLowerCase().includes(q);
+
+        if (!match) {
+          cursor.continue();
+          return;
+        }
+      }
+
+      total++;
+
+      // 🔹 pagination
+      if (skipped < offset) {
+        skipped++;
+        cursor.continue();
+        return;
+      }
+
+      if (results.length < pageSize) {
+        results.push(sale);
+      }
+
+      cursor.continue();
+    };
+  });
+},
 
   async getSalesPaged(
     page: number,

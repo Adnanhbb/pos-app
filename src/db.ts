@@ -170,6 +170,7 @@ export interface DBSale {
   paid: number;
   arrears: number;
   profit:number;
+  isPostponed?: boolean;
 }
 
 export interface DBSaleItem {

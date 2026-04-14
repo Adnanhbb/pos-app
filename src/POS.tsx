@@ -477,7 +477,7 @@ function mapDbCustomerToPosCustomer(dbCustomer: any): Customer {
   };
 }
 
-async function handleCompleteTransaction() {
+async function handleCompleteTransaction(isPostponed: boolean) {
   if (cart.length === 0) {
     alert("Cart is empty");
     return;
@@ -643,6 +643,7 @@ if (isSale || isCustomerReturn) {
     paid: paidAmount,
     arrears,
     profit,
+    isPostponed,
 
     items: transactionItems,
   });
@@ -1861,7 +1862,7 @@ return (
 </select>
 
     <button
-      className="w-full flex items-center justify-center gap-2 bg-white-600 text-black border-2 px-4 py-2 rounded hover:bg-gray-100 transition"
+      className="w-full flex items-center justify-center gap-2 bg-white text-black border-2 px-4 py-2 rounded hover:bg-gray-100 transition"
       onClick={async () => {await loadHeldTransactions();
                               setShowHeld(true);
   }}
@@ -2252,17 +2253,18 @@ return (
   <div className="flex gap-2 mt-2">
     <button
       className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
-      onClick={handleCompleteTransaction}
+      onClick={() => handleCompleteTransaction(false)}
     >
       <FaCheck /> {t("complete")} {t(transactionType.toLowerCase())}
     </button>
 
     <button
-      className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
-      onClick={cancelSale}
+      className="flex-1 flex items-center justify-center gap-2 bg-yellow-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
+      onClick={() => handleCompleteTransaction(true)}
     >
-      <FaTimes /> {t("cancel")} {t(transactionType.toLowerCase())}
+      <FaClock /> {t("postpone")} {t(transactionType.toLowerCase())}
     </button>
+    
   </div>
 
   <div className="flex gap-2 mt-1">
@@ -2274,11 +2276,12 @@ return (
     </button>
 
     <button
-      className="flex-1 flex items-center justify-center gap-2 bg-yellow-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
+      className="flex-1 flex items-center justify-center gap-2 bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 transition"
       onClick={cancelSale}
     >
-      <FaClock /> {t("postpone")} {t(transactionType.toLowerCase())}
+      <FaTimes /> {t("cancel")} {t(transactionType.toLowerCase())}
     </button>
+    
   </div>
 </div>
 
