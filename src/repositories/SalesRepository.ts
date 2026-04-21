@@ -354,99 +354,142 @@ async getSalesPagedFiltered(
    * 🔴 DELETE SALE + RESTORE STOCK (MIN UNITS)
    */
   async deleteSaleAndRestoreStock(saleId: number): Promise<void> {
-    const conn = await db.open();
-
-    return new Promise((resolve, reject) => {
-      const tx = conn.transaction(
-        ["sales", "sale_items", "items"],
-        "readwrite"
-      );
-
-      const salesStore = tx.objectStore("sales");
-      const saleItemsStore = tx.objectStore("sale_items");
-      const itemsStore = tx.objectStore("items");
-
-      const saleItemsReq = saleItemsStore.getAll();
-
-      saleItemsReq.onsuccess = () => {
-        const saleItems = (saleItemsReq.result as DBSaleItem[]).filter(
-          i => i.saleId === saleId
-        );
-
-        // 1️⃣ Restore stock (MIN units)
-        for (const si of saleItems) {
-          const itemReq = itemsStore.get(si.originalItemId);
-          itemReq.onsuccess = () => {
-            const item = itemReq.result as Item;
-            if (!item) return;
-
-            item.availableStock += si.qty;
-            itemsStore.put(item);
-          };
-        }
-
-        // 2️⃣ Delete sale items
-        for (const si of saleItems) {
-          if (si.id != null) saleItemsStore.delete(si.id);
-        }
-
-        // 3️⃣ Delete sale/purchase
-        salesStore.delete(saleId);
-      };
-
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
-    });
-  },
-
-  /**
-   * 🔴 DELETE PURCHASE + RESTORE STOCK (MIN UNITS)
-   */
-  async deletePurchaseAndReduceStock(purchaseId: number): Promise<void> {
   const conn = await db.open();
 
   return new Promise((resolve, reject) => {
     const tx = conn.transaction(
-      ["sales", "sale_items", "items"],
+      ["sales", "sale_items", "items", "item_batches"],
       "readwrite"
     );
 
     const salesStore = tx.objectStore("sales");
     const saleItemsStore = tx.objectStore("sale_items");
     const itemsStore = tx.objectStore("items");
+    const batchStore = tx.objectStore("item_batches");
 
     const saleItemsReq = saleItemsStore.getAll();
 
     saleItemsReq.onsuccess = () => {
-      const purchaseItems = (saleItemsReq.result as DBSaleItem[]).filter(
-        i => i.saleId === purchaseId
+      const saleItems = (saleItemsReq.result as DBSaleItem[]).filter(
+        i => i.saleId === saleId
       );
 
-      // 1️⃣ REDUCE stock (MIN units)
-      for (const pi of purchaseItems) {
-        const itemReq = itemsStore.get(pi.originalItemId);
+      for (const si of saleItems) {
+
+        /* ---------------- STOCK RESTORE ---------------- */
+        const itemReq = itemsStore.get(si.originalItemId);
         itemReq.onsuccess = () => {
           const item = itemReq.result as Item;
           if (!item) return;
 
-          item.availableStock -= pi.qty;
-
-          // Safety guard: never allow negative stock
-          if (item.availableStock < 0) {
-            item.availableStock = 0;
-          }
-
+          item.availableStock += si.qty;
           itemsStore.put(item);
         };
+
+        /* ---------------- BATCH REVERSE ---------------- */
+        if (si.id) {
+          const batchReq = batchStore.get(si.id);
+
+          batchReq.onsuccess = () => {
+            const batch = batchReq.result;
+            if (!batch) return;
+
+            batch.qtySold -= si.qty;
+            batch.balance += si.qty;
+
+            batch.qtySold = Math.max(0, batch.qtySold);
+
+            batchStore.put(batch);
+          };
+        }
       }
 
-      // 2️⃣ Delete purchase items
-      for (const pi of purchaseItems) {
-        if (pi.id != null) saleItemsStore.delete(pi.id);
+      /* ---------------- DELETE ITEMS ---------------- */
+      for (const si of saleItems) {
+        if (si.id != null) saleItemsStore.delete(si.id);
       }
 
-      // 3️⃣ Delete purchase invoice
-      salesStore.delete(purchaseId);
+      /* ---------------- DELETE SALE ---------------- */
+      salesStore.delete(saleId);
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+},
+
+  /**
+   * 🔴 DELETE PURCHASE + RESTORE STOCK (MIN UNITS)
+   */
+async deletePurchaseAndReduceStock(purchaseId: number): Promise<void> {
+  const conn = await db.open();
+
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction(
+      ["sales", "sale_items", "items", "item_batches"],
+      "readwrite"
+    );
+
+    const salesStore = tx.objectStore("sales");
+    const saleItemsStore = tx.objectStore("sale_items");
+    const itemsStore = tx.objectStore("items");
+    const batchStore = tx.objectStore("item_batches");
+
+    const saleReq = salesStore.get(purchaseId);
+
+    saleReq.onsuccess = () => {
+      const sale = saleReq.result as DBSale;
+      if (!sale) return;
+
+      const invoiceNo = sale.invoiceNo;
+
+      const saleItemsReq = saleItemsStore.getAll();
+
+      saleItemsReq.onsuccess = () => {
+        const purchaseItems = (saleItemsReq.result as DBSaleItem[]).filter(
+          i => i.saleId === purchaseId
+        );
+
+        for (const pi of purchaseItems) {
+
+          /* ---------------- STOCK REDUCE ---------------- */
+          const itemReq = itemsStore.get(pi.originalItemId);
+          itemReq.onsuccess = () => {
+            const item = itemReq.result as Item;
+            if (!item) return;
+
+            item.availableStock -= pi.qty;
+            if (item.availableStock < 0) item.availableStock = 0;
+
+            itemsStore.put(item);
+          };
+        }
+
+        /* ---------------- DELETE BATCHES ---------------- */
+        const batchIndex = batchStore.index("by-item");
+
+        for (const pi of purchaseItems) {
+          const batchReq = batchIndex.getAll(pi.originalItemId);
+
+          batchReq.onsuccess = () => {
+            const batches = batchReq.result;
+
+            batches.forEach((b: any) => {
+              if (b.invoiceNo === invoiceNo && b.id) {
+                batchStore.delete(b.id);
+              }
+            });
+          };
+        }
+
+        /* ---------------- DELETE ITEMS ---------------- */
+        for (const pi of purchaseItems) {
+          if (pi.id != null) saleItemsStore.delete(pi.id);
+        }
+
+        /* ---------------- DELETE SALE ---------------- */
+        salesStore.delete(purchaseId);
+      };
     };
 
     tx.oncomplete = () => resolve();
@@ -485,6 +528,145 @@ async deleteQuotation(quotationId: number): Promise<void> {
 
       // 2️⃣ Delete quotation invoice
       salesStore.delete(quotationId);
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+},
+
+async deleteCustomerReturnAndReduceStock(returnId: number): Promise<void> {
+  const conn = await db.open();
+
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction(
+      ["sales", "sale_items", "items", "item_batches"],
+      "readwrite"
+    );
+
+    const salesStore = tx.objectStore("sales");
+    const saleItemsStore = tx.objectStore("sale_items");
+    const itemsStore = tx.objectStore("items");
+    const batchStore = tx.objectStore("item_batches");
+
+    const saleReq = salesStore.get(returnId);
+
+    saleReq.onsuccess = () => {
+      const sale = saleReq.result as DBSale;
+      if (!sale) return;
+
+      const invoiceNo = sale.invoiceNo;
+
+      const saleItemsReq = saleItemsStore.getAll();
+
+      saleItemsReq.onsuccess = () => {
+        const returnItems = (saleItemsReq.result as DBSaleItem[]).filter(
+          i => i.saleId === returnId
+        );
+
+        for (const ri of returnItems) {
+
+          /* ---------------- STOCK REDUCE ---------------- */
+          const itemReq = itemsStore.get(ri.originalItemId);
+          itemReq.onsuccess = () => {
+            const item = itemReq.result as Item;
+            if (!item) return;
+
+            item.availableStock -= ri.qty;
+            if (item.availableStock < 0) item.availableStock = 0;
+
+            itemsStore.put(item);
+          };
+        }
+
+        /* ---------------- DELETE RETURN BATCH ---------------- */
+        const batchIndex = batchStore.index("by-item");
+
+        for (const ri of returnItems) {
+          const batchReq = batchIndex.getAll(ri.originalItemId);
+
+          batchReq.onsuccess = () => {
+            const batches = batchReq.result;
+
+            batches.forEach((b: any) => {
+              if (b.invoiceNo === invoiceNo && b.id) {
+                batchStore.delete(b.id);
+              }
+            });
+          };
+        }
+
+        /* ---------------- DELETE ITEMS ---------------- */
+        for (const ri of returnItems) {
+          if (ri.id != null) saleItemsStore.delete(ri.id);
+        }
+
+        /* ---------------- DELETE SALE ---------------- */
+        salesStore.delete(returnId);
+      };
+    };
+
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+},
+
+async deleteSupplierReturnAndRestoreStock(returnId: number): Promise<void> {
+  const conn = await db.open();
+
+  return new Promise((resolve, reject) => {
+    const tx = conn.transaction(
+      ["sales", "sale_items", "items", "item_batches"],
+      "readwrite"
+    );
+
+    const salesStore = tx.objectStore("sales");
+    const saleItemsStore = tx.objectStore("sale_items");
+    const itemsStore = tx.objectStore("items");
+    const batchStore = tx.objectStore("item_batches");
+
+    const saleItemsReq = saleItemsStore.getAll();
+
+    saleItemsReq.onsuccess = () => {
+      const returnItems = (saleItemsReq.result as DBSaleItem[]).filter(
+        i => i.saleId === returnId
+      );
+
+      for (const ri of returnItems) {
+
+        /* ---------------- STOCK RESTORE ---------------- */
+        const itemReq = itemsStore.get(ri.originalItemId);
+        itemReq.onsuccess = () => {
+          const item = itemReq.result as Item;
+          if (!item) return;
+
+          item.availableStock += ri.qty;
+          itemsStore.put(item);
+        };
+
+        /* ---------------- BATCH REVERSE ---------------- */
+        if (ri.id) {
+          const batchReq = batchStore.get(ri.id);
+
+          batchReq.onsuccess = () => {
+            const batch = batchReq.result;
+            if (!batch) return;
+
+            batch.qtyPurchased += ri.qty;
+            batch.balance += ri.qty;
+
+            batchStore.put(batch);
+          };
+        }
+      }
+
+      /* ---------------- DELETE ITEMS ---------------- */
+      for (const ri of returnItems) {
+        if (ri.id != null) saleItemsStore.delete(ri.id);
+      }
+
+      /* ---------------- DELETE SALE ---------------- */
+      salesStore.delete(returnId);
     };
 
     tx.oncomplete = () => resolve();

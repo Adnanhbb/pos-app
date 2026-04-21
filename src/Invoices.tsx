@@ -9,6 +9,7 @@ import { indexedDbSupplierRepository as suppliersRepository } from "./repositori
 import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
 import { printInvoice } from "./services/printing/printService";
 import { useLang } from "./i18n/LanguageContext";
+import { batchRepository } from "./repositories/batchRepository";
 
 const PAGE_SIZE = 10;
 const TRANSACTION_TYPES = ["All", "Sale", "Purchase", "Return", "Quotation"] as const;
@@ -165,15 +166,12 @@ else if (invoice.transactionType === "Purchase") {
 }
 else if (invoice.transactionType === "Return") {
 
-  // 🔹 Determine return type by prefix
   const isSupplierReturn = invoice.invoiceNo?.startsWith("RET-S");
 
   if (isSupplierReturn) {
-    // Supplier Return originally reduced stock → restore it
-    await salesRepository.deleteSaleAndRestoreStock(invoice.id);
+    await salesRepository.deleteSupplierReturnAndRestoreStock(invoice.id);
   } else {
-    // Customer Return originally increased stock → reduce it
-    await salesRepository.deletePurchaseAndReduceStock(invoice.id);
+    await salesRepository.deleteCustomerReturnAndReduceStock(invoice.id);
   }
 }
 else if (invoice.transactionType === "Quotation") {
@@ -275,6 +273,66 @@ if (
       await supplierPaymentRepository.deleteByInvoiceNo(
         String(invoice.invoiceNo)
       );
+    }
+  }
+}
+
+/* --------------------------------------------------
+   🧠 BATCH REVERSAL (CRITICAL)
+-------------------------------------------------- */
+const items = await salesRepository.getSaleItems(invoice.id);
+
+for (const ci of items) {
+
+  /* ---------- SALE DELETE ---------- */
+  if (invoice.transactionType === "Sale") {
+
+    if (ci.id) {
+      const batch = await batchRepository.getBatchById(ci.id);
+      if (!batch) continue;
+
+      batch.qtySold -= ci.qty;
+      batch.balance += ci.qty;
+
+      // safety
+      batch.qtySold = Math.max(0, batch.qtySold);
+
+      await batchRepository.updateBatch(batch);
+    }
+  }
+
+  /* ---------- PURCHASE DELETE ---------- */
+  if (invoice.transactionType === "Purchase") {
+
+    // delete batch created by purchase
+    await batchRepository.deleteByInvoiceNo(invoice.invoiceNo);
+  }
+
+  /* ---------- RETURN ---------- */
+  if (invoice.transactionType === "Return") {
+
+    const isSupplierReturn = invoice.invoiceNo?.startsWith("RET-S");
+
+    /* 🔹 SUPPLIER RETURN DELETE */
+    if (isSupplierReturn) {
+
+      if (ci.id) {
+        const batch = await batchRepository.getBatchById(ci.id);
+        if (!batch) continue;
+
+        // reverse supplier return
+        batch.qtyPurchased += ci.qty;
+        batch.balance += ci.qty;
+
+        await batchRepository.updateBatch(batch);
+      }
+    }
+
+    /* 🔹 CUSTOMER RETURN DELETE */
+    else {
+
+      // delete return batch
+      await batchRepository.deleteByInvoiceNo(invoice.invoiceNo);
     }
   }
 }

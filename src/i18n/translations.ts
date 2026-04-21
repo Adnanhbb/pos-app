@@ -36,6 +36,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     productsReport: "Products Report",
     customersreport: "Customers Report",
     suppliersreport: "Suppliers Report",
+    purchasereport: "Purchase Report",
     expensesreport: "Expenses Report",
     cashflowreport: "Cash-Flow Report",
     profitreport: "Profit Report",
@@ -61,7 +62,8 @@ export const translations: Record<Lang, Record<string, string>> = {
     startdate: "Start Date",
     enddate: "End Date",
     ok: "Ok",
-
+    batchPurchase: "Batch Purchase",
+    
     //Staff
     createnew: "Create New",
     allroles: "All roles",
@@ -398,6 +400,7 @@ kg: "Kg",
   productsReport: "رپورٹ مصنوعات",
   customersreport: "رپورٹ گاہک",
   suppliersreport: "رپورٹ سپلائر",
+  purchasereport: "رپورٹ خریداری",
   expensesreport: "رپورٹ اخراجات",
   cashflowreport: "رپورٹ کیش فلو",
   profitreport: "رپورٹ منافع",

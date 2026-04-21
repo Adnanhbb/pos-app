@@ -8,7 +8,7 @@ import { customersRepository } from "./repositories/customerRepository";
 import { suppliersRepository as supplierRepo } from "./repositories/suppliersRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
-import type { Brand, Category,DBHeld,DBHeldItem,Item } from "./db";
+import type { Brand, Category,DBHeld,DBHeldItem,Item, ItemBatch } from "./db";
 import { salesRepository } from "./repositories/salesRepository";
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
 import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
@@ -18,7 +18,7 @@ import type { Discount, Tax } from "./db";
 import { printInvoice } from "./services/printing/printService";
 import { useLang } from "./i18n/LanguageContext";
 import { heldRepository } from "./repositories/heldRepository";
-
+import { batchRepository } from "./repositories/batchRepository";
 
 // =====================
 // Types
@@ -54,6 +54,8 @@ type CartItem = {
   priceCategory: "Retail" | "Discount" | "Wholesale";
 
   uiDeductedQty: number;
+
+  batchId?: number;
 };
 
 
@@ -384,6 +386,15 @@ export default function SalesPOS({ currentUser }: POSProps) {
 
   const customersLoadedRef = useRef(false);
 
+  const [batches, setBatches] = useState<ItemBatch[]>([]);
+  const [selectedBatchId, setSelectedBatchId] = useState<number | null>(null);
+
+ useEffect(() => {
+  if (!editing?.originalItemId) return;
+
+  loadBatchesForItem(editing.originalItemId);
+}, [editing?.originalItemId]);
+
 useEffect(() => {
   if (transactionType !== "Return") return;
   if (!selectedCustomerId) return;
@@ -476,6 +487,35 @@ function mapDbCustomerToPosCustomer(dbCustomer: any): Customer {
     invoices: dbCustomer.invoices ?? 0,
   };
 }
+
+const loadBatchesForItem = async (itemId: number) => {
+  const data = await batchRepository.getBatchesByItem(itemId);
+
+  // FIFO → oldest first
+  const sorted = [...data].sort(
+    (a, b) =>
+      new Date(a.purchaseDate).getTime() -
+      new Date(b.purchaseDate).getTime()
+  );
+
+  setBatches(sorted);
+
+  if (sorted.length > 0) {
+    const first = sorted[0];
+
+    setSelectedBatchId(first.id!);
+
+    setEditing((prev) =>
+      prev
+        ? {
+            ...prev,
+            costPrice: first.costPrice,
+            batchId: first.id,
+          }
+        : prev
+    );
+  }
+};
 
 async function handleCompleteTransaction(isPostponed: boolean) {
   if (cart.length === 0) {
@@ -618,12 +658,15 @@ if (isSale || isCustomerReturn) {
 
   taxType: ci.taxType,
   taxValue: ci.taxValue,
+  
+  costPrice: ci.costPrice,
+  batchId: ci.batchId ?? null,
 }));
 
   /* --------------------------------------------------
      7️⃣ SAVE TRANSACTION
   -------------------------------------------------- */
-  await salesRepository.addTransaction({
+  const saleId = await salesRepository.addTransaction({
     invoiceNo,
     date: selectedDate ? new Date(selectedDate).toISOString() : new Date().toISOString(),
     transactionType,
@@ -742,31 +785,102 @@ if ((isSale || isReturn) && customerId) {
   }
 }
 
-  /* --------------------------------------------------
-   🔟 UPDATE STOCK
+/* --------------------------------------------------
+   🔟 UPDATE STOCK + CREATE BATCHES
 -------------------------------------------------- */
+
 for (const ci of cart) {
   const item = await itemsRepository.getById(ci.originalItemId);
   if (!item) continue;
 
   let newStock = item.availableStock;
 
+  /* ---------------- SALE ---------------- */
   if (isSale) {
     newStock -= ci.qty;
+
+    // ✅ UPDATE EXISTING BATCH (reduce stock)
+    if (ci.batchId) {
+      const batches = await batchRepository.getAllBatchesByItem(ci.originalItemId);
+      const batch = batches.find(b => b.id === ci.batchId);
+
+      if (batch) {
+        batch.qtySold += ci.qty;
+        batch.balance -= ci.qty;
+
+        await batchRepository.updateBatch(batch);
+      }
+    }
   }
 
+  /* ---------------- PURCHASE ---------------- */
   if (isPurchase) {
     newStock += ci.qty;
+
+    await batchRepository.addBatch({
+      itemId: ci.originalItemId,
+      purchaseDate: selectedDate
+        ? new Date(selectedDate).toISOString()
+        : new Date().toISOString(),
+
+      qtyPurchased: ci.qty,
+      qtySold: 0,
+      balance: ci.qty,
+
+      costPrice: ci.minUnitPrice,
+
+      sourceSaleId: saleId,
+      invoiceNo,
+    });
   }
 
+  /* ---------------- CUSTOMER RETURN ---------------- */
   if (isCustomerReturn) {
     newStock += ci.qty;
+
+    // ✅ CREATE NEW RETURN BATCH (your chosen design)
+    await batchRepository.addBatch({
+      itemId: ci.originalItemId,
+      purchaseDate: new Date().toISOString(),
+
+      qtyPurchased: ci.qty,
+      qtySold: 0,
+      balance: ci.qty,
+
+      // 🔥 CRITICAL: ORIGINAL COST
+      costPrice: ci.costPrice,
+
+      sourceSaleId: saleId,
+      invoiceNo,
+    });
   }
 
-  if (isSupplierReturn) {
-    newStock -= ci.qty;
+  /* ---------------- SUPPLIER RETURN ---------------- */
+if (isSupplierReturn) {
+  newStock -= ci.qty;
+
+  if (!ci.batchId) continue;
+
+  const batches = await batchRepository.getAllBatchesByItem(ci.originalItemId);
+  const batch = batches.find(b => b.id === ci.batchId);
+
+  if (!batch) {
+    console.warn("Batch not found:", ci.batchId);
+    continue;
   }
 
+  if (ci.qty > batch.balance) {
+    alert("Cannot return more than available batch balance");
+    continue;
+  }
+
+  batch.qtyPurchased -= ci.qty;
+  batch.balance -= ci.qty;
+
+  await batchRepository.updateBatch(batch);
+}
+
+  /* ---------------- SAVE STOCK ---------------- */
   await itemsRepository.update({
     ...item,
     availableStock: newStock,
@@ -1466,6 +1580,8 @@ function updateItem(updated: CartItem) {
             minUnitPrice: roundedMinUnitPrice, // 🔥 use edited price
             convQty: originalItem.ConvQty,
             uiDeductedQty: !isPurchase && !isReturn ? roundedQty : 0,
+            costPrice: updated.costPrice ?? ci.costPrice,
+            batchId: updated.batchId ?? ci.batchId,
           }
         : ci
     )
@@ -2308,6 +2424,36 @@ return (
         </span>
       </div>
 
+{/* BATCH SELECTOR */}
+{(isSale || isSupplierReturn) && (
+<div className="mb-3">
+  <label className="text-xs font-medium">Select Purchase Batch</label>
+
+  <select
+    className="w-full p-2 border rounded"
+    value={selectedBatchId?.toString() ?? ""}
+    onChange={(e) => {
+      const id = Number(e.target.value);
+      setSelectedBatchId(id);
+
+      const batch = batches.find((b) => b.id === id);
+      if (!batch || !editing) return;
+
+      setEditing({
+        ...editing,
+        costPrice: batch.costPrice,
+        batchId: batch.id,
+      });
+    }}
+  >
+    {batches.map((b) => (
+      <option key={b.id} value={b.id?.toString()}>
+        {new Date(b.purchaseDate).toLocaleDateString()} | Qty: {b.balance} | Rs {b.costPrice}
+      </option>
+    ))}
+  </select>
+</div>
+)}
       <div className="mb-2">
         <label className="text-xs font-medium">{t("unit")}</label>
         <select

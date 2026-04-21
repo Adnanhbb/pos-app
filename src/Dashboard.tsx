@@ -35,6 +35,8 @@ import {
   FaProductHunt,
   FaKeyboard,
   FaSteam,
+  FaBath,
+  FaBacon,
 } from "react-icons/fa";
 
 import {
@@ -83,6 +85,8 @@ import { expenseRepository } from "./repositories/expenseRepository";
 import { useLang } from "./i18n/LanguageContext";
 
 import type { User } from "./db";
+import PurchaseReport from "./purReport";
+import { FaFolderTree } from "react-icons/fa6";
 // import ProdReport from "prodReport";
 
 interface Props {
@@ -328,7 +332,7 @@ setSalesChartData(salesByMonth);
 const handleMenuClick = (key: string) => {
   if (key === activeItem) return;
 
-  if (activeItem === "pos" && key !== "pos") {
+  if (activeItem === "transactions" && key !== "transactions") {
     if (!window.confirm("Are you sure you want to leave the POS?")) return;
   }
 
@@ -621,11 +625,13 @@ const saveEditedUser = async () => {
       case "sales":
         return (
           <li key="Sales">
-            <CollapsibleButton label="transactions" open={posOpen} setOpen={setPosOpen} />
+            <CollapsibleButton label="pos" open={posOpen} setOpen={setPosOpen} />
             {posOpen && (
               <ul className="ml-6 mt-1 space-y-1">
-                <SubMenuButton name="pos" icon={<FaReceipt />} />
+                <SubMenuButton name="transactions" icon={<FaReceipt />} />
                 <SubMenuButton name="posinvoices" icon={<FaDatabase />} clickKey="posinvoices" />
+                <SubMenuButton name="batchPurchase" icon={<FaFolderTree />} clickKey="batchPurchase" />
+
               </ul>
             )}
           </li>
@@ -816,12 +822,14 @@ const saveEditedUser = async () => {
           <CustPayments />
         ) : activeItem === "supplier" ? (
           <SupPayments />
-        ) : activeItem === "pos" ? (
+        ) : activeItem === "transactions" ? (
           <POS currentUser={user} />
         ) : activeItem === "posinvoices" ? (
           <Invoices />
         ) : activeItem === "salesreport" ? (
           <SalesReport />
+        ) : activeItem === "batchPurchase" ? (
+          <PurchaseReport />
         ) : activeItem === "productsReport" ? (
           <ProdReport />
         ) : activeItem === "customersreport" ? (

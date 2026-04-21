@@ -31,6 +31,7 @@ import { Brand, brandsRepository } from "./repositories/brandsRepository";
 import { Unit, unitRepository } from "./repositories/unitRepository";
 import { Item, itemsRepository } from "./repositories/itemsRepository";
 import { useLang } from "./i18n/LanguageContext";
+import { batchRepository } from "./repositories/batchRepository";
 
 const PAGE_SIZE = 8;
 
@@ -232,68 +233,100 @@ async function handleSave() {
   if (!form.name.trim()) return alert("Name is required");
   if (!form.barcode.trim()) return alert("Barcode is required");
 
-  // --- Prevent duplicate item names ---
-const allItems = await itemsRepository.getAll();
+  /* --------------------------------------------------
+     🔍 DUPLICATE CHECK
+  -------------------------------------------------- */
+  const allItems = await itemsRepository.getAll();
 
-const duplicate = allItems.find(i =>
-  i.name.trim().toLowerCase() === form.name.trim().toLowerCase() &&
-  // allow same record during edit
-  (!editingItem || i.id !== editingItem.id)
-);
+  const duplicate = allItems.find(i =>
+    i.name.trim().toLowerCase() === form.name.trim().toLowerCase() &&
+    (!editingItem || i.id !== editingItem.id)
+  );
 
-if (duplicate) {
-  alert("This item name already exists");
-  return;
-}
+  if (duplicate) {
+    alert("This item name already exists");
+    return;
+  }
 
-  // Convert names to IDs for usage tracking
+  /* --------------------------------------------------
+     🔗 LOOKUPS
+  -------------------------------------------------- */
   const brandId = brands.find(b => b.name === form.brand)?.id;
   const categoryId = categories.find(c => c.name === form.category)?.id;
   const minunitId = units.find(u => u.name === form.minunit)?.id;
-  const maxunitId = units.find(u => u.name === form.maxunit)?.id; // <-- added
+  const maxunitId = units.find(u => u.name === form.maxunit)?.id;
 
+  /* ==================================================
+     ✏️ EDIT MODE
+  ================================================== */
   if (editingItem) {
     const oldBrandId = brands.find(b => b.name === editingItem.brand)?.id;
     const oldCategoryId = categories.find(c => c.name === editingItem.category)?.id;
     const oldMinUnitId = units.find(u => u.name === editingItem.minunit)?.id;
-    const oldMaxUnitId = units.find(u => u.name === editingItem.maxunit)?.id; // <-- added
+    const oldMaxUnitId = units.find(u => u.name === editingItem.maxunit)?.id;
 
-    // Category
     if (oldCategoryId !== categoryId) {
       if (oldCategoryId) await categoriesRepository.decrementItemCount(oldCategoryId);
       if (categoryId) await categoriesRepository.incrementItemCount(categoryId);
     }
 
-    // Brand
     if (oldBrandId !== brandId) {
       if (oldBrandId) await brandsRepository.decrementItemCount(oldBrandId);
       if (brandId) await brandsRepository.incrementItemCount(brandId);
     }
 
-    // Min Unit
     if (oldMinUnitId !== minunitId) {
       if (oldMinUnitId) await unitRepository.decrementItemCount(oldMinUnitId);
       if (minunitId) await unitRepository.incrementItemCount(minunitId);
     }
 
-    // Max Unit
     if (oldMaxUnitId !== maxunitId) {
       if (oldMaxUnitId) await unitRepository.decrementItemCount(oldMaxUnitId);
       if (maxunitId) await unitRepository.incrementItemCount(maxunitId);
     }
 
     await itemsRepository.update({ ...editingItem, ...form });
-  } else {
-    await itemsRepository.create(form as Item);
+  }
 
+  /* ==================================================
+     ➕ CREATE MODE
+  ================================================== */
+  else {
+    // 🔥 IMPORTANT: get created item ID
+    const newItemId = await itemsRepository.create(form as Item);
+
+    /* ---------------- OPENING STOCK → CREATE BATCH ---------------- */
+    const openingQty = Number(form.availableStock || 0);
+
+    if (openingQty > 0) {
+      await batchRepository.addBatch({
+        itemId: newItemId,
+
+        purchaseDate: new Date().toISOString(),
+
+        qtyPurchased: openingQty,
+        qtySold: 0,
+        balance: openingQty,
+
+        costPrice: Number(form.purchasePrice || 0), // or your purchasePrice field
+
+        sourceSaleId: 0, // system generated
+        invoiceNo: "Opening Stock", // ✅ as requested
+      });
+    }
+
+    /* ---------------- USAGE COUNTS ---------------- */
     if (categoryId) await categoriesRepository.incrementItemCount(categoryId);
     if (brandId) await brandsRepository.incrementItemCount(brandId);
     if (minunitId) await unitRepository.incrementItemCount(minunitId);
-    if (maxunitId) await unitRepository.incrementItemCount(maxunitId); // <-- added
+    if (maxunitId) await unitRepository.incrementItemCount(maxunitId);
 
     setPage(1);
   }
 
+  /* --------------------------------------------------
+     🔄 REFRESH UI
+  -------------------------------------------------- */
   await loadPage();
   closeForm();
 }
@@ -311,9 +344,41 @@ const openDeletedModal = async () => {
 const handleRestore = async (id?: number) => {
   if (!id) return;
 
+  // 1️⃣ Restore item
   await itemsRepository.restore(id);
+
+  // 2️⃣ Get restored item
+  const item = await itemsRepository.getById(id);
+  if (!item) return;
+
+  // 3️⃣ Check opening stock
+  const openingQty = Number(item.availableStock || 0);
+
+  if (openingQty > 0) {
+    // 4️⃣ Check if batch already exists (safety)
+    const existingBatches = await batchRepository.getBatchesByItem(id);
+
+    if (existingBatches.length === 0) {
+      await batchRepository.addBatch({
+        itemId: id,
+
+        purchaseDate: new Date().toISOString(),
+
+        qtyPurchased: openingQty,
+        qtySold: 0,
+        balance: openingQty,
+
+        costPrice: Number(item.purchasePrice || 0),
+
+        sourceSaleId: 0,
+        invoiceNo: "Opening Stock (Restored)",
+      });
+    }
+  }
+
+  // 5️⃣ Refresh UI
   await loadDeletedItems();
-  await loadPage(); // refresh main list
+  await loadPage();
 };
 
 const handlePermanentDelete = async (id?: number) => {
@@ -321,6 +386,9 @@ const handlePermanentDelete = async (id?: number) => {
 
   if (!window.confirm(t("deletePermanentlyConfirm")))
     return;
+
+  // 🔥 NEW
+  await batchRepository.getAllBatchesByItem(id);
 
   await itemsRepository.permanentDelete(id);
   await loadDeletedItems();
@@ -331,26 +399,24 @@ async function handleDelete(id?: number) {
   if (!id) return;
   if (!confirm("Delete this item?")) return;
 
-  // Find the item to know its category, brand, and units
   const item = items.find(it => it.id === id);
   if (!item) return alert("Item not found");
 
-  // Get IDs for decrementing usage
   const brandId = brands.find(b => b.name === item.brand)?.id;
   const categoryId = categories.find(c => c.name === item.category)?.id;
   const minunitId = units.find(u => u.name === item.minunit)?.id;
   const maxunitId = units.find(u => u.name === item.maxunit)?.id;
 
-  // Decrement counts
   if (categoryId) await categoriesRepository.decrementItemCount(categoryId);
   if (brandId) await brandsRepository.decrementItemCount(brandId);
   if (minunitId) await unitRepository.decrementItemCount(minunitId);
   if (maxunitId) await unitRepository.decrementItemCount(maxunitId);
 
-  // Now delete the item
+  // 🔥 NEW: delete related batches
+  await batchRepository.getAllBatchesByItem(id);
+
   await itemsRepository.remove(id);
 
-  // Adjust pagination
   const newTotal = Math.max(0, total - 1);
   const newPages = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
   if (page > newPages) setPage(newPages);

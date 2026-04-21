@@ -185,6 +185,7 @@ export interface DBSaleItem {
   discountValue: number;
   taxType: "%" | "flat";
   taxValue: number;
+
 }
 
 /* ---------------------------------------
@@ -247,6 +248,23 @@ export interface DBHeldItem {
   unit: string;
 
   costPrice?: number;
+}
+
+export interface ItemBatch {
+  id?: number;
+
+  itemId: number;
+
+  purchaseDate: string;
+
+  qtyPurchased: number;
+  qtySold: number;
+  balance: number;
+
+  costPrice: number;
+
+  sourceSaleId: number; // purchase invoice reference
+  invoiceNo: string; 
 }
 
 /* ==========================================================
@@ -426,6 +444,16 @@ export interface DBHeldItem {
       "by-heldId": number;
     };
   };
+
+  item_batches: {
+  key: number;
+  value: ItemBatch;
+  indexes: {
+    "by-item": number;
+    "by-date": string;
+  };
+};
+
 }
 
 
@@ -439,7 +467,7 @@ let _db: IDBPDatabase<POSDB> | null = null;
 export async function initDB() {
   if (_db) return _db;
 
-  _db = await openDB<POSDB>("POSDatabase", 13,{
+  _db = await openDB<POSDB>("POSDatabase", 14,{
     // bumped version to 9 to include expenses store
     upgrade(db, oldVersion, newVersion, transaction) {
       /* ---------------- USERS STORE ---------------- */
@@ -674,6 +702,16 @@ if (!db.objectStoreNames.contains("held_items")) {
   if (!heldItemsStore.indexNames.contains("by-heldId")) {
     heldItemsStore.createIndex("by-heldId", "heldId");
   }
+}
+
+if (!db.objectStoreNames.contains("item_batches")) {
+  const store = db.createObjectStore("item_batches", {
+    keyPath: "id",
+    autoIncrement: true,
+  });
+
+  store.createIndex("by-item", "itemId");
+  store.createIndex("by-date", "purchaseDate");
 }
 
     },
@@ -1595,7 +1633,7 @@ export const addExpCategory = async (category: string): Promise<number> => {
 };
 
 const DB_NAME = "POSDatabase";
-const DB_VERSION = 13;
+const DB_VERSION = 14;
 
 class Database {
   private conn: IDBDatabase | null = null;
