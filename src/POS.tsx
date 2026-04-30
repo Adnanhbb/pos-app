@@ -8,7 +8,7 @@ import { customersRepository } from "./repositories/customerRepository";
 import { suppliersRepository as supplierRepo } from "./repositories/suppliersRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
-import type { Brand, Category,DBHeld,DBHeldItem,Item, ItemBatch } from "./db";
+import { updateCylinderCustomer, type Brand, type Category,type DBHeld,type DBHeldItem,type Item, type ItemBatch } from "./db";
 import { salesRepository } from "./repositories/salesRepository";
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
 import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
@@ -19,6 +19,8 @@ import { printInvoice } from "./services/printing/printService";
 import { useLang } from "./i18n/LanguageContext";
 import { heldRepository } from "./repositories/heldRepository";
 import { batchRepository } from "./repositories/batchRepository";
+import { syncCylinderInventoryForSale,cylinderRepo_getByItemId,cylinderRepo_update } from "./repositories/cylinderRepository";
+import {cylinderCustomerRepo_addOrUpdate} from "./repositories/cylinderCustomerRepository";
 
 // =====================
 // Types
@@ -256,10 +258,10 @@ function InvoiceAdjustmentModal({
 
 interface POSProps {
   currentUser: { username: string; role: "admin" | "saleboy" | "Dev" };
-  // ...other props if any
+  onCartStateChange?: (hasItems: boolean) => void;
 }
 
-export default function SalesPOS({ currentUser }: POSProps) {
+export default function SalesPOS({ currentUser, onCartStateChange }: POSProps) {
   const [items, setItems] = useState<Item[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [editing, setEditing] = useState<CartItem | null>(null);
@@ -395,6 +397,11 @@ export default function SalesPOS({ currentUser }: POSProps) {
   loadBatchesForItem(editing.originalItemId);
 }, [editing?.originalItemId]);
 
+// Notify parent component when cart state changes
+useEffect(() => {
+  onCartStateChange?.(cart.length > 0);
+}, [cart, onCartStateChange]);
+
 useEffect(() => {
   if (transactionType !== "Return") return;
   if (!selectedCustomerId) return;
@@ -516,6 +523,16 @@ const loadBatchesForItem = async (itemId: number) => {
     );
   }
 };
+
+function isCylinderItem(item: any) {
+  const cat = (item.category || "").toLowerCase();
+
+  return (
+    cat.includes("gas") ||
+    cat.includes("cylinder") ||
+    cat.includes("lpg")
+  );
+}
 
 async function handleCompleteTransaction(isPostponed: boolean) {
   if (cart.length === 0) {
@@ -690,6 +707,100 @@ if (isSale || isCustomerReturn) {
 
     items: transactionItems,
   });
+
+
+/* --------------------------------------------------
+   🔥 CYLINDER MANAGEMENT (SALE ONLY)
+-------------------------------------------------- */
+/* --------------------------------------------------
+   🔥 CYLINDER MANAGEMENT (ALL MODES)
+-------------------------------------------------- */
+if (isSale || isPurchase || isCustomerReturn || isSupplierReturn) {
+
+  for (const ci of cart) {
+
+    const item = await itemsRepository.getById(ci.originalItemId);
+    if (!item) continue;
+
+    const isCylinder =
+      (item.category || "").toLowerCase().includes("gas") ||
+      (item.category || "").toLowerCase().includes("cylinder");
+
+    if (!isCylinder) continue;
+
+    /* ---------------- NORMALIZE TO MAX UNIT ---------------- */
+    const convQty = Number(item.ConvQty || 1);
+
+    // 🔥 ALWAYS treat cart qty as MIN UNIT
+    const qty = Math.floor(ci.qty / convQty);
+
+    if (qty <= 0) continue;
+
+    /* ---------------- GET CYLINDER ---------------- */
+    const cylinder = await cylinderRepo_getByItemId(item.id!);
+
+    if (!cylinder || cylinder.isDeleted) {
+      console.warn("Cylinder not found for item:", item.id);
+      continue;
+    }
+
+    /* ==================================================
+       🔥 APPLY LOGIC PER TRANSACTION TYPE
+    ================================================== */
+
+    let updatedCylinder = { ...cylinder };
+
+    /* ---------------- SALE ---------------- */
+    if (isSale) {
+      updatedCylinder.filledCylinders -= qty;
+      updatedCylinder.withCustomers += qty;
+
+      // CUSTOMER HOLDING
+      if (customerName && cylinder.id) {
+        await cylinderCustomerRepo_addOrUpdate({
+          cylinderId: cylinder.id,
+          cylinderType: cylinder.title,
+          customerName,
+          qtyChange: qty,
+        });
+      }
+    }
+
+    /* ---------------- PURCHASE ---------------- */
+    if (isPurchase) {
+      updatedCylinder.filledCylinders += qty;
+    }
+
+    /* ---------------- CUSTOMER RETURN ---------------- */
+    if (isCustomerReturn) {
+      updatedCylinder.filledCylinders += qty;
+      updatedCylinder.withCustomers -= qty;
+
+      // reduce customer holding
+      if (customerName && cylinder.id) {
+        await cylinderCustomerRepo_addOrUpdate({
+          cylinderId: cylinder.id,
+          cylinderType: cylinder.title,
+          customerName,
+          qtyChange: -qty, // 🔥 subtract
+        });
+      }
+    }
+
+    /* ---------------- SUPPLIER RETURN ---------------- */
+    if (isSupplierReturn) {
+      updatedCylinder.filledCylinders -= qty;
+    }
+
+    /* ---------------- SAFETY ---------------- */
+    updatedCylinder.filledCylinders = Math.max(0, updatedCylinder.filledCylinders);
+    updatedCylinder.withCustomers = Math.max(0, updatedCylinder.withCustomers);
+    updatedCylinder.emptyCylinders = Math.max(0, updatedCylinder.emptyCylinders);
+
+    /* ---------------- SAVE ---------------- */
+    await cylinderRepo_update(updatedCylinder);
+  }
+}
 
   /* --------------------------------------------------
    8️⃣ UPDATE CUSTOMER (SALE & RETURN)

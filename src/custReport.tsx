@@ -325,7 +325,7 @@ const exportExcel = () => {
     {/* ================= TABLE ================= */}
     <div className="overflow-x-auto">
       <table className="w-full text-left border">
-        <thead className="bg-gray-100">
+        <thead className="bg-blue-100">
           <tr>
             <th className={`px-4 py-2 border ${textAlign}`}>
               {t("customer")}

@@ -255,7 +255,7 @@ const handlePermanentDelete = async (id?: number) => {
     {view === "table" ? (
       <div className="bg-white rounded shadow overflow-x-auto">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-50">
+          <thead className="bg-blue-100">
             <tr>
               <th className={`px-4 py-3 ${textAlign}`}>#</th>
               <th className={`px-4 py-3 ${textAlign}`}>{t("name")}</th>

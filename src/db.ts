@@ -267,53 +267,40 @@ export interface ItemBatch {
   invoiceNo: string; 
 }
 
+export interface Cylinder {
+  id?: number;
+  itemId: number;
+  title: string;
+
+  qtyInStock: number;
+
+  filledCylinders: number;
+  emptyCylinders: number;
+  withCustomers: number;
+
+  convQty: number;
+
+  isDeleted: boolean;
+  deletedAt: number | null;
+}
+
+export interface CylinderCustomer {
+  id?: number;
+
+  cylinderId: number;
+  cylinderType: string;
+
+  customerName: string;
+
+  qtyHeld: number; // ALWAYS in minUnit
+
+  isDeleted: boolean;
+  deletedAt: number | null;
+}
+
 /* ==========================================================
    DATABASE SCHEMA
    ========================================================== */
-
-   export interface DBHeld {
-  id?: number;
-  invoiceNo: string;
-  date: string;
-  transactionType: "Sale" | "Purchase" | "Return" | "Quotation";
-
-  customerId: number | null;
-  supplierId: number | null;
-
-  customerName: string;
-  supplierName: string;
-
-  discountMode: "%" | "flat";
-  discountValue: number;
-  taxMode: "%" | "flat";
-  taxValue: number;
-
-  subtotal: number;
-  discount: number;
-  tax: number;
-  grandTotal: number;
-}
-
-export interface DBHeldItem {
-  id?: number;
-  heldId: number;
-
-  originalItemId: number;
-  name: string;
-  qty: number;
-  price: number;
-
-  priceCategory: "Retail" | "Discount" | "Wholesale";
-
-  discountType: "%" | "flat";
-  discountValue: number;
-
-  taxType: "%" | "flat";
-  taxValue: number;
-
-  unit: string; 
-  costPrice?: number;
-}
 
  interface POSDB extends DBSchema {
   users: {
@@ -454,6 +441,25 @@ export interface DBHeldItem {
   };
 };
 
+ cylinders: {
+  key: number;
+  value: Cylinder;
+  indexes: {
+    "by-title": string;
+    "by-itemId": number;
+  };
+};
+
+  cylinder_customers: {
+    key: number;
+    value: CylinderCustomer;
+    indexes: {
+      "by-cylinderId": number;
+      "by-cylinderType": string;
+      "by-customerName": string;
+    };
+  };
+
 }
 
 
@@ -467,7 +473,7 @@ let _db: IDBPDatabase<POSDB> | null = null;
 export async function initDB() {
   if (_db) return _db;
 
-  _db = await openDB<POSDB>("POSDatabase", 14,{
+  _db = await openDB<POSDB>("POSDatabase", 18,{
     // bumped version to 9 to include expenses store
     upgrade(db, oldVersion, newVersion, transaction) {
       /* ---------------- USERS STORE ---------------- */
@@ -712,6 +718,31 @@ if (!db.objectStoreNames.contains("item_batches")) {
 
   store.createIndex("by-item", "itemId");
   store.createIndex("by-date", "purchaseDate");
+}
+
+if (!db.objectStoreNames.contains("cylinders")) {
+  const store = db.createObjectStore("cylinders", {
+    keyPath: "id",
+    autoIncrement: true,
+  });
+
+  if (!store.indexNames.contains("by-itemId")) {
+    store.createIndex("by-itemId", "itemId", { unique: true });
+  }
+
+  if (!store.indexNames.contains("by-title")) {
+    store.createIndex("by-title", "title");
+  }
+}
+
+if (!db.objectStoreNames.contains("cylinder_customers")) {
+  const store = db.createObjectStore("cylinder_customers", {
+    keyPath: "id",
+    autoIncrement: true,
+  });
+  store.createIndex("by-cylinderId", "cylinderId");
+  store.createIndex("by-cylinderType", "cylinderType");
+  store.createIndex("by-customerName", "customerName");
 }
 
     },
@@ -1633,7 +1664,7 @@ export const addExpCategory = async (category: string): Promise<number> => {
 };
 
 const DB_NAME = "POSDatabase";
-const DB_VERSION = 14;
+const DB_VERSION = 18;
 
 class Database {
   private conn: IDBDatabase | null = null;
@@ -1694,6 +1725,95 @@ request.onupgradeneeded = (event) => {
       request.onerror = () => reject(request.error);
     });
   }}
+
+/* ==========================================================
+   CYLINDERS API
+   ========================================================== */
+
+export async function getAllCylinders(): Promise<Cylinder[]> {
+  const db = await initDB();
+  return db.getAll("cylinders");
+}
+
+export async function addCylinder(cylinder: Omit<Cylinder, "id">): Promise<number> {
+  const db = await initDB();
+  return db.add("cylinders", cylinder);
+}
+
+export async function updateCylinder(cylinder: Cylinder): Promise<void> {
+  const db = await initDB();
+  await db.put("cylinders", cylinder);
+}
+
+export async function deleteCylinder(id: number): Promise<void> {
+  const db = await initDB();
+  await db.delete("cylinders", id);
+}
+
+export async function searchCylinders(q: string): Promise<Cylinder[]> {
+  const db = await initDB();
+  const all = await db.getAll("cylinders");
+  const query = q.toLowerCase();
+  return all.filter(cylinder =>
+    cylinder.title.toLowerCase().includes(query) && !cylinder.isDeleted
+  );
+}
+
+export async function getCylinderByItemId(itemId: number): Promise<Cylinder | null> {
+  const db = await initDB();
+
+  const tx = db.transaction("cylinders", "readonly");
+  const store = tx.objectStore("cylinders");
+  const index = store.index("by-itemId");
+
+  const result = await index.get(itemId);
+
+  return result ?? null;
+}
+
+/* ==========================================================
+   CYLINDER CUSTOMERS API
+   ========================================================== */
+
+export async function getAllCylinderCustomers(): Promise<CylinderCustomer[]> {
+  const db = await initDB();
+  return db.getAll("cylinder_customers");
+}
+
+export async function getCylinderCustomersByCylinder(cylinderId: number): Promise<CylinderCustomer[]> {
+  const db = await initDB();
+  const idx = db
+    .transaction("cylinder_customers")
+    .objectStore("cylinder_customers")
+    .index("by-cylinderId");
+  return await idx.getAll(cylinderId);
+}
+
+export async function addCylinderCustomer(customer: Omit<CylinderCustomer, "id">): Promise<number> {
+  const db = await initDB();
+  return db.add("cylinder_customers", customer);
+}
+
+export async function updateCylinderCustomer(customer: CylinderCustomer): Promise<void> {
+  const db = await initDB();
+  await db.put("cylinder_customers", customer);
+}
+
+export async function deleteCylinderCustomer(id: number): Promise<void> {
+  const db = await initDB();
+  await db.delete("cylinder_customers", id);
+}
+
+export async function searchCylinderCustomers(q: string): Promise<CylinderCustomer[]> {
+  const db = await initDB();
+  const all = await db.getAll("cylinder_customers");
+  const query = q.toLowerCase();
+  return all.filter(cc =>
+    (cc.customerName.toLowerCase().includes(query) || cc.cylinderType.toLowerCase().includes(query)) &&
+    !cc.isDeleted
+  );
+}
+
 export const db = new Database();
 
 

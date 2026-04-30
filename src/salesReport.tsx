@@ -6,7 +6,6 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { Tooltip } from "react-tooltip";
-import "react-tooltip/dist/react-tooltip.css";
 import { salesRepository } from "./repositories/salesRepository";
 import { useLang } from "./i18n/LanguageContext";
 
@@ -426,7 +425,7 @@ return (
     {/* TABLE */}
     <div className="overflow-x-auto">
       <table className="w-full text-left border">
-        <thead className="bg-gray-100">
+        <thead className="bg-blue-100">
           <tr>
             <th className={`px-4 py-2 border ${textAlign}`}>{t("invoice")}</th>
             <th className={`px-4 py-2 border ${textAlign}`}>{t("date")}</th>

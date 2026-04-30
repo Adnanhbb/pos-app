@@ -73,6 +73,8 @@ import ExpReport from "./expReport";
 import ProfReport from "./profReport";
 import CFReport from "./CFReport";
 import InvReport from "./invReport";
+import CylindersQty from "./CylindersQty";
+import CylindersPrices from "./CylindersPrices";
 
 // DB helpers
 import { authRepository } from "./repositories/authRepository";
@@ -109,6 +111,7 @@ export default function Dashboard({ user, onLogout }: Props) {
   const [businessName, setBusinessName] = useState<string>("");
   const [businessLogo, setBusinessLogo] = useState<string>("");
   const [reportsOpen, setReportsOpen] = useState(false);
+  const [cylindersOpen, setCylindersOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [editUserOpen, setEditUserOpen] = useState(false);
   const [editForm, setEditForm] = useState<Omit<User, "id">>({
@@ -123,6 +126,7 @@ export default function Dashboard({ user, onLogout }: Props) {
 
   const [customStart, setCustomStart] = useState<string>("");
   const [customEnd, setCustomEnd] = useState<string>("");
+  const [cartHasItems, setCartHasItems] = useState(false);
   const desktopUserMenuRef = useRef<HTMLDivElement>(null);
   const mobileUserMenuRef = useRef<HTMLDivElement>(null);
 
@@ -138,6 +142,7 @@ export default function Dashboard({ user, onLogout }: Props) {
   { key: "entries", label: "entries", icon: <FaKeyboard className="text-blue-300" />, disabled: user?.role === "saleboy" },
   { key: "items", label: "items", icon: <FaBoxes className="text-yellow-300" />, disabled: user?.role === "saleboy" },
   { key: "sales", label: "sales", icon: <FaTruck className="text-green-300" />, disabled: user?.role === "saleboy" },
+  { key: "cylinders", label: "cylinders", icon: <FaBath className="text-purple-500" />, disabled: user?.role === "saleboy" },
   { key: "payments", label: "payments", icon: <FaMoneyBill className="text-red-300" />, disabled: user?.role === "saleboy" },
   { key: "expenses", label: "expenses", icon: <FaDollarSign className="text-blue-400" />, disabled: user?.role === "saleboy" },
   { key: "reports", label: "reports", icon: <FaChartBar className="text-yellow-400" />, disabled: user?.role === "saleboy" },
@@ -333,7 +338,7 @@ const handleMenuClick = (key: string) => {
   if (key === activeItem) return;
 
   if (activeItem === "transactions" && key !== "transactions") {
-    if (!window.confirm("Are you sure you want to leave the POS?")) return;
+    if (cartHasItems && !window.confirm("You have got items in the cart.Are you sure you want to leave the POS?")) return;
   }
 
   setActiveItem(key);
@@ -670,6 +675,18 @@ const saveEditedUser = async () => {
             )}
           </li>
         );
+      case "cylinders":
+        return (
+          <li key="Cylinders">
+            <CollapsibleButton label="cylinders" open={cylindersOpen} setOpen={setCylindersOpen} />
+            {cylindersOpen && (
+              <ul className="ml-6 mt-1 space-y-1">
+                <SubMenuButton name="cylinders_qty" icon={<FaBoxes />} clickKey="cylinders_qty" />
+                <SubMenuButton name="cylinder_prices" icon={<FaDollarSign />} clickKey="cylinder_prices" />
+              </ul>
+            )}
+          </li>
+        );
       default:
         return (
     <li
@@ -795,7 +812,7 @@ const saveEditedUser = async () => {
         {/* CONDITIONAL PAGE RENDERING */}
 
         {user.role === "saleboy" ? (
-          <POS currentUser={user} />
+          <POS currentUser={user} onCartStateChange={setCartHasItems} />
         ) : activeItem === "staff" ? (
           <Staff />
         ) : activeItem === "customers" ? (
@@ -823,7 +840,7 @@ const saveEditedUser = async () => {
         ) : activeItem === "supplier" ? (
           <SupPayments />
         ) : activeItem === "transactions" ? (
-          <POS currentUser={user} />
+          <POS currentUser={user} onCartStateChange={setCartHasItems} />
         ) : activeItem === "posinvoices" ? (
           <Invoices />
         ) : activeItem === "salesreport" ? (
@@ -844,6 +861,10 @@ const saveEditedUser = async () => {
           <ProfReport />
         )  : activeItem === "inventoryreport" ? (
           <InvReport />
+        ) : activeItem === "cylinders_qty" ? (
+          <CylindersQty />
+        ) : activeItem === "cylinder_prices" ? (
+          <CylindersPrices />
         ): (
           <>
             {/* Dashboard KPIs */}

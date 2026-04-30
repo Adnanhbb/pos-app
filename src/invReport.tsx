@@ -122,8 +122,8 @@ export default function InvReport() {
 
   const money = (n: number) =>
     n.toLocaleString(undefined, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
     });
 
   /* =====================================================
@@ -182,7 +182,7 @@ export default function InvReport() {
 
         <table className="w-full text-sm table-auto">
 
-          <thead className="bg-gray-100 dark:bg-gray-800">
+          <thead className="bg-blue-100 dark:bg-gray-800">
             <tr className="text-left">
               <th className={` p-2 sm:p-3 ${textAlign}`}>{t("item")}</th>
               <th className={` p-2 sm:p-3 ${textAlign}`}>{t("availableQty")}</th>

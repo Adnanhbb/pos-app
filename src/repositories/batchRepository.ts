@@ -37,19 +37,19 @@ export const batchRepository = {
     });
   },
 
- async getBatchesByItem(itemId: number): Promise<ItemBatch[]> {
+async getBatchesByItem(itemId: number): Promise<ItemBatch[]> {
   const conn = await db.open();
 
   return new Promise((resolve, reject) => {
     const tx = conn.transaction("item_batches", "readonly");
     const store = tx.objectStore("item_batches");
-    const index = store.index("by-item");
 
-    const req = index.getAll(itemId);
+    const req = store.getAll();
 
     req.onsuccess = () => {
-      const result = req.result.filter(b => b.balance > 0); // ✅ FILTER
-      resolve(result);
+      const all = req.result as ItemBatch[];
+      const filtered = all.filter(b => b.itemId === itemId);
+      resolve(filtered);
     };
 
     req.onerror = () => reject(req.error);

@@ -533,7 +533,7 @@ async function handleRemovePostponed(inv: DBSale) {
         {loading ? <div>{t("loadinginvoices")}</div> : (
           <table className="w-full border-collapse border mt-2 text-sm">
             <thead>
-             <tr className="bg-gray-100">
+             <tr className="bg-blue-100">
               <th className={`border p-2 ${textAlign}`}>{t("invoice")} </th>
               <th className={`border p-2 ${textAlign}`}>{t("custsuppname")}</th>
               <th className={`border p-2 ${textAlign}`}>{t("date")}</th>

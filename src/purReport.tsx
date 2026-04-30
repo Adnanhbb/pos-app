@@ -68,7 +68,9 @@ const PurchaseReport: React.FC = () => {
 }, [items, initialized]);
 
 const loadBatches = async (itemId: number) => {
-  const data = await batchRepository.getBatchesByItem(itemId);
+  const data = (await batchRepository.getBatchesByItem(itemId))
+  .filter(b => b.balance > 0);
+  
   const items = await itemsRepository.getAll();
 
   const itemMap = new Map(items.map(i => [i.id, i.name]));
@@ -149,56 +151,47 @@ const loadBatches = async (itemId: number) => {
      UI
      ========================================================== */
   return (
-    <div style={{ padding: "20px" }}>
-      {/* <h2>Purchase Batch Report</h2> */}
-
-      {/* ===================== CARDS ===================== */}
-     <div style={{ display: "flex", gap: "15px", marginBottom: "20px" }}>
+    <div className="p-4 sm:p-6">
+      {/* SUMMARY CARDS */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
   
-  <Card
-    title="Active Batches"
-    value={stats.activeBatches}
-    icon={<FaBoxes size={26} />}
-    color="#3b82f6" // blue
-  />
+        <Card
+          title={t("activebatches")}
+          value={stats.activeBatches}
+          icon={<FaBoxes size={26} />}
+          color="#3b82f6"
+        />
 
-  <Card
-    title="Total Qty"
-    value={stats.totalQty}
-    icon={<FaLayerGroup size={26} />}
-    color="#10b981" // green
-  />
+        <Card
+          title={t("totalqty")}
+          value={stats.totalQty}
+          icon={<FaLayerGroup size={26} />}
+          color="#10b981"
+        />
 
-  <Card
-    title="Utilized Qty"
-    value={stats.utilizedQty}
-    icon={<FaCheckCircle size={26} />}
-    color="#f59e0b" // amber
-  />
+        <Card
+          title={t("utilizedqty")}
+          value={stats.utilizedQty}
+          icon={<FaCheckCircle size={26} />}
+          color="#f59e0b"
+        />
 
-  <Card
-    title="Balance Qty"
-    value={stats.balanceQty}
-    icon={<FaBalanceScale size={26} />}
-    color="#ef4444" // red
-  />
+        <Card
+          title={t("balanceqty")}
+          value={stats.balanceQty}
+          icon={<FaBalanceScale size={26} />}
+          color="#ef4444"
+        />
 
-</div>
+      </div>
 
-      {/* ===================== CONTROLS ===================== */}
-      <div
-        style={{
-          display: "",
-          justifyContent: "space-between",
-          marginBottom: "15px",
-        }}
-      >
-        {/* Dropdown */}
-        Select Item : 
+      {/* FILTER BAR */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4 flex-wrap">
+        <label className="font-medium">{t("selectitem")}:</label>
         <select
           value={selectedItemId ?? ""}
           onChange={(e) => setSelectedItemId(Number(e.target.value))}
-          style={{ padding: "6px", minWidth: "200px" }}
+          className="border rounded px-3 py-1 flex-1 sm:flex-auto"
         >
           {items.map((item) => (
             <option key={item.id} value={item.id}>
@@ -207,79 +200,80 @@ const loadBatches = async (itemId: number) => {
           ))}
         </select>
 
-        {/* Buttons */}
-        {/* <div style={{ display: "flex", gap: "10px" }}>
-          <button
-  onClick={printPDF}
-  style={{
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "6px 10px",
-    cursor: "pointer",
-  }}
->
-  <FaFilePdf color="red" />
-  PDF
-</button>
-
-<button
-  onClick={exportCSV}
-  style={{
-    display: "flex",
-    alignItems: "center",
-    gap: "6px",
-    padding: "6px 10px",
-    cursor: "pointer",
-  }}
->
-  <FaFileExcel color="green" />
-  Excel
-</button>
-        </div> */}
+        <div className="flex gap-2 sm:ml-auto">
+          <FaFilePdf
+            size={22}
+            color="#dc2626"
+            title={t("exportpdf")}
+            className="cursor-pointer hover:opacity-75"
+            onClick={printPDF}
+          />
+          <FaFileExcel
+            size={22}
+            color="#16a34a"
+            title={t("exportexcel")}
+            className="cursor-pointer hover:opacity-75"
+            onClick={exportCSV}
+          />
+        </div>
       </div>
-
-      {/* ===================== TABLE ===================== */}
-      <table
-        border={1}
-        cellPadding={8}
-        cellSpacing={0}
-        width="100%"
-      >
-        <thead>
-          <tr>
-            <th className={`p-3 ${textAlign}`}>Item</th>
-            <th className={`p-3 ${textAlign}`}>Purchase Date</th>
-            <th className={`p-3 ${textAlign}`}>Qty Purchased</th>
-            <th className={`p-3 ${textAlign}`}>Qty Utilized</th>
-            <th className={`p-3 ${textAlign}`}>Balance</th>
-            <th className={`p-3 ${textAlign}`}>Purchase Price</th>
-            <th className={`p-3 ${textAlign}`}>Invoice No</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {batches.length === 0 ? (
+<p className="text-center text-gray-400">( Qtys are in Min Unit )</p>
+      {/* TABLE */}
+      <div className="overflow-x-auto">
+        <table className="w-full text-left border">
+          <thead className="bg-blue-100">
             <tr>
-              <td colSpan={6} style={{ textAlign: "center" }}>
-                No batches found
-              </td>
+              <th className={`px-2 py-2 sm:px-4 border ${textAlign}`}>{t("item")}</th>
+              <th className={`px-2 py-2 sm:px-4 border hidden sm:table-cell ${textAlign}`}>{t("purchasedate")}</th>
+              <th className={`px-2 py-2 sm:px-4 border hidden md:table-cell ${textAlign}`}>{t("qtypurchased")}</th>
+              <th className={`px-2 py-2 sm:px-4 border hidden lg:table-cell ${textAlign}`}>{t("qtysold")}</th>
+              <th className={`px-2 py-2 sm:px-4 border hidden lg:table-cell ${textAlign}`}>{t("balance")}</th>
+              <th className={`px-2 py-2 sm:px-4 border hidden lg:table-cell ${textAlign}`}>{t("purchaseprice")}</th>
+              <th className={`px-2 py-2 sm:px-4 border hidden lg:table-cell ${textAlign}`}>{t("invoiceno")}</th>
             </tr>
-          ) : (
-            batches.map((b, i) => (
-              <tr key={i}>
-                <td className={`p-3 ${textAlign}`}>{b.itemName}</td>
-                <td className={`p-3 ${textAlign}`}>{new Date(b.purchaseDate).toLocaleDateString()}</td>
-                <td className={`p-3 ${textAlign}`}>{b.qtyPurchased}</td>
-                <td className={`p-3 ${textAlign}`}>{b.qtySold}</td>
-                <td className={`p-3 ${textAlign}`}>{b.balance}</td>
-                <td className={`p-3 ${textAlign}`}>{b.purchasePrice}</td>
-                <td>{b.invoiceNo ?? "-"}</td>
+          </thead>
+
+          <tbody>
+            {batches.length === 0 ? (
+              <tr>
+                <td colSpan={7} className="px-4 py-3 text-center text-gray-500">
+                  {t("nobatchesfound")}
+                </td>
               </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+            ) : (
+              batches.map((b, i) => (
+                <tr key={i} className="border-b hover:bg-gray-50">
+                  <td className={`px-2 py-2 sm:px-4 font-medium ${textAlign}`}>{b.itemName}</td>
+                  
+                  <td className={`px-2 py-2 sm:px-4 hidden sm:table-cell ${textAlign}`}>
+                    {new Date(b.purchaseDate).toLocaleDateString()}
+                  </td>
+                  
+                  <td className={`px-2 py-2 sm:px-4 hidden md:table-cell ${textAlign}`}>{b.qtyPurchased}</td>
+                  
+                  <td className={`px-2 py-2 sm:px-4 hidden lg:table-cell ${textAlign}`}>{b.qtySold}</td>
+                  
+                  <td className={`px-2 py-2 sm:px-4 hidden lg:table-cell ${textAlign}`}>{b.balance}</td>
+                  
+                  <td className={`px-2 py-2 sm:px-4 hidden lg:table-cell ${textAlign}`}>{b.purchasePrice.toFixed(2)}</td>
+                  
+                  <td className={`px-2 py-2 sm:px-4 hidden lg:table-cell ${textAlign}`}>{b.invoiceNo ?? "-"}</td>
+
+                  {/* MOBILE STACKED VIEW */}
+                  <td className={`px-2 py-2 sm:hidden flex flex-col text-xs text-gray-600 gap-1 ${textAlign}`}>
+                    <span className="font-semibold text-gray-800">{new Date(b.purchaseDate).toLocaleDateString()}</span>
+                    <span>Qty Purchased: {b.qtyPurchased}</span>
+                    <span>Qty Sold: {b.qtySold}</span>
+                    <span>Balance: {b.balance}</span>
+                    <span>Price: {b.purchasePrice.toFixed(2)}</span>
+                    <span>Invoice: {b.invoiceNo ?? "-"}</span>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 };
@@ -300,37 +294,21 @@ const Card = ({
 }) => {
   return (
     <div
-      style={{
-        flex: 1,
-        padding: "16px",
-        borderRadius: "12px",
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        background: `${color}15`, // light background tint
-        border: `1px solid ${color}30`,
-      }}
+      className="p-4 rounded-lg bg-white shadow-md flex items-center gap-3 hover:shadow-lg transition"
+      style={{ borderLeft: `4px solid ${color}` }}
     >
       {/* ICON BOX */}
       <div
-        style={{
-          width: "45px",
-          height: "45px",
-          borderRadius: "10px",
-          background: color,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "white",
-        }}
+        className="flex-shrink-0 w-12 h-12 rounded-lg flex items-center justify-center"
+        style={{ backgroundColor: color, opacity: 0.9 }}
       >
-        {icon}
+        <div style={{ color: "white" }}>{icon}</div>
       </div>
 
       {/* TEXT */}
-      <div>
-        <div style={{ fontSize: "13px", color: "#555" }}>{title}</div>
-        <div style={{ fontSize: "20px", fontWeight: "bold" }}>{value}</div>
+      <div className="flex-1">
+        <div className="text-xs sm:text-sm text-gray-600">{title}</div>
+        <div className="text-lg sm:text-2xl font-bold text-gray-900">{value}</div>
       </div>
     </div>
   );

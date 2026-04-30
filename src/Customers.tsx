@@ -358,7 +358,7 @@ async function handleSave() {
     {view === "table" && (
       <div className="overflow-x-auto bg-white rounded-lg shadow">
         <table className="min-w-full text-sm">
-          <thead className="bg-gray-200 text-gray-700">
+          <thead className="bg-blue-100 text-gray-700">
             <tr>
             <th className={`p-3 ${textAlign}`}>{t("name")}</th>
             <th className={`p-3 ${textAlign}`}>{t("mobile")}</th>

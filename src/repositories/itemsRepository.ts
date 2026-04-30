@@ -24,21 +24,34 @@ export const itemsRepository = {
     return all.filter(i => !i.isDeleted);
   },
 
-  getPaged: async (
-    page: number,
-    pageSize: number,
-    query?: string
-  ) => {
-    const { data, total } =
-      await getItemsPaged(page, pageSize, query ?? null);
+getPaged: async (
+  page: number,
+  pageSize: number,
+  query?: string
+) => {
+  // 🔥 get ALL items first
+  const all = await getAllItems();
 
-    const filtered = data.filter(i => !i.isDeleted);
+  // 🔍 filter: non-deleted + search
+  const filtered = all.filter(i =>
+    !i.isDeleted &&
+    (!query ||
+      i.name.toLowerCase().includes(query.toLowerCase()) ||
+      i.barcode?.toLowerCase().includes(query.toLowerCase()))
+  );
 
-    return {
-      data: filtered,
-      total: filtered.length,
-    };
-  },
+  // ✅ correct total (used for page count)
+  const total = filtered.length;
+
+  // 📄 pagination slicing
+  const start = (page - 1) * pageSize;
+  const paged = filtered.slice(start, start + pageSize);
+
+  return {
+    data: paged,
+    total,
+  };
+},
 
   search: async (q: string): Promise<Item[]> => {
     const all = await searchItems(q);

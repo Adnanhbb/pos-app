@@ -330,7 +330,7 @@ export default function ExpReport() {
     {/* ================= TABLE ================= */}
     <div className="overflow-x-auto">
       <table className="w-full text-left border">
-        <thead className="bg-gray-100">
+        <thead className="bg-blue-100">
           <tr>
           <th className={`p-3 ${textAlign}`}>{t("date")}</th>
           <th className={`p-3 ${textAlign}`}>{t("category")}</th>
