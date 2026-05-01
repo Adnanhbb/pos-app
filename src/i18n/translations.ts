@@ -44,7 +44,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     settings: "Settings",
     cylinders: "Cylinders",
     cylinders_qty: "Cylinders Qty",
-    cylinder_prices: "11.8Kg Prices",
+    cylinder_prices: "Standard Prices",
     prices: "Prices",
     cylinders_qty_title: "Cylinders Quantity Management",
     cylinders_qty_description: "This is the Cylinders Quantity management page.",

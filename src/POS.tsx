@@ -118,7 +118,7 @@ export function calculateTotal(
 }
 
 //round off function
-export const roundTo = (num: number, decimals = 2) => {
+export const roundTo = (num: number, decimals = 0) => {
   return Number(num.toFixed(decimals));
 };
 
@@ -190,8 +190,8 @@ function InvoiceAdjustmentModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
-      <div className="bg-white p-4 rounded w-80">
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-3">
+      <div className="bg-white p-4 rounded w-full max-w-[20rem] sm:w-80">
         <h3 className="text-sm font-semibold mb-2">
           Apply {type === "discount" ? "Discount" : "Tax"}
         </h3>
@@ -385,6 +385,8 @@ export default function SalesPOS({ currentUser, onCartStateChange }: POSProps) {
   
   const [heldList, setHeldList] = useState<DBHeld[]>([]);
   const [showHeld, setShowHeld] = useState(false);
+  const [mobileItemQuery, setMobileItemQuery] = useState("");
+  const [isMobileItemOpen, setIsMobileItemOpen] = useState(false);
 
   const customersLoadedRef = useRef(false);
 
@@ -1784,7 +1786,7 @@ function formatStock(
   minUnit: string,
   maxUnit: string
 ) {
-  const roundedStock = +stockMin.toFixed(2);
+  const roundedStock = +stockMin.toFixed(0);
 
   if (convQty <= 0) {
     return `${roundedStock} ${minUnit}`;
@@ -1794,7 +1796,7 @@ function formatStock(
 
   // Avoid floating precision issues
   const remainderRaw = roundedStock - max * convQty;
-  const min = +remainderRaw.toFixed(2);
+  const min = +remainderRaw.toFixed(0);
 
   const parts: string[] = [];
 
@@ -1913,6 +1915,16 @@ const balance = useMemo(() => {
   return totals.grandTotal - paidValue;
 }, [totals.grandTotal, paid]);
 
+const mobileFilteredItems = useMemo(() => {
+  const q = mobileItemQuery.trim().toLowerCase();
+  if (!q) return filteredItems;
+  return filteredItems.filter(
+    (item) =>
+      item.name.toLowerCase().includes(q) ||
+      item.barcode?.toLowerCase().includes(q)
+  );
+}, [mobileItemQuery, filteredItems]);
+
 
 function normalizeToMinUnit(
   price: number,
@@ -1968,7 +1980,7 @@ const priceForDisplay = (
       ? minPrice
       : minPrice * convQty;
 
-  return parseFloat(value.toFixed(2));
+  return parseFloat(value.toFixed(0));
 };
 
 function formatStockDisplay(
@@ -1985,7 +1997,7 @@ function formatStockDisplay(
   const min = minQty % convQty;
 
   if (max > 0 && min > 0) {
-    return `${max}${maxUnit} ${min.toFixed(1)}${minUnit}`;
+    return `${max}${maxUnit} ${min.toFixed(0)}${minUnit}`;
   }
 
   if (max > 0) {
@@ -2015,14 +2027,14 @@ const setInputValue = isSupplierContext ? setSupplierInput : setCustomerInput;
 const setSelectedId = isSupplierContext ? setSelectedSupplierId : setSelectedCustomerId;
 
 return (
-    <div className="h-full flex bg-gray-100">
+    <div className="h-full w-full max-w-full flex flex-col lg:flex-row bg-gray-100 overflow-x-hidden">
 
       {/* LEFT – ITEMS */}
-      <div className="w-2/3 p-4 border-r bg-white flex flex-col">
+      <div className="w-full lg:basis-[55.57%] lg:max-w-[58.97%] lg:flex-none p-3 lg:p-4 lg:border-r bg-white flex flex-col min-w-0">
   {/* Top controls */}
-  <div className="flex gap-2 mb-3">
+  <div className="flex flex-col sm:flex-row gap-2 mb-3">
     {/* Transaction Type Selector */}
-    <div className="flex items-center gap-4 mb-3">
+    <div className="flex items-center gap-4 mb-3 overflow-x-auto w-full">
   {transactionTypes.map(type => (
     <label
       key={type.value}
@@ -2050,7 +2062,7 @@ return (
     <input
       type="text"
       placeholder={t("searchitembarcode")}
-      className="border p-2 rounded flex-1 w-full"
+      className="hidden lg:block border p-2 rounded flex-1 w-full"
       value={search}
       onChange={(e) => setSearch(e.target.value)}
       onKeyDown={(e) => {
@@ -2060,7 +2072,7 @@ return (
   </div>
 
   {/* Category & Brand filters */}
-  <div className="flex gap-2 mb-3">
+  <div className="flex flex-col sm:flex-row gap-2 mb-3">
       {/* Category filter */}
 <select
   value={selectedCategory}
@@ -2099,7 +2111,70 @@ return (
   </div>
 
 {/* Items grid */}
-<div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 auto-rows-min overflow-y-auto max-h-[calc(100vh-170px)]">
+<div className="lg:hidden mb-3 relative">
+  <input
+    type="text"
+    placeholder={t("searchitembarcode")}
+    className="w-full border p-2 rounded"
+    value={mobileItemQuery}
+    onFocus={() => setIsMobileItemOpen(true)}
+    onChange={(e) => {
+      setMobileItemQuery(e.target.value);
+      setIsMobileItemOpen(true);
+    }}
+  />
+
+  {isMobileItemOpen && (
+    <div className="absolute z-20 mt-1 w-full bg-white border rounded shadow max-h-64 overflow-y-auto">
+      {mobileFilteredItems.length === 0 ? (
+        <div className="px-3 py-2 text-sm text-gray-500">
+          No items found.
+        </div>
+      ) : (
+        mobileFilteredItems.map((item) => {
+          const treatAsPurchase =
+            transactionType === "Purchase" ||
+            (transactionType === "Return" && returnMode === "supplier");
+          const displayPrice = treatAsPurchase
+            ? item.purchasePrice ?? 0
+            : item.retailPrice;
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                if (item.availableStock <= 0) return;
+                addToCart(item);
+                setMobileItemQuery("");
+                setIsMobileItemOpen(false);
+              }}
+              className={`w-full text-left px-3 py-2 border-b last:border-b-0 ${
+                item.availableStock <= 0
+                  ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                  : "hover:bg-blue-50"
+              }`}
+            >
+              <div className="font-medium text-sm break-words">{item.name}</div>
+              <div className="text-xs text-gray-600">
+                Rs {displayPrice.toFixed(0)} |{" "}
+                {formatStockDisplay(
+                  item.availableStock,
+                  item.ConvQty,
+                  item.minunit,
+                  item.maxunit
+                )}
+              </div>
+            </button>
+          );
+        })
+      )}
+    </div>
+  )}
+</div>
+
+<div className="hidden lg:grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 auto-rows-min overflow-y-auto max-h-[45vh] sm:max-h-[55vh] lg:max-h-[calc(100vh-170px)]">
   {filteredItems.length === 0 ? (
     <div className="col-span-4 text-center text-gray-500 text-sm py-10">
       No items found. Adjust your search, category, or brand filters.
@@ -2129,7 +2204,7 @@ return (
           <div className="font-medium text-blue-400">{item.name}</div>
 
           <div className="text-xs text-green-500">
-            <span className="text-yellow-500">Rs {displayPrice.toFixed(1)}</span> |{" "}
+            <span className="text-yellow-500">Rs {displayPrice.toFixed(0)}</span> |{" "}
             {/* {item.availableStock > 0
               ?  */
               formatStockDisplay(
@@ -2155,19 +2230,18 @@ return (
 
 </div>
 
-
       {/* RIGHT – CART */}
-        <div className="w-3/10 flex flex-col ml-2">
+        <div className="w-full lg:basis-[44.03%] lg:max-w-[45.03%] lg:flex-none flex flex-col lg:ml-2 px-2 lg:px-0 pb-2 lg:pb-0 min-w-0">
   {/* HEADER */}
   <div className="bg-white p-3 rounded shadow mb-3">
   {/* Row 1: Invoice + Total Items */}
-  <div className="flex justify-between items-center mb-1">
+  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 mb-1">
     <div className="text-lg font-semibold">
       {t("invoice")}: {invoiceNo}
     </div>
 
  {transactionType === "Return" ? (
-  <div className="flex gap-4 text-sm font-semibold text-gray-400">
+  <div className="flex flex-wrap gap-3 text-sm font-semibold text-gray-400">
     <label className="flex items-center gap-1 cursor-pointer">
       <input
         type="radio"
@@ -2198,7 +2272,7 @@ return (
 </div>
 
 {/* Row 2: Date + Customer / Supplier */}
-<div className="flex justify-between items-center">
+<div className="flex flex-col xl:flex-row xl:justify-between xl:items-center gap-2">
   {/* Date */}
   <div className="flex items-center gap-2 text-sm">
     <span>{t("date")}:</span>
@@ -2211,8 +2285,8 @@ return (
   </div>
 
   {/* Customer / Supplier */}
-  <div className="flex items-center gap-2">
-    <div className="relative w-56">
+  <div className="flex items-center gap-2 w-full xl:w-auto min-w-0">
+    <div className="relative w-full min-w-0 flex-1 xl:flex-none xl:w-56">
       {(() => {
         const showSupplier =
           isPurchase || (transactionType === "Return" && returnMode === "supplier");
@@ -2340,15 +2414,15 @@ return (
 
 
   {/* CART ITEMS */}
-  <div className="flex-1 overflow-y-auto space-y-1 max-h-[285px]">
+  <div className="flex-1 overflow-y-auto space-y-1 max-h-[40vh] lg:max-h-[285px]">
     {cart.map((ci) => {
       const r = calcLine(ci);
       return (
         <div key={ci.id} className="bg-white pl-2 pr-2 pb-1 rounded shadow">
           <div className="flex justify-between items-start">
             <div>
-              <div className="font-medium">{ci.name}</div>
-              <div className="text-sm text-gray-500 leading-tight">
+              <div className="font-medium break-words">{ci.name}</div>
+              <div className="text-sm text-gray-500 leading-tight break-words">
                <span className="text-blue-400">{ci.unit === "max"? ci.qty / ci.convQty : ci.qty}{ci.unit === "max" ? ci.maxunit : ci.minunit}×
                             {priceForDisplay(ci.minUnitPrice, ci.unit, ci.convQty)}</span>  | <span className="text-green-400">{t("disc")}: {ci.discountValue}{ci.discountType}</span> | <span className="text-red-400">{t("tax")}: {ci.taxValue}{ci.taxType}</span>
               </div>
@@ -2469,7 +2543,7 @@ return (
 
       <div className="flex justify-between items-center bg-gray-50 p-3 rounded">
         <span className="font-medium text-xl text-red-600">{t("balance")}</span>
-        <span className="text-lg font-bold text-red-600 mr-10">
+        <span className="text-lg font-bold text-red-600 mr-0 sm:mr-10">
           {balance.toFixed(2)}
         </span>
       </div>
@@ -2477,7 +2551,7 @@ return (
   </div>
 
   {/* ACTION BUTTONS — UNCHANGED */}
-  <div className="flex gap-2 mt-2">
+  <div className="flex flex-col sm:flex-row gap-2 mt-2">
     <button
       className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
       onClick={() => handleCompleteTransaction(false)}
@@ -2494,7 +2568,7 @@ return (
     
   </div>
 
-  <div className="flex gap-2 mt-1">
+  <div className="flex flex-col sm:flex-row gap-2 mt-1">
     <button
       className="flex-1 flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-2 rounded hover:bg-green-700 transition"
       onClick={handleHoldTransaction}
@@ -2517,8 +2591,8 @@ return (
 
      {/* EDIT MODAL */}
 {editing && (
-  <div className="fixed inset-0 bg-black/40 flex items-center justify-center">
-    <div className="bg-white p-5 rounded w-96">
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-3">
+    <div className="bg-white p-5 rounded w-full max-w-md lg:w-96 max-h-[90vh] overflow-y-auto">
       <div className="flex justify-between items-start mb-3">
         <h3 className="font-semibold text-red-500">
           {editing.name}
@@ -2701,8 +2775,8 @@ return (
 )}
 
 {showHeld && (
-  <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50">
-    <div className="bg-white w-[600px] max-h-[80vh] overflow-auto rounded shadow-lg p-4">
+  <div className="fixed inset-0 bg-black/40 flex justify-center items-center z-50 p-3">
+    <div className="bg-white w-full max-w-[600px] max-h-[80vh] overflow-auto rounded shadow-lg p-4">
 
      <h2 className="flex justify-between items-center text-lg font-semibold mb-3">
   Held Transactions
@@ -2756,8 +2830,8 @@ return (
 )}
 
       {showCustomerModal && (
-  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div className="bg-white p-5 rounded w-96 shadow">
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3">
+    <div className="bg-white p-5 rounded w-full max-w-md lg:w-96 shadow max-h-[90vh] overflow-y-auto">
       <h3 className="font-semibold mb-3">{t("createcustomer")}</h3>
 
       <label className="text-sm">{t("customername")}</label>
@@ -2881,8 +2955,8 @@ return (
       )}
 
 {showSupplierModal && (
-  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
-    <div className="bg-white p-5 rounded w-96 shadow">
+  <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-3">
+    <div className="bg-white p-5 rounded w-full max-w-md lg:w-96 shadow max-h-[90vh] overflow-y-auto">
       <h3 className="font-semibold mb-3">{t("createsupplier")}</h3>
 
       <label className="text-sm">{t("suppliername")}</label>
@@ -3006,8 +3080,8 @@ return (
 )}
 
 {showInvoiceDiscountModal && (
-  <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
-    <div className="bg-white p-4 rounded w-80">
+  <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-3">
+    <div className="bg-white p-4 rounded w-full max-w-[20rem] sm:w-80">
       <h3 className="font-semibold mb-3">{t("invoice")} {t("discount")}</h3>
 
       {/* Discount Name */}
@@ -3106,8 +3180,8 @@ return (
 )}
 
 {showInvoiceTaxModal && (
-  <div className="fixed inset-0 bg-black/30 flex items-center justify-center">
-    <div className="bg-white p-4 rounded w-80">
+  <div className="fixed inset-0 bg-black/30 flex items-center justify-center p-3">
+    <div className="bg-white p-4 rounded w-full max-w-[20rem] sm:w-80">
       <h3 className="font-semibold mb-3">{t("invoice")} {t("tax")}</h3>
 
       {/* Tax Name */}

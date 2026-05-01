@@ -435,10 +435,10 @@ async function handleRemovePostponed(inv: DBSale) {
     const textAlign = lang === "ur" ? "text-right" : "text-left";
 
   return (
-    <div className="p-4 flex flex-col lg:flex-row gap-4">
+    <div className="p-2 sm:p-4 w-full max-w-full flex flex-col lg:flex-row gap-4 overflow-x-hidden">
       
       {/* LEFT PANEL */}
-      <div className="w-full lg:w-4/5 bg-white shadow rounded-lg p-4 flex flex-col gap-4">
+      <div className="w-full lg:basis-[90.57%] bg-white shadow rounded-lg p-3 sm:p-4 flex flex-col gap-4 min-w-0 overflow-x-hidden">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-xl font-semibold">
             {t("viewinvoices")}
@@ -454,14 +454,14 @@ async function handleRemovePostponed(inv: DBSale) {
         </label>
         </div>
 
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 min-w-0">
 
   {/* LEFT: Transaction Type */}
-  <div className="flex gap-3 mt-2">
+  <div className="flex flex-nowrap gap-2 sm:gap-3 mt-2 lg:mt-0 pb-1 lg:pb-0 lg:flex-1 min-w-0 overflow-x-auto">
     {TRANSACTION_TYPES.map(type => (
       <label
         key={type}
-        className={`flex items-center gap-2 px-3 py-1 rounded cursor-pointer transition
+        className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1 rounded cursor-pointer transition whitespace-nowrap text-xs sm:text-sm
           ${transactionTypeFilter === type
             ? "bg-indigo-600 text-white"
             : "bg-gray-200 text-gray-700 hover:bg-gray-300"}
@@ -488,18 +488,18 @@ async function handleRemovePostponed(inv: DBSale) {
 <input
       type="text"
       placeholder={t("searchinvoice")}
-      className={`border rounded px-2 py-1 text-sm transition-all duration-200
-        ${transactionTypeFilter === "Return" ? "w-40" : "w-64"}
+      className={`border rounded px-2 py-1 text-sm transition-all duration-200 w-full sm:w-64 lg:w-56
+        ${transactionTypeFilter === "Return" ? "sm:w-40 lg:w-44" : "sm:w-64 lg:w-56"}
       `}
       value={search}
       onChange={(e) => setSearch(e.target.value)}
     />
 
   {/* RIGHT: Return radios + Search */}
-  <div className="flex items-center gap-2">
+  <div className="flex items-center gap-2 lg:shrink-0 min-w-0">
 
     {transactionTypeFilter === "Return" && (
-      <div className="flex gap-2 text-xs">
+      <div className="flex flex-wrap gap-2 text-xs pb-1">
 
         {["All", "Cus", "Sup"].map(type => (
           <label
@@ -531,7 +531,67 @@ async function handleRemovePostponed(inv: DBSale) {
 
 
         {loading ? <div>{t("loadinginvoices")}</div> : (
-          <table className="w-full border-collapse border mt-2 text-sm">
+          <>
+          <div className="lg:hidden space-y-2 mt-2">
+            {sales.map(inv => (
+              <div
+                key={inv.id}
+                role="button"
+                tabIndex={0}
+                className={`w-full text-left border rounded p-3 shadow-sm cursor-pointer ${
+                  selectedInvoice?.id === inv.id ? "bg-blue-50" : "bg-white"
+                }`}
+                onClick={() => setSelectedInvoice(inv)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === " ") {
+                    e.preventDefault();
+                    setSelectedInvoice(inv);
+                  }
+                }}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="font-semibold break-words">{inv.invoiceNo}</div>
+                    <div className="text-sm text-gray-700 break-words">{getPartyName(inv)}</div>
+                    <div className="text-xs text-gray-500">
+                      {new Date(inv.date).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div className="text-sm font-semibold whitespace-nowrap">
+                    {inv.grandTotal.toFixed()}
+                  </div>
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      handlePrintInvoice(inv);
+                    }}
+                    title={t("print")}
+                    className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+                  >
+                    🖨
+                  </button>
+                  <button
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleDeleteInvoice(inv);
+                    }}
+                    title={t("delete")}
+                    className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
+                  >
+                    <FaTrash />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {sales.length === 0 && (
+              <div className="p-4 text-center text-sm">{t("noinvoicesfound")}</div>
+            )}
+          </div>
+
+          <div className="hidden lg:block overflow-x-auto">
+          <table className="w-full border-collapse border mt-2 text-sm min-w-[700px]">
             <thead>
              <tr className="bg-blue-100">
               <th className={`border p-2 ${textAlign}`}>{t("invoice")} </th>
@@ -591,10 +651,12 @@ async function handleRemovePostponed(inv: DBSale) {
               )}
             </tbody>
           </table>
+          </div>
+          </>
         )}
            
         {/* Pagination */}
-        <div className="flex justify-center items-center gap-2 mt-2">
+        <div className="flex flex-wrap justify-center items-center gap-2 mt-2">
           <button onClick={() => goToPage(1)} disabled={currentPage === 1} className="p-1 border rounded hover:bg-gray-100"><FaAngleDoubleLeft /></button>
           <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage === 1} className="p-1 border rounded hover:bg-gray-100"><FaAngleLeft /></button>
           <span className="px-2">{t("page")} {currentPage} {t("of")} {totalPages}</span>
@@ -604,7 +666,7 @@ async function handleRemovePostponed(inv: DBSale) {
       </div>
 
       {/* RIGHT PANEL */}
-      <div className="w-full lg:w-2/2 bg-white shadow rounded-lg p-4 flex flex-col gap-4">
+      <div className="hidden lg:flex w-full lg:basis-[56.57%] bg-white shadow rounded-lg p-4 flex-col gap-4 min-w-0 overflow-x-hidden">
         {selectedInvoice ? (
           <>
             {/* Header: invoice info */}
@@ -702,6 +764,93 @@ async function handleRemovePostponed(inv: DBSale) {
           </>
         ) : <div className="text-center text-gray-500">{t("selectinvoice")}</div>}
       </div>
+
+      {/* MOBILE DETAILS POPUP */}
+      {selectedInvoice && (
+        <div className="lg:hidden fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-2">
+          <div className="bg-white w-full max-w-2xl max-h-[90vh] rounded-lg shadow-lg overflow-y-auto">
+            <div className="sticky top-0 bg-white border-b px-3 py-2 flex items-center justify-between gap-2 min-w-0">
+                <h2 className="text-sm font-semibold break-words min-w-0">
+                {t("invoice")}: {selectedInvoice.invoiceNo}
+              </h2>
+              <button
+                onClick={() => setSelectedInvoice(null)}
+                className="px-2 py-1 text-xs border rounded"
+              >
+                {t("close")}
+              </button>
+            </div>
+
+            <div className="p-3 text-sm space-y-2">
+              <p>
+                <strong>{t("date")}:</strong>{" "}
+                {new Date(selectedInvoice.date).toLocaleDateString()}
+              </p>
+              <p>
+                <strong>{t("custsuppname")}:</strong> {getPartyName(selectedInvoice)}
+              </p>
+
+              {selectedInvoice.isPostponed && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleRemovePostponed(selectedInvoice);
+                  }}
+                  className="flex items-center gap-2 bg-blue-100 text-gray-600 border px-2 py-1 rounded"
+                >
+                  <FaEye /> Remove from Postponed List
+                </button>
+              )}
+            </div>
+
+            <div className="px-3 pb-3">
+              <div className="text-xs font-semibold mb-2">{t("items")}</div>
+              {itemsLoading ? (
+                <div className="text-sm">{t("loadingitems")}</div>
+              ) : invoiceItems.length > 0 ? (
+                <div className="space-y-2">
+                  {invoiceItems.map(item => {
+                    const base = item.qty * item.price;
+                    const discount = item.discountType === "%" ? (base * item.discountValue) / 100 : item.discountValue;
+                    const taxed = item.taxType === "%" ? ((base - discount) * item.taxValue) / 100 : item.taxValue;
+                    const lineTotal = (base - discount + taxed).toFixed();
+
+                    return (
+                      <div key={item.id} className="border rounded p-2 text-xs">
+                        <div className="font-medium break-words">{item.name}</div>
+                        <div className="text-gray-600">
+                          {t("qty")}: {item.qty} | {t("price")}: {item.price}
+                        </div>
+                        <div className="text-gray-600">
+                          {t("discount")}: {item.discountValue}{item.discountType} | {t("tax")}: {item.taxValue}{item.taxType}
+                        </div>
+                        <div className="text-right font-semibold">{lineTotal}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-sm">{t("noitemsfound")}</div>
+              )}
+            </div>
+
+            <div className="border-t px-3 py-3 grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+              <div className="space-y-1">
+                <p><strong>{t("subtotal")}:</strong> {selectedInvoice.subtotal.toFixed()}</p>
+                <p><strong>{t("discount")}:</strong> {selectedInvoice.discount}</p>
+                <p><strong>{t("tax")}:</strong> {selectedInvoice.tax}</p>
+                <p><strong>{t("prevtdues")}:</strong> {selectedInvoice.dues}</p>
+              </div>
+              <div className="space-y-1 sm:text-right">
+                <p><strong>{t("grandtotal")}:</strong> {selectedInvoice.grandTotal.toFixed()}</p>
+                <p><strong>{t("paid")}:</strong> {selectedInvoice.paid}</p>
+                <p><strong>{t("balance")}:</strong> {selectedInvoice.arrears.toFixed()}</p>
+                <p><strong>{t("profit")}:</strong> {selectedInvoice.profit.toFixed()}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
