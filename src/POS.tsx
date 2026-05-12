@@ -396,7 +396,7 @@ export default function SalesPOS({ currentUser, onCartStateChange }: POSProps) {
  useEffect(() => {
   if (!editing?.originalItemId) return;
 
-  loadBatchesForItem(editing.originalItemId);
+  loadBatchesForItem(editing.originalItemId, editing.batchId);
 }, [editing?.originalItemId]);
 
 // Notify parent component when cart state changes
@@ -497,7 +497,7 @@ function mapDbCustomerToPosCustomer(dbCustomer: any): Customer {
   };
 }
 
-const loadBatchesForItem = async (itemId: number) => {
+const loadBatchesForItem = async (itemId: number, currentBatchId?: number) => {
   const data = await batchRepository.getBatchesByItem(itemId);
 
   // FIFO → oldest first
@@ -507,22 +507,28 @@ const loadBatchesForItem = async (itemId: number) => {
       new Date(b.purchaseDate).getTime()
   );
 
-  setBatches(sorted);
+  const availableBatches = sorted.filter(b => Number(b.balance) > 0);
 
-  if (sorted.length > 0) {
-    const first = sorted[0];
+  setBatches(availableBatches);
 
-    setSelectedBatchId(first.id!);
+  if (availableBatches.length > 0) {
+    const selected =
+      availableBatches.find(b => b.id === currentBatchId) ??
+      availableBatches[0];
+
+    setSelectedBatchId(selected.id!);
 
     setEditing((prev) =>
       prev
         ? {
             ...prev,
-            costPrice: first.costPrice,
-            batchId: first.id,
+            costPrice: selected.costPrice,
+            batchId: selected.id,
           }
         : prev
     );
+  } else {
+    setSelectedBatchId(null);
   }
 };
 
@@ -719,89 +725,69 @@ if (isSale || isCustomerReturn) {
 -------------------------------------------------- */
 if (isSale || isPurchase || isCustomerReturn || isSupplierReturn) {
 
-  for (const ci of cart) {
+ for (const ci of cart) {
+  const item = await itemsRepository.getById(ci.originalItemId);
+  if (!item) continue;
 
-    const item = await itemsRepository.getById(ci.originalItemId);
-    if (!item) continue;
+  const isCylinderItem =
+  (item.category || "").toLowerCase().includes("gas") ||
+  (item.category || "").toLowerCase().includes("cylinder");
 
-    const isCylinder =
-      (item.category || "").toLowerCase().includes("gas") ||
-      (item.category || "").toLowerCase().includes("cylinder");
+if (!isCylinderItem) continue;
 
-    if (!isCylinder) continue;
+const convQty = Number(item.ConvQty || 1);
+if (convQty <= 0) continue;
 
-    /* ---------------- NORMALIZE TO MAX UNIT ---------------- */
-    const convQty = Number(item.ConvQty || 1);
+// 🔥 ALWAYS convert MIN UNIT qty → MAX UNIT qty
+const maxQty = Math.floor(ci.qty / convQty);
 
-    // 🔥 ALWAYS treat cart qty as MIN UNIT
-    const qty = Math.floor(ci.qty / convQty);
+// if no full cylinder movement → skip cylinder update
+if (maxQty <= 0) continue;
 
-    if (qty <= 0) continue;
+  const cylinder = await cylinderRepo_getByItemId(item.id!);
+  if (!cylinder || cylinder.isDeleted) continue;
 
-    /* ---------------- GET CYLINDER ---------------- */
-    const cylinder = await cylinderRepo_getByItemId(item.id!);
+  let updatedCylinder = { ...cylinder };
 
-    if (!cylinder || cylinder.isDeleted) {
-      console.warn("Cylinder not found for item:", item.id);
-      continue;
-    }
+  /* ---------------- APPLY ---------------- */
 
-    /* ==================================================
-       🔥 APPLY LOGIC PER TRANSACTION TYPE
-    ================================================== */
+  if (isSale) {
+  updatedCylinder.filledCylinders -= maxQty;
+  updatedCylinder.withCustomers += maxQty;
 
-    let updatedCylinder = { ...cylinder };
+  await cylinderCustomerRepo_addOrUpdate({
+    cylinderId: cylinder.id!,
+    cylinderType: cylinder.title,
+    customerName,
+    qtyChange: maxQty,
+  });
+}
 
-    /* ---------------- SALE ---------------- */
-    if (isSale) {
-      updatedCylinder.filledCylinders -= qty;
-      updatedCylinder.withCustomers += qty;
+  if (isPurchase) {
+  updatedCylinder.filledCylinders += maxQty;
+}
 
-      // CUSTOMER HOLDING
-      if (customerName && cylinder.id) {
-        await cylinderCustomerRepo_addOrUpdate({
-          cylinderId: cylinder.id,
-          cylinderType: cylinder.title,
-          customerName,
-          qtyChange: qty,
-        });
-      }
-    }
+  if (isCustomerReturn) {
+  updatedCylinder.filledCylinders += maxQty;
+  updatedCylinder.withCustomers -= maxQty;
 
-    /* ---------------- PURCHASE ---------------- */
-    if (isPurchase) {
-      updatedCylinder.filledCylinders += qty;
-    }
+  await cylinderCustomerRepo_addOrUpdate({
+    cylinderId: cylinder.id!,
+    cylinderType: cylinder.title,
+    customerName,
+    qtyChange: -maxQty,
+  });
+}
 
-    /* ---------------- CUSTOMER RETURN ---------------- */
-    if (isCustomerReturn) {
-      updatedCylinder.filledCylinders += qty;
-      updatedCylinder.withCustomers -= qty;
+  if (isSupplierReturn) {
+  updatedCylinder.filledCylinders -= maxQty;
+}
 
-      // reduce customer holding
-      if (customerName && cylinder.id) {
-        await cylinderCustomerRepo_addOrUpdate({
-          cylinderId: cylinder.id,
-          cylinderType: cylinder.title,
-          customerName,
-          qtyChange: -qty, // 🔥 subtract
-        });
-      }
-    }
+  updatedCylinder.filledCylinders = Math.max(0, updatedCylinder.filledCylinders);
+  updatedCylinder.withCustomers = Math.max(0, updatedCylinder.withCustomers);
 
-    /* ---------------- SUPPLIER RETURN ---------------- */
-    if (isSupplierReturn) {
-      updatedCylinder.filledCylinders -= qty;
-    }
-
-    /* ---------------- SAFETY ---------------- */
-    updatedCylinder.filledCylinders = Math.max(0, updatedCylinder.filledCylinders);
-    updatedCylinder.withCustomers = Math.max(0, updatedCylinder.withCustomers);
-    updatedCylinder.emptyCylinders = Math.max(0, updatedCylinder.emptyCylinders);
-
-    /* ---------------- SAVE ---------------- */
-    await cylinderRepo_update(updatedCylinder);
-  }
+  await cylinderRepo_update(updatedCylinder);
+}
 }
 
   /* --------------------------------------------------
@@ -910,21 +896,28 @@ for (const ci of cart) {
 
   /* ---------------- SALE ---------------- */
   if (isSale) {
-    newStock -= ci.qty;
+  newStock -= ci.qty;
 
-    // ✅ UPDATE EXISTING BATCH (reduce stock)
-    if (ci.batchId) {
-      const batches = await batchRepository.getAllBatchesByItem(ci.originalItemId);
-      const batch = batches.find(b => b.id === ci.batchId);
+  const batches = await batchRepository.getAllBatchesByItem(ci.originalItemId);
 
-      if (batch) {
-        batch.qtySold += ci.qty;
-        batch.balance -= ci.qty;
+  let batch = null;
 
-        await batchRepository.updateBatch(batch);
-      }
-    }
+  if (ci.batchId) {
+    batch = batches.find(b => b.id === ci.batchId);
+  } else if (batches.length === 1) {
+    batch = batches[0];
   }
+
+  if (batch) {
+    batch.qtySold += ci.qty;
+    batch.balance -= ci.qty;
+
+    // safety
+    batch.balance = Math.max(0, batch.balance);
+
+    await batchRepository.updateBatch(batch);
+  }
+}
 
   /* ---------------- PURCHASE ---------------- */
   if (isPurchase) {
@@ -944,6 +937,9 @@ for (const ci of cart) {
 
       sourceSaleId: saleId,
       invoiceNo,
+
+      isDeleted: false,
+      deletedAt: null,
     });
   }
 
@@ -965,6 +961,9 @@ for (const ci of cart) {
 
       sourceSaleId: saleId,
       invoiceNo,
+
+      isDeleted: false,
+      deletedAt: null,
     });
   }
 
@@ -1551,7 +1550,10 @@ function addToCart(item: Item) {
     transactionType === "Purchase" || isSupplierReturn;
 
   // ❌ Block ONLY when stock must decrease
-  // if (stockDecreases && item.availableStock <= 0) return;
+  if (stockDecreases && item.availableStock < 1) {
+    alert("Item is out of stock");
+    return;
+  }
 
   // 1️⃣ Update UI stock (UNCHANGED)
   setItems(prev =>
@@ -1559,7 +1561,7 @@ function addToCart(item: Item) {
       if (i.id !== item.id) return i;
 
       if (stockDecreases) {
-        return { ...i, availableStock: i.availableStock - 1 };
+        return { ...i, availableStock: Math.max(0, i.availableStock - 1) };
       }
 
       if (stockIncreases) {
@@ -1637,6 +1639,22 @@ function updateItem(updated: CartItem) {
       : updated.qty;
 
   const roundedQty = roundTo(newQtyMin, 2);
+
+  if (stockDecreases) {
+    const selectedBatch = batches.find(b => b.id === updated.batchId);
+
+    if (!selectedBatch) {
+      alert("Please select an available purchase batch before saving.");
+      return;
+    }
+
+    if (roundedQty > Number(selectedBatch.balance)) {
+      alert(
+        `Entered quantity is greater than the selected batch quantity. Available: ${selectedBatch.balance}`
+      );
+      return;
+    }
+  }
 
   /* --------------------------------------------------
      2️⃣ Compute diff against previous qty

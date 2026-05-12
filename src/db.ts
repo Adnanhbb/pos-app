@@ -265,6 +265,9 @@ export interface ItemBatch {
 
   sourceSaleId: number; // purchase invoice reference
   invoiceNo: string; 
+
+  isDeleted: boolean;
+  deletedAt: number | null;
 }
 
 export interface Cylinder {

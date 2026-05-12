@@ -18,7 +18,6 @@ export default function CylindersPrices() {
   });
 
   const [loading, setLoading] = useState(true);
-  const [hasGasCategory, setHasGasCategory] = useState(false);
 
   const { t } = useLang();
 
@@ -40,16 +39,6 @@ export default function CylindersPrices() {
     load();
   }, []);
 
-  // Check if "Gas" category exists
-//   useEffect(() => {
-//     async function checkGasCategory() {
-//       const categories = await categoriesRepository.getAll();
-//       setHasGasCategory(categories.some(cat => cat.name.toLowerCase() === "gas"));
-//     }
-//     checkGasCategory();
-//   }, []);
-
-  // Update the 1kg prices whenever the 11.8kg prices change
   useEffect(() => {
     setFormData((prev) => ({
       ...prev,
@@ -61,7 +50,6 @@ export default function CylindersPrices() {
   }, [formData.cylBPrice, formData.cylSPrice, formData.cylDPrice, formData.cylWPrice]);
 
   const saveGasPrices = async () => {
-    if (!hasGasCategory) return;
 
     const currentSettings = await getSettings();
     if (!currentSettings) return;

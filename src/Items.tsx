@@ -36,7 +36,9 @@ import {
   cylinderRepo_getByItemId,
   cylinderRepo_add,
   cylinderRepo_update,
+  cylinderRepo_delete,
 } from "./repositories/cylinderRepository";
+import { cylinderCustomerRepository } from "./repositories/cylinderCustomerRepository";
 
 const PAGE_SIZE = 8;
 
@@ -76,7 +78,14 @@ export default function ItemsPage() {
 };
 
 
-  const [form, setForm] = useState<Omit<Item, "id">>(emptyForm);
+const [form, setForm] = useState<
+  Omit<Item, "id"> & {
+    openingStockMax: number;
+  }
+>({
+  ...emptyForm,
+  openingStockMax: 0,
+});
 
   const svgRefs = useRef<Record<number | string, SVGSVGElement | null>>({});
 
@@ -143,10 +152,15 @@ export default function ItemsPage() {
   }, [items]);
 
   function openCreate() {
-    setEditingItem(null);
-    setForm(emptyForm);
-    setFormOpen(true);
-  }
+  setEditingItem(null);
+
+  setForm({
+    ...emptyForm,
+    openingStockMax: 0,
+  });
+
+  setFormOpen(true);
+}
 
 // --- Open Edit ---
 async function openEdit(it: Item) {
@@ -170,41 +184,53 @@ async function openEdit(it: Item) {
     const perKgWholesale = +(wholesale112 / 11.8).toFixed(2);
 
     setForm({
-      name: it.name,
-      barcode: it.barcode,
-      brand: it.brand,
-      category: it.category,
-      minunit: it.minunit,
-      maxunit: it.maxunit,
-      ConvQty: it.ConvQty,
-      purchasePrice: perKgBuy,
-      retailPrice: perKgSell,
-      discountPrice: perKgDiscount,
-      wholesalePrice: perKgWholesale,
-      description: it.description || "",
-      availableStock: it.availableStock,
-      isDeleted: it.isDeleted,
-      deletedAt: it.deletedAt,
-    });
+  name: it.name,
+  barcode: it.barcode,
+  brand: it.brand,
+  category: it.category,
+  minunit: it.minunit,
+  maxunit: it.maxunit,
+  ConvQty: it.ConvQty,
+  purchasePrice: perKgBuy,
+  retailPrice: perKgSell,
+  discountPrice: perKgDiscount,
+  wholesalePrice: perKgWholesale,
+  description: it.description || "",
+  availableStock: it.availableStock,
+
+  openingStockMax:
+    it.ConvQty > 0
+      ? it.availableStock / it.ConvQty
+      : it.availableStock,
+
+  isDeleted: it.isDeleted,
+  deletedAt: it.deletedAt,
+});
   } else {
     // Non-Gas items, use existing item values
     setForm({
-      name: it.name,
-      barcode: it.barcode,
-      brand: it.brand,
-      category: it.category,
-      minunit: it.minunit,
-      maxunit: it.maxunit,
-      ConvQty: it.ConvQty,
-      purchasePrice: it.purchasePrice,
-      retailPrice: it.retailPrice,
-      discountPrice: it.discountPrice || 0,
-      wholesalePrice: it.wholesalePrice,
-      description: it.description || "",
-      availableStock: it.availableStock,
-      isDeleted: it.isDeleted,
-      deletedAt: it.deletedAt,
-    });
+  name: it.name,
+  barcode: it.barcode,
+  brand: it.brand,
+  category: it.category,
+  minunit: it.minunit,
+  maxunit: it.maxunit,
+  ConvQty: it.ConvQty,
+  purchasePrice: it.purchasePrice,
+  retailPrice: it.retailPrice,
+  discountPrice: it.discountPrice || 0,
+  wholesalePrice: it.wholesalePrice,
+  description: it.description || "",
+  availableStock: it.availableStock,
+
+  openingStockMax:
+    it.ConvQty > 0
+      ? it.availableStock / it.ConvQty
+      : it.availableStock,
+
+  isDeleted: it.isDeleted,
+  deletedAt: it.deletedAt,
+});
   }
 
   setFormOpen(true);
@@ -215,7 +241,10 @@ function closeForm() {
   setEditingItem(null);
 
   // Reset main form
-  setForm(emptyForm);
+  setForm({
+  ...emptyForm,
+  openingStockMax: 0,
+});
 
   // Close modal
   setFormOpen(false);
@@ -296,23 +325,96 @@ async function handleSave() {
   (form.category || "").toLowerCase().includes("gas") ||
   (form.category || "").toLowerCase().includes("cylinder");
 
+const wasCylinder =
+  (editingItem.category || "").toLowerCase().includes("gas") ||
+  (editingItem.category || "").toLowerCase().includes("cylinder");
+
 if (isCylinder && editingItem?.id) {
+
   const convQty = Number(form.ConvQty || 1);
-  const openingQtyMin = Number(form.availableStock || 0);
+
+  const openingQtyMin =
+    Number(form.availableStock || 0);
 
   const openingQtyMax =
-    convQty > 0 ? Math.floor(openingQtyMin / convQty) : openingQtyMin;
+    convQty > 0
+      ? Math.ceil(openingQtyMin / convQty)
+      : openingQtyMin;
 
-  const existing = await cylinderRepo_getByItemId(editingItem.id);
+  const existing =
+    await cylinderRepo_getByItemId(editingItem.id);
 
+  /* =========================================
+     UPDATE EXISTING CYLINDER
+  ========================================= */
   if (existing) {
+
     await cylinderRepo_update({
       ...existing,
-      title: form.name,              // ✅ update name
-      convQty: convQty,
+
+      title: form.name,
+
+      convQty,
+
       filledCylinders: openingQtyMax,
-      qtyInStock: openingQtyMax,
+
+      qtyInStock:
+        openingQtyMax +
+        existing.emptyCylinders +
+        existing.withCustomers,
     });
+
+  }
+
+  /* =========================================
+     CREATE NEW CYLINDER RECORD
+  ========================================= */
+  else {
+
+    await cylinderRepo_add({
+
+      itemId: editingItem.id,
+
+      title: form.name,
+
+      filledCylinders: openingQtyMax,
+
+      emptyCylinders: 0,
+
+      withCustomers: 0,
+
+      convQty,
+
+      qtyInStock: openingQtyMax,
+
+      isDeleted: false,
+
+      deletedAt: null,
+    });
+  }
+}
+
+/* =========================================
+   REMOVE CYLINDER RECORD
+   gas -> non-gas
+========================================= */
+if (
+  wasCylinder &&
+  !isCylinder &&
+  editingItem?.id
+) {
+
+  const existing =
+    await cylinderRepo_getByItemId(editingItem.id);
+
+  if (existing?.id) {
+
+    // remove cylinder customers first
+    await cylinderCustomerRepository
+      .permanentDeleteByCylinder(existing.id);
+
+    // remove cylinder record
+    await cylinderRepo_delete(existing.id);
   }
 }
   }
@@ -341,6 +443,8 @@ else {
       costPrice: Number(form.purchasePrice || 0),
       sourceSaleId: 0,
       invoiceNo: "Opening Stock",
+      isDeleted: false,
+      deletedAt: null,
     });
   }
 
@@ -397,112 +501,175 @@ const openDeletedModal = async () => {
 const handleRestore = async (id?: number) => {
   if (!id) return;
 
+  /* ==================================================
+     🔵 RESTORE ITEM
+  ================================================== */
+
   await itemsRepository.restore(id);
 
   const item = await itemsRepository.getById(id);
+
   if (!item) return;
 
-  const openingQty = Number(item.availableStock || 0);
-
   /* ==================================================
-     🔵 RESTORE BATCH (FULL RECREATE RULE)
+     🔵 RESTORE BATCHES
   ================================================== */
-  const existingBatches = await batchRepository.getBatchesByItem(id);
 
-  const hasOpening = existingBatches.some(b =>
-    (b.invoiceNo || "").toLowerCase().includes("opening stock")
-  );
+  const allBatches =
+    await batchRepository.getAllBatchesByItem(id);
 
-  if (!hasOpening && openingQty > 0) {
-    await batchRepository.addBatch({
-      itemId: id,
-      purchaseDate: new Date().toISOString(),
-      qtyPurchased: openingQty,
-      qtySold: 0,
-      balance: openingQty,
-      costPrice: Number(item.purchasePrice || 0),
-      sourceSaleId: 0,
-      invoiceNo: "Opening Stock (Restored)",
+  for (const b of allBatches) {
+    await batchRepository.updateBatch({
+      ...b,
+      isDeleted: false,
+      deletedAt: null,
     });
   }
 
   /* ==================================================
-     🟡 RESTORE CYLINDER
+     🔵 RESTORE CYLINDER
   ================================================== */
-  const isCylinder =
-    (item.category || "").toLowerCase().includes("gas") ||
-    (item.category || "").toLowerCase().includes("cylinder");
 
-  if (isCylinder) {
-    const convQty = Number(item.ConvQty || 1);
+  const existingCylinder =
+    await cylinderRepo_getByItemId(id);
 
-    const openingQtyMax =
-      convQty > 0 ? Math.floor(openingQty / convQty) : openingQty;
+  if (existingCylinder) {
 
-    const existingCylinder = await cylinderRepo_getByItemId(id);
+    await cylinderRepo_update({
+      ...existingCylinder,
+      isDeleted: false,
+      deletedAt: null,
 
-    if (existingCylinder) {
-      await cylinderRepo_update({
-        ...existingCylinder,
-        isDeleted: false,
-        deletedAt: null,
-        title: item.name,
-        filledCylinders: openingQtyMax,
-        qtyInStock: openingQtyMax,
-      });
-    } else {
-      await cylinderRepo_add({
-        itemId: id,
-        title: item.name,
-        filledCylinders: openingQtyMax,
-        emptyCylinders: 0,
-        withCustomers: 0,
-        convQty,
-        qtyInStock: openingQtyMax,
-        isDeleted: false,
-        deletedAt: null,
-      });
+      // optional sync
+      title: item.name,
+    });
+
+    /* ================================================
+       🔵 RESTORE CYLINDER CUSTOMERS
+    ================================================ */
+
+    if (existingCylinder.id) {
+      await cylinderCustomerRepository.restoreByCylinder(
+        existingCylinder.id
+      );
     }
   }
 
+  /* ==================================================
+     🔄 REFRESH UI
+  ================================================== */
+
   await loadDeletedItems();
+
   await loadPage();
 };
 
-const handlePermanentDelete = async (id?: number) => {
+const handlePermanentDelete = async (
+  id?: number
+) => {
+
   if (!id) return;
 
-  if (!window.confirm(t("deletePermanentlyConfirm")))
+  if (!window.confirm(
+    t("deletePermanentlyConfirm")
+  )) {
     return;
+  }
 
-  // 🔥 NEW
-  await batchRepository.getAllBatchesByItem(id);
+  /* ==================================================
+     🔵 DELETE BATCHES
+  ================================================== */
+
+  await batchRepository.permanentDeleteByItem(id);
+
+  /* ==================================================
+     🔵 DELETE CYLINDER + CUSTOMERS
+  ================================================== */
+
+  const cyl =
+    await cylinderRepo_getByItemId(id);
+
+  if (cyl) {
+
+    // delete customers first
+    if (cyl.id != null) {
+
+      await cylinderCustomerRepository
+        .permanentDeleteByCylinder(cyl.id);
+
+      await cylinderRepo_delete(cyl.id);
+    }
+  }
+
+  /* ==================================================
+     🔵 DELETE ITEM
+  ================================================== */
 
   await itemsRepository.permanentDelete(id);
+
+  /* ==================================================
+     🔄 REFRESH
+  ================================================== */
+
   await loadDeletedItems();
+
   await loadPage();
 };
 
 async function handleDelete(id?: number) {
   if (!id) return;
+
   if (!confirm("Delete this item?")) return;
 
   const item = items.find(it => it.id === id);
-  if (!item) return alert("Item not found");
+
+  if (!item) {
+    alert("Item not found");
+    return;
+  }
+
+  /* ==================================================
+     🔗 LOOKUPS
+  ================================================== */
 
   const brandId = brands.find(b => b.name === item.brand)?.id;
-  const categoryId = categories.find(c => c.name === item.category)?.id;
-  const minunitId = units.find(u => u.name === item.minunit)?.id;
-  const maxunitId = units.find(u => u.name === item.maxunit)?.id;
 
-  if (categoryId) await categoriesRepository.decrementItemCount(categoryId);
-  if (brandId) await brandsRepository.decrementItemCount(brandId);
-  if (minunitId) await unitRepository.decrementItemCount(minunitId);
-  if (maxunitId) await unitRepository.decrementItemCount(maxunitId);
+  const categoryId = categories.find(
+    c => c.name === item.category
+  )?.id;
+
+  const minunitId = units.find(
+    u => u.name === item.minunit
+  )?.id;
+
+  const maxunitId = units.find(
+    u => u.name === item.maxunit
+  )?.id;
+
+  /* ==================================================
+     🔻 DECREMENT COUNTS
+  ================================================== */
+
+  if (categoryId) {
+    await categoriesRepository.decrementItemCount(categoryId);
+  }
+
+  if (brandId) {
+    await brandsRepository.decrementItemCount(brandId);
+  }
+
+  if (minunitId) {
+    await unitRepository.decrementItemCount(minunitId);
+  }
+
+  if (maxunitId) {
+    await unitRepository.decrementItemCount(maxunitId);
+  }
 
   /* ==================================================
      🔵 CYLINDER SOFT DELETE
   ================================================== */
+
   const cyl = await cylinderRepo_getByItemId(id);
 
   if (cyl) {
@@ -511,32 +678,54 @@ async function handleDelete(id?: number) {
       isDeleted: true,
       deletedAt: Date.now(),
     });
+
+    /* ================================================
+       🔵 CYLINDER CUSTOMER SOFT DELETE
+    ================================================ */
+
+    // only if cylinder exists
+    if (cyl.id) {
+      await cylinderCustomerRepository.softDeleteByCylinder(
+        cyl.id
+      );
+    }
   }
 
   /* ==================================================
-     🔵 BATCH SOFT DELETE (NEW REQUIRED LOGIC)
+     🔵 BATCH SOFT DELETE
   ================================================== */
-  const batches = await batchRepository.getAllBatchesByItem(id);
+
+  const batches =
+    await batchRepository.getAllBatchesByItem(id);
 
   for (const b of batches) {
-    if (b.id != null) {
-      await batchRepository.updateBatch({
-        ...b,
-        balance: 0,
-        qtyPurchased: b.qtyPurchased,
-        qtySold: b.qtyPurchased, // fully consumed logically
-      });
-    }
+    await batchRepository.updateBatch({
+      ...b,
+      isDeleted: true,
+      deletedAt: Date.now(),
+    });
   }
 
   /* ==================================================
      🔵 ITEM SOFT DELETE
   ================================================== */
+
   await itemsRepository.remove(id);
 
+  /* ==================================================
+     🔄 PAGINATION FIX
+  ================================================== */
+
   const newTotal = Math.max(0, total - 1);
-  const newPages = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
-  if (page > newPages) setPage(newPages);
+
+  const newPages = Math.max(
+    1,
+    Math.ceil(newTotal / PAGE_SIZE)
+  );
+
+  if (page > newPages) {
+    setPage(newPages);
+  }
 
   await loadPage();
 }
@@ -562,7 +751,36 @@ convQty: number
   return { maxQty, minQty };
 }
 
-    const textAlign = lang === "ur" ? "text-right" : "text-left";
+const textAlign = lang === "ur" ? "text-right" : "text-left";
+
+const minLabel = form.minunit || "Min Unit";
+const maxLabel = form.maxunit || "Max Unit";
+
+const syncFromMin = (minValue: number) => {
+  const conv = Number(form.ConvQty || 1);
+
+  const maxValue =
+    conv > 0 ? minValue / conv : minValue;
+
+  setForm(prev => ({
+    ...prev,
+    availableStock: minValue,
+    openingStockMax: maxValue,
+  }));
+};
+
+const syncFromMax = (maxValue: number) => {
+  const conv = Number(form.ConvQty || 1);
+
+  const minValue =
+    conv > 0 ? maxValue * conv : maxValue;
+
+  setForm(prev => ({
+    ...prev,
+    availableStock: minValue,
+    openingStockMax: maxValue,
+  }));
+};
 
   return (
     <div className="p-2 sm:p-4 lg:p-8">
@@ -955,7 +1173,7 @@ convQty: number
       {t("delete")}
     </button>
   </div>
-</div>
+      </div>
     );
   })}
 </div>
@@ -1112,7 +1330,20 @@ convQty: number
               type="number"
               className="w-full p-2 border rounded"
               value={form.ConvQty}
-              onChange={(e) => setForm({ ...form, ConvQty: Number(e.target.value) })}
+              onChange={(e) => {
+                const conv = Number(e.target.value) || 1;
+
+                setForm(prev => ({
+                  ...prev,
+                  ConvQty: conv,
+
+                  // recalculate max from existing min stock
+                  openingStockMax:
+                    conv > 0
+                      ? prev.availableStock / conv
+                      : prev.availableStock,
+                }));
+              }}
             />
           </div>
 
@@ -1157,16 +1388,50 @@ convQty: number
             />
           </div>
 
-          {/* Stock */}
-          <div className="sm:col-span-2">
-            <label className="block text-xs font-medium mb-1">{t("openingstock")} ({form.minunit})</label>
-            <input
-              type="number"
-              className="w-full p-2 border rounded"
-              value={form.availableStock}
-              onChange={(e) => setForm({ ...form, availableStock: Number(e.target.value) })}
-            />
-          </div>
+          {/* Opening Stock */}
+<div className="sm:col-span-2">
+  <label className="block text-xs font-medium mb-2">
+    {t("openingstock")}
+  </label>
+
+  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+
+    {/* MAX UNIT */}
+    <div>
+      <label className="block text-[11px] text-gray-600 mb-1">
+        {maxLabel}
+      </label>
+
+      <input
+        type="number"
+        step="0.01"
+        className="w-full p-2 border rounded"
+        value={form.openingStockMax}
+        onChange={(e) =>
+          syncFromMax(Number(e.target.value))
+        }
+      />
+    </div>
+
+    {/* MIN UNIT */}
+    <div>
+      <label className="block text-[11px] text-gray-600 mb-1">
+        {minLabel}
+      </label>
+
+      <input
+        type="number"
+        className="w-full p-2 border rounded"
+        value={form.availableStock}
+        onChange={(e) =>
+          syncFromMin(Number(e.target.value))
+        }
+      />
+    </div>
+
+  </div>
+</div>
 
           {/* Description */}
           <div className="sm:col-span-2">
@@ -1189,7 +1454,7 @@ convQty: number
 
     </div>
   </div>
-)}
+        )}
     </div>
   );
 }

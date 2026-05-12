@@ -12,6 +12,8 @@ export interface ItemBatch {
   costPrice: number;
   sourceSaleId: number;
   invoiceNo: string;
+  isDeleted: boolean;
+  deletedAt: number | null;
 }
 
 function promisify<T>(request: IDBRequest<T>): Promise<T> {
@@ -43,12 +45,16 @@ async getBatchesByItem(itemId: number): Promise<ItemBatch[]> {
   return new Promise((resolve, reject) => {
     const tx = conn.transaction("item_batches", "readonly");
     const store = tx.objectStore("item_batches");
+    const index = store.index("by-item");
 
-    const req = store.getAll();
+    const req = index.getAll(itemId);
 
     req.onsuccess = () => {
       const all = req.result as ItemBatch[];
-      const filtered = all.filter(b => b.itemId === itemId);
+
+      // 🔥 ONLY ACTIVE BATCHES
+      const filtered = all.filter(b => !b.isDeleted);
+
       resolve(filtered);
     };
 
@@ -122,7 +128,39 @@ async deleteByInvoiceNo(invoiceNo: string): Promise<void> {
 
     req.onerror = () => reject(req.error);
   });
-}
+},
+
+async permanentDeleteByItem(itemId: number): Promise<void> {
+  const conn = await db.open();
+
+  return new Promise(async (resolve, reject) => {
+
+    const tx = conn.transaction("item_batches", "readwrite");
+
+    const store = tx.objectStore("item_batches");
+
+    const index = store.index("by-item");
+
+    const req = index.getAll(itemId);
+
+    req.onsuccess = () => {
+
+      const batches = req.result as ItemBatch[];
+
+      for (const b of batches) {
+        if (b.id != null) {
+          store.delete(b.id);
+        }
+      }
+    };
+
+    tx.oncomplete = () => resolve();
+
+    tx.onerror = () => reject(tx.error);
+
+    req.onerror = () => reject(req.error);
+  });
+},
 
 };
 

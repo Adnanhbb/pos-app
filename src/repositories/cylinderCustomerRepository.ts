@@ -3,6 +3,7 @@ import {
   getCylinderCustomersByCylinder,
   updateCylinderCustomer,
   addCylinderCustomer,
+  deleteCylinderCustomer, // ✅ NEW
 } from "../db";
 
 /* =========================================================
@@ -97,17 +98,20 @@ export const cylinderCustomerRepository = {
 
   /* ---------------- HARD DELETE ---------------- */
 
-  async deleteByCylinder(cylinderId: number): Promise<void> {
-    const all = await getCylinderCustomersByCylinder(cylinderId);
+async permanentDeleteByCylinder(
+  cylinderId: number
+): Promise<void> {
 
-    for (const c of all) {
-      await updateCylinderCustomer({
-        ...c,
-        isDeleted: true,
-        deletedAt: Date.now(),
-      });
+  const all =
+    await getCylinderCustomersByCylinder(cylinderId);
+
+  for (const c of all) {
+
+    if (c.id != null) {
+      await deleteCylinderCustomer(c.id);
     }
-  },
+  }
+},
 };
 
 /* =========================================================

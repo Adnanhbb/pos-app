@@ -1,12 +1,13 @@
 import {
+  db,
   Cylinder,
   CylinderCustomer,
   getAllCylinders,
   updateCylinder,
   getCylinderCustomersByCylinder,
   updateCylinderCustomer,
-  getCylinderByItemId ,
-  addCylinder ,
+  getCylinderByItemId,
+  addCylinder,
 } from "../db";
 
 import { itemsRepository } from "./itemsRepository";
@@ -115,4 +116,91 @@ export async function cylinderRepo_getCustomers(cylinderId: number) {
 
 export async function cylinderRepo_updateCustomer(data: CylinderCustomer) {
   return await updateCylinderCustomer(data);
+}
+
+/* =========================================================
+   🔥 SOFT DELETE HELPERS
+========================================================= */
+
+export async function cylinderRepo_softDelete(
+  cylinder: Cylinder
+) {
+  return await updateCylinder({
+    ...cylinder,
+    isDeleted: true,
+    deletedAt: Date.now(),
+  });
+}
+
+export async function cylinderRepo_restore(
+  cylinder: Cylinder
+) {
+  return await updateCylinder({
+    ...cylinder,
+    isDeleted: false,
+    deletedAt: null,
+  });
+}
+
+/* =========================================================
+   🔥 CYLINDER CUSTOMER HELPERS
+========================================================= */
+
+export async function cylinderRepo_softDeleteCustomers(
+  cylinderId: number
+) {
+  const customers =
+    await getCylinderCustomersByCylinder(cylinderId);
+
+  for (const c of customers) {
+    if (!c.isDeleted) {
+      await updateCylinderCustomer({
+        ...c,
+        isDeleted: true,
+        deletedAt: Date.now(),
+      });
+    }
+  }
+}
+
+export async function cylinderRepo_restoreCustomers(
+  cylinderId: number
+) {
+  const customers =
+    await getCylinderCustomersByCylinder(cylinderId);
+
+  for (const c of customers) {
+    if (c.isDeleted) {
+      await updateCylinderCustomer({
+        ...c,
+        isDeleted: false,
+        deletedAt: null,
+      });
+    }
+  }
+}
+
+export async function cylinderRepo_delete(
+  id: number
+): Promise<void> {
+
+  const conn = await db.open();
+
+  return new Promise((resolve, reject) => {
+
+    const tx = conn.transaction(
+      "cylinders",
+      "readwrite"
+    );
+
+    const store = tx.objectStore("cylinders");
+
+    const req = store.delete(id);
+
+    req.onsuccess = () => resolve();
+
+    req.onerror = () => reject(req.error);
+
+    tx.onerror = () => reject(tx.error);
+  });
 }

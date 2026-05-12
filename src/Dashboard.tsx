@@ -75,6 +75,7 @@ import CFReport from "./CFReport";
 import InvReport from "./invReport";
 import CylindersQty from "./CylindersQty";
 import CylindersPrices from "./CylindersPrices";
+import CustomerCylinders from "./CustomerCylinders";
 
 // DB helpers
 import { authRepository } from "./repositories/authRepository";
@@ -682,6 +683,7 @@ const saveEditedUser = async () => {
             {cylindersOpen && (
               <ul className="ml-6 mt-1 space-y-1">
                 <SubMenuButton name="cylinders_qty" icon={<FaBoxes />} clickKey="cylinders_qty" />
+                <SubMenuButton name="customer_cylinders" icon={<FaUsers />} clickKey="customer_cylinders" />
                 <SubMenuButton name="cylinder_prices" icon={<FaDollarSign />} clickKey="cylinder_prices" />
               </ul>
             )}
@@ -863,6 +865,8 @@ const saveEditedUser = async () => {
           <InvReport />
         ) : activeItem === "cylinders_qty" ? (
           <CylindersQty />
+        ) : activeItem === "customer_cylinders" ? (
+          <CustomerCylinders />
         ) : activeItem === "cylinder_prices" ? (
           <CylindersPrices />
         ): (

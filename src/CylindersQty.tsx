@@ -8,9 +8,12 @@ import {
   Cylinder,
   CylinderCustomer,
 } from "./db";
-import { FaBoxes, FaFill, FaCircle, FaUsers, FaEye, FaUndo } from "react-icons/fa";
+import { FaBoxes, FaFill, FaCircle, FaUsers, FaEye, FaUndo,FaEdit } from "react-icons/fa";
 import { useLang } from "./i18n/LanguageContext";
 import { getAllItems } from "./db";
+import {cylinderCustomerRepository} from "./repositories/cylinderCustomerRepository";
+import { cylinderRepo_update } from "./repositories/cylinderRepository";
+import { customersRepository } from "./repositories/customerRepository";
 
 export default function CylindersQty() {
   const [cylinders, setCylinders] = useState<Cylinder[]>([]);
@@ -29,12 +32,40 @@ export default function CylindersQty() {
   const [returnRows, setReturnRows] = useState<any[]>([]);
   const [savingSupplierReturn, setSavingSupplierReturn] = useState(false);
 
+  const [showEmptyAdjustModal, setShowEmptyAdjustModal] = useState(false);
+
+  const [showCustomerAdjustModal, setShowCustomerAdjustModal] = useState(false);
+
+  const [emptyAdjustment, setEmptyAdjustment] = useState(0);
+
+  const [customerAdjustment, setCustomerAdjustment] =
+  useState({
+    customerName: "",
+    qtyChange: 0,
+  });
+
+  const [allCustomers, setAllCustomers] =
+  useState<any[]>([]);
+
   const { t, lang } = useLang();
 
   useEffect(() => {
     loadData();
   }, []);
 
+  useEffect(() => {
+
+  async function loadCustomers() {
+
+    const data =
+      await customersRepository.getAll();
+
+    setAllCustomers(data);
+  }
+
+  loadCustomers();
+
+}, []);
 async function loadData() {
   setLoading(true);
 
@@ -265,6 +296,139 @@ async function handleSupplierReturn() {
   }
 }
 
+function openEmptyAdjustment(cylinder: Cylinder) {
+  setSelectedCylinder(cylinder);
+
+  setEmptyAdjustment(0);
+
+  setShowEmptyAdjustModal(true);
+}
+
+async function openCustomerAdjustment(
+  cylinder: Cylinder
+) {
+
+  setSelectedCylinder(cylinder);
+
+  if (cylinder.id) {
+
+    const customers =
+      await cylinderCustomerRepository.getByCylinder(
+        cylinder.id
+      );
+
+    setCylinderCustomers(customers);
+  }
+
+setCustomerAdjustment({
+  customerName: "",
+  qtyChange: 0,
+});
+
+  setShowCustomerAdjustModal(true);
+}
+
+async function saveEmptyAdjustment() {
+
+  if (!selectedCylinder?.id) return;
+
+  const newEmptyQty =
+    selectedCylinder.emptyCylinders +
+    emptyAdjustment;
+
+  if (newEmptyQty < 0) {
+    alert("Empty cylinders cannot be negative");
+    return;
+  }
+
+  await cylinderRepo_update({
+    ...selectedCylinder,
+
+    emptyCylinders: newEmptyQty,
+
+    qtyInStock:
+      selectedCylinder.filledCylinders +
+      newEmptyQty +
+      selectedCylinder.withCustomers,
+  });
+
+  await loadData();
+
+  setShowEmptyAdjustModal(false);
+}
+
+async function saveCustomerAdjustment() {
+
+  if (!selectedCylinder?.id) return;
+
+  const qtyChange =
+  Number(customerAdjustment.qtyChange || 0);
+
+  if (
+    !customerAdjustment.customerName.trim()
+  ) {
+    alert("Please select customer");
+    return;
+  }
+
+  const existingCustomer =
+    cylinderCustomers.find(
+      c =>
+        c.customerName ===
+        customerAdjustment.customerName
+    );
+
+  const currentHeld =
+    Number(existingCustomer?.qtyHeld || 0);
+
+  const finalQty =
+  currentHeld + qtyChange;
+
+  if (finalQty < 0) {
+    alert(
+      "Customer cylinder qty cannot be negative"
+    );
+    return;
+  }
+
+  /* -----------------------------------------
+     UPDATE CUSTOMER HOLDING
+  ----------------------------------------- */
+
+  await cylinderCustomerRepository.upsertHolding(
+    selectedCylinder.id,
+
+    selectedCylinder.title,
+
+    customerAdjustment.customerName,
+
+    qtyChange
+  );
+
+  /* -----------------------------------------
+     UPDATE CYLINDER TOTAL
+  ----------------------------------------- */
+
+  const updatedWithCustomers =
+    selectedCylinder.withCustomers +
+    qtyChange;
+
+  await cylinderRepo_update({
+    ...selectedCylinder,
+
+    withCustomers:
+      Math.max(0, updatedWithCustomers),
+  });
+
+  /* -----------------------------------------
+     REFRESH
+  ----------------------------------------- */
+
+  await loadData();
+
+  setShowCustomerAdjustModal(false);
+}
+
   const textAlign = lang === "ur" ? "text-right" : "text-center";
 
   if (loading) return <p className="text-center p-4">{t("loading")}</p>;
@@ -353,13 +517,41 @@ async function handleSupplierReturn() {
                   {cylinder.filledCylinders}
                 </td>
 
-                <td className={`px-2 py-2 sm:px-4 hidden lg:table-cell ${textAlign}`}>
-                  {cylinder.emptyCylinders}
-                </td>
+                <td className={`px-2 py-2 sm:px-4 hidden lg:table-cell ${textAlign}`}>                
+
+                  <span>
+                    {cylinder.emptyCylinders}
+                  </span>
+
+                  <button
+                    title="Manual Adjustment"
+                    onClick={() =>
+                      openEmptyAdjustment(cylinder)
+                    }
+                    className="text-indigo-600 hover:text-indigo-800 pl-2"
+                  >
+                    <FaEdit size={14} />
+                  </button>
+
+              </td>
 
                 <td className={`px-2 py-2 sm:px-4 hidden lg:table-cell ${textAlign}`}>
-                  {cylinder.withCustomers}
-                </td>
+
+                  <span>
+                    {cylinder.withCustomers}
+                  </span>
+
+                  <button
+                    title="Manual Adjustment"
+                    onClick={() =>
+                      openCustomerAdjustment(cylinder)
+                    }
+                    className="text-indigo-600 hover:text-indigo-800 pl-2"
+                  >
+                    <FaEdit size={14} />
+                  </button>
+
+              </td>
 
                 <td className={`px-2 py-2 sm:px-4 hidden lg:table-cell ${textAlign}`}>
                   <button
@@ -428,6 +620,210 @@ async function handleSupplierReturn() {
           </tbody>
         </table>
       </div>
+
+{showEmptyAdjustModal && selectedCylinder && (
+
+<div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+
+  <div className="bg-white rounded-lg p-5 w-full max-w-sm">
+
+    <h2 className="text-lg font-semibold mb-4">
+      Adjust Empty Cylinders
+    </h2>
+
+    <div className="flex items-center gap-3 mb-4">
+
+      <button
+        onClick={() =>
+          setEmptyAdjustment(prev => prev - 1)
+        }
+        className="px-3 py-1 bg-red-100 rounded"
+      >
+        -
+      </button>
+
+      <input
+        type="number"
+        value={emptyAdjustment}
+        onChange={(e) =>
+          setEmptyAdjustment(
+            Number(e.target.value)
+          )
+        }
+        className="w-full border rounded p-2"
+      />
+
+      <button
+        onClick={() =>
+          setEmptyAdjustment(prev => prev + 1)
+        }
+        className="px-3 py-1 bg-green-100 rounded"
+      >
+        +
+      </button>
+
+    </div>
+
+    <div className="flex justify-end gap-2">
+
+      <button
+        onClick={() =>
+          setShowEmptyAdjustModal(false)
+        }
+        className="px-4 py-2 bg-gray-300 rounded"
+      >
+        Cancel
+      </button>
+
+      <button
+        onClick={saveEmptyAdjustment}
+        className="px-4 py-2 bg-indigo-600 text-white rounded"
+      >
+        Save
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+)}
+
+{showCustomerAdjustModal && selectedCylinder && (
+
+<div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
+
+  <div className="bg-white rounded-lg p-5 w-full max-w-md">
+
+    <h2 className="text-lg font-semibold mb-5">
+      Adjust Customer Cylinders
+    </h2>
+
+   {/* -----------------------------------
+   QTY ADJUSTMENT
+------------------------------------ */}
+
+<div className="mb-5">
+
+  <label className="text-sm font-medium block mb-2">
+    Adjust Quantity
+  </label>
+
+  <div className="flex items-center gap-3">
+
+    {/* MINUS */}
+    <button
+      type="button"
+      onClick={() =>
+        setCustomerAdjustment(prev => ({
+          ...prev,
+          qtyChange:
+            Number(prev.qtyChange || 0) - 1,
+        }))
+      }
+      className="px-3 py-2 bg-red-100 rounded border"
+    >
+      -
+    </button>
+
+    {/* INPUT */}
+    <input
+      type="number"
+      className="w-full border rounded p-2 text-center"
+      value={customerAdjustment.qtyChange}
+      onChange={(e) =>
+        setCustomerAdjustment(prev => ({
+          ...prev,
+          qtyChange: Number(e.target.value),
+        }))
+      }
+    />
+
+    {/* PLUS */}
+    <button
+      type="button"
+      onClick={() =>
+        setCustomerAdjustment(prev => ({
+          ...prev,
+          qtyChange:
+            Number(prev.qtyChange || 0) + 1,
+        }))
+      }
+      className="px-3 py-2 bg-green-100 rounded border"
+    >
+      +
+    </button>
+
+  </div>
+
+</div>
+
+    {/* -----------------------------------
+       CUSTOMER DROPDOWN
+    ------------------------------------ */}
+
+    <div className="mb-5">
+
+      <label className="text-sm font-medium block mb-1">
+        Assign To
+      </label>
+
+      <select
+        className="w-full border rounded p-2"
+        value={customerAdjustment.customerName}
+        onChange={(e) =>
+          setCustomerAdjustment(prev => ({
+            ...prev,
+            customerName: e.target.value,
+          }))
+        }
+      >
+
+        <option value="">
+          Select Customer
+        </option>
+
+        {allCustomers.map(c => (
+
+          <option
+            key={c.id}
+            value={c.name}
+          >
+            {c.name}
+          </option>
+
+        ))}
+
+      </select>
+
+    </div>
+
+    {/* ACTIONS */}
+
+    <div className="flex justify-end gap-2">
+
+      <button
+        onClick={() =>
+          setShowCustomerAdjustModal(false)
+        }
+        className="px-4 py-2 bg-gray-300 rounded"
+      >
+        Cancel
+      </button>
+
+      <button
+        onClick={saveCustomerAdjustment}
+        className="px-4 py-2 bg-indigo-600 text-white rounded"
+      >
+        Save
+      </button>
+
+    </div>
+
+  </div>
+
+</div>
+)}
 
 {supplierReturnModal && (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
