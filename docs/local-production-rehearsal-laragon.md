@@ -130,10 +130,11 @@ For a local build rehearsal, the production-like API base URL should point at th
 
 ```powershell
 $env:VITE_API_BASE_URL="http://localhost/jawad-bro-rehearsal/api"
+$env:VITE_BASE_PATH="/jawad-bro-rehearsal/"
 npm.cmd run build
 ```
 
-For package rehearsal through `deployment:package`, ensure the package manifest records the intended public API URL used for that build. For real hosting, this must become the real HTTPS API URL.
+For package rehearsal through `deployment:package`, ensure the package manifest records both the intended public API URL and the frontend asset base path used for that build. For Laragon subfolder rehearsal, `VITE_BASE_PATH` must be `/jawad-bro-rehearsal/`; for domain-root hosting, use `/`. For real hosting, `VITE_API_BASE_URL` must become the real HTTPS API URL.
 
 ## Configure Local Backend Database Access
 
@@ -362,10 +363,11 @@ Use this compact sequence when you are ready to actually run the Laragon rehears
 
 ### 1. Regenerate The Package For The Laragon API URL
 
-The package command uses `VITE_API_BASE_URL`. For a Laragon rehearsal, set it before packaging so the copied frontend calls the local rehearsal API instead of the placeholder production URL:
+The package command uses `VITE_API_BASE_URL` for API calls and `VITE_BASE_PATH` for Vite asset URLs. For a Laragon subfolder rehearsal, set both before packaging so the copied frontend calls the local rehearsal API and loads assets from `/jawad-bro-rehearsal/` instead of a different production base path:
 
 ```powershell
 $env:VITE_API_BASE_URL="http://localhost/jawad-bro-rehearsal/api"
+$env:VITE_BASE_PATH="/jawad-bro-rehearsal/"
 npm.cmd run deployment:package
 npm.cmd run rehearsal:local-production
 ```
@@ -373,10 +375,11 @@ npm.cmd run rehearsal:local-production
 Check `deployment-package/deployment-manifest.json` and confirm:
 
 ```json
-"VITE_API_BASE_URL": "http://localhost/jawad-bro-rehearsal/api"
+"VITE_API_BASE_URL": "http://localhost/jawad-bro-rehearsal/api",
+"VITE_BASE_PATH": "/jawad-bro-rehearsal/"
 ```
 
-If the manifest still shows `https://api.example.com`, regenerate the package with the environment variable above before copying files into Laragon.
+If the manifest still shows `https://api.example.com` or a base path other than `/jawad-bro-rehearsal/`, regenerate the package with the environment variables above before copying files into Laragon. A wrong Vite base path can make the frontend appear blank because the browser requests assets from the wrong URL prefix.
 
 ### 2. Create The Laragon Web Root
 
@@ -481,7 +484,8 @@ npm.cmd run rehearsal:laragon
 Default behavior:
 
 - uses `http://localhost/jawad-bro-rehearsal/api` unless `--api-url=<url>` or `LARAGON_REHEARSAL_API_URL` is provided
-- regenerates `deployment-package/` with that `VITE_API_BASE_URL`
+- uses `/jawad-bro-rehearsal/` unless `--base-path=<path>` or `LARAGON_REHEARSAL_BASE_PATH` is provided
+- regenerates `deployment-package/` with that `VITE_API_BASE_URL` and the Laragon subfolder `VITE_BASE_PATH`
 - runs `npm.cmd run rehearsal:local-production`
 - checks the expected Laragon target path
 - checks safe endpoints: `health.php`, `login.php`, `session.php`
@@ -494,10 +498,10 @@ To copy the package into the default Laragon rehearsal folder after verification
 npm.cmd run rehearsal:laragon -- --copy
 ```
 
-To override the API URL or target folder:
+To override the API URL, base path, or target folder:
 
 ```powershell
-npm.cmd run rehearsal:laragon -- --api-url=http://localhost/jawad-bro-rehearsal/api --target=C:\laragon\www\jawad-bro-rehearsal
+npm.cmd run rehearsal:laragon -- --api-url=http://localhost/jawad-bro-rehearsal/api --base-path=/jawad-bro-rehearsal/ --target=C:\laragon\www\jawad-bro-rehearsal
 ```
 
 The runner never uploads to real hosting, never enables auto-sync, never mutates IndexedDB/MySQL/replay queues/stock/accounting/auth tokens/business data, and never runs restore/import/rollback actions.

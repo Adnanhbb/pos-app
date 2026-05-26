@@ -475,8 +475,10 @@ const saveEditedUser = async () => {
 };
 
   const logout = () => {
-    localStorage.removeItem("loggedInUserId");
-    window.location.reload();
+    setUserMenuOpen(false);
+    setEditUserOpen(false);
+    setCurrentUser(null);
+    onLogout();
   };
 
   return (

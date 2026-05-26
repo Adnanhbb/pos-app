@@ -13,6 +13,7 @@ const backendTarget = join(packageRoot, "api");
 const docsTarget = join(packageRoot, "docs");
 
 const buildApiBaseUrl = process.env.VITE_API_BASE_URL || "https://api.example.com";
+const buildBasePath = process.env.VITE_BASE_PATH || "/pos-app/";
 const buildCommand = process.platform === "win32" ? "cmd.exe" : "npm";
 const buildArgs = process.platform === "win32" ? ["/c", "npm.cmd", "run", "build"] : ["run", "build"];
 const buildCommandLabel = process.platform === "win32" ? "npm.cmd run build" : "npm run build";
@@ -142,6 +143,7 @@ function main() {
     env: {
       ...process.env,
       VITE_API_BASE_URL: buildApiBaseUrl,
+      VITE_BASE_PATH: buildBasePath,
     },
   });
 
@@ -188,6 +190,7 @@ function main() {
       command: buildCommandLabel,
       status: build.status,
       VITE_API_BASE_URL: buildApiBaseUrl,
+      VITE_BASE_PATH: buildBasePath,
     },
     git: {
       commit: getGitValue(["rev-parse", "HEAD"]),

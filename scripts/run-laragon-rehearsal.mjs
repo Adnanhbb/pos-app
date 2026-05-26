@@ -11,8 +11,10 @@ const args = process.argv.slice(2);
 const copyEnabled = args.includes("--copy");
 const apiUrlArg = args.find((arg) => arg.startsWith("--api-url="));
 const targetArg = args.find((arg) => arg.startsWith("--target="));
+const basePathArg = args.find((arg) => arg.startsWith("--base-path="));
 const apiUrl = (apiUrlArg ? apiUrlArg.slice("--api-url=".length) : process.env.LARAGON_REHEARSAL_API_URL || "http://localhost/jawad-bro-rehearsal/api").replace(/\/+$/, "");
 const targetRoot = resolve(targetArg ? targetArg.slice("--target=".length) : process.env.LARAGON_REHEARSAL_TARGET || "C:/laragon/www/jawad-bro-rehearsal");
+const basePath = basePathArg ? basePathArg.slice("--base-path=".length) : process.env.LARAGON_REHEARSAL_BASE_PATH || "/jawad-bro-rehearsal/";
 const packageRoot = join(root, "deployment-package");
 const frontendSource = join(packageRoot, "frontend");
 const apiSource = join(packageRoot, "api");
@@ -103,6 +105,7 @@ function makeMarkdown(report) {
   lines.push(`- ok: ${report.ok}`);
   lines.push(`- copyEnabled: ${report.copyEnabled}`);
   lines.push(`- apiUrl: ${report.apiUrl}`);
+  lines.push(`- basePath: ${report.basePath}`);
   lines.push(`- targetRoot: ${report.targetRoot}`);
   lines.push(`- deploymentPerformed: ${report.deploymentPerformed}`);
   lines.push(`- uploadPerformed: ${report.uploadPerformed}`);
@@ -145,7 +148,7 @@ async function main() {
     "Approve rollback steps manually; this runner does not restore/import/delete data.",
   ];
 
-  const packageRun = npmRun("deployment:package", { VITE_API_BASE_URL: apiUrl });
+  const packageRun = npmRun("deployment:package", { VITE_API_BASE_URL: apiUrl, VITE_BASE_PATH: basePath });
   addStep(steps, "regenerate deployment package with local rehearsal API URL", packageRun.ok, { status: packageRun.status, error: packageRun.error });
 
   const verifierRun = npmRun("rehearsal:local-production", { LARAGON_REHEARSAL_ALLOW_LOCAL_RUNTIME_URLS: "1" });
@@ -164,6 +167,7 @@ async function main() {
   addStep(steps, "frontend package files exist", existsSync(join(frontendSource, "index.html")) && existsSync(join(frontendSource, "assets")), { frontendSource });
   addStep(steps, "API package files exist", existsSync(join(apiSource, "health.php")) && existsSync(join(apiSource, "login.php")) && existsSync(join(apiSource, "session.php")), { apiSource });
   addStep(steps, "deployment manifest API URL matches rehearsal URL", manifest?.build?.VITE_API_BASE_URL === apiUrl, { manifestApiUrl: manifest?.build?.VITE_API_BASE_URL ?? null, expected: apiUrl });
+  addStep(steps, "deployment manifest base path matches rehearsal subfolder", manifest?.build?.VITE_BASE_PATH === basePath, { manifestBasePath: manifest?.build?.VITE_BASE_PATH ?? null, expected: basePath });
 
   const targetExistsBeforeCopy = existsSync(targetRoot);
   addStep(steps, "Laragon target path checked", true, { targetRoot, exists: targetExistsBeforeCopy });
@@ -196,7 +200,7 @@ async function main() {
     warnings.push("One or more Laragon API endpoints are not reachable. This is expected before copying files, starting Laragon, or configuring the rehearsal DB/API path.");
   }
   if (endpointChecks.some((check) => check.reachable && (check.status < 200 || check.status >= 400))) {
-    warnings.push("One or more Laragon API endpoints responded with a non-success status. This is expected before --copy or before the rehearsal API path/database is configured.");
+    warnings.push("One or more Laragon API endpoints responded with a non-success status. This can be expected for login/session GET checks without credentials; review any unexpected status before manual business testing.");
   }
 
   const failedSteps = steps.filter((step) => !step.ok);
@@ -217,6 +221,7 @@ async function main() {
     replayTriggered: false,
     destructiveActionRun: false,
     apiUrl,
+    basePath,
     targetRoot,
     copyEnabled,
     copySummary,
@@ -242,6 +247,7 @@ async function main() {
     autoSyncEnabled: report.autoSyncEnabled,
     runtimeBehaviorChanged: report.runtimeBehaviorChanged,
     apiUrl: report.apiUrl,
+    basePath: report.basePath,
     targetRoot: report.targetRoot,
     steps: {
       total: report.steps.length,

@@ -27,6 +27,7 @@ const settings = readFileSync("src/Settings.tsx", "utf8");
 const authSession = readFileSync("src/api/authSession.ts", "utf8");
 const authRepository = readFileSync("src/repositories/authRepository.ts", "utf8");
 const app = readFileSync("src/App.tsx", "utf8");
+const dashboard = readFileSync("src/Dashboard.tsx", "utf8");
 
 check("auth token helper exports getAuthToken", authToken.includes("export function getAuthToken"));
 check("auth token helper exports setAuthToken", authToken.includes("export function setAuthToken"));
@@ -44,6 +45,7 @@ check("auth session helper clears token on logout", authSession.includes("/logou
 check("auth session helper can fetch session safely", authSession.includes("/session.php") && authSession.includes("fetchCurrentSession"));
 check("authRepository uses remote login while preserving local fallback", authRepository.includes("loginWithPassword") && authRepository.includes("falling back to local login") && authRepository.includes("validateUser(username, password, role)"));
 check("authRepository logout clears token and local login state", authRepository.includes("logoutSession") && authRepository.includes("clearAuthToken()") && authRepository.includes("loggedInUserId"));
+check("Dashboard logout uses shared App logout instead of reload-only local cleanup", dashboard.includes("onLogout();") && dashboard.includes("setCurrentUser(null)") && !dashboard.includes("window.location.reload()"));
 check("App restores token-backed session without sync replay", app.includes("getCurrentSession") && !app.includes("processPending"));
 check("syncEngine marks auth failures with safe status metadata", syncEngine.includes("authError") && syncEngine.includes("getErrorStatus(error)") && syncEngine.includes("isAuthError(error)"));
 check("syncEngine does not auto-logout on auth failure", !syncEngine.includes("clearAuthToken") && !syncEngine.includes("logout()"));
