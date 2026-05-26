@@ -10,6 +10,7 @@ const packageRoot = join(root, "deployment-package");
 const jsonReportPath = join(root, "deployment-rehearsal-report.json");
 const markdownReportPath = join(root, "deployment-rehearsal-report.md");
 const maxScanBytes = 2 * 1024 * 1024;
+const allowLocalRuntimeUrls = process.env.LARAGON_REHEARSAL_ALLOW_LOCAL_RUNTIME_URLS === "1";
 
 const requiredPackagePaths = [
   "deployment-package",
@@ -238,6 +239,12 @@ function makeMarkdown(report) {
     lines.push("## Warnings");
     lines.push("");
     for (const warning of report.warnings) lines.push(`- ${warning}`);
+    lines.push("");
+    lines.push("Warning labels:");
+    lines.push("");
+    lines.push("- ACCEPTABLE LOCAL REHEARSAL: expected in Laragon/local checklist context; not a local blocker.");
+    lines.push("- REAL HOSTING REVIEW REQUIRED: safe for local rehearsal, but must be changed or approved before real hosting upload.");
+    lines.push("- BLOCKING FAILURE: represented by failed checks, not warnings.");
   }
   lines.push("");
   lines.push("## Manual Checks Still Required");
@@ -270,20 +277,23 @@ function main() {
   checks.push(check("backup/export/validation scripts exist", ["scripts/export-indexeddb-backup.mjs", "scripts/export-mysql-backup.mjs", "scripts/validate-backup-file.mjs"].every(existsRepo)));
   checks.push(check("Developer Control Panel file exists", existsRepo("src/DeveloperControlPanel.tsx")));
   checks.push(check("forbidden generated/secret package paths absent", forbiddenPackagePaths.length === 0, { forbiddenPackagePaths }));
-  checks.push(check("no runtime localhost/dev URL leakage in deployment-package", localhostLeakage.runtimeMatches.length === 0, { runtimeMatches: localhostLeakage.runtimeMatches }));
+  checks.push(check("no runtime localhost/dev URL leakage in deployment-package", localhostLeakage.runtimeMatches.length === 0 || allowLocalRuntimeUrls, { runtimeMatches: localhostLeakage.runtimeMatches, allowedForLaragonRehearsal: allowLocalRuntimeUrls }));
   checks.push(check("auto-sync is not enabled", autoSyncSignals.length === 0 && manifest?.autoSyncEnabled !== true, { autoSyncSignals, manifestAutoSyncEnabled: manifest?.autoSyncEnabled ?? null }));
   checks.push(check("no obvious background sync startup code enabled", backgroundSyncMatches.length === 0, { backgroundSyncMatches }));
   checks.push(check("dangerous restore/import tooling absent", dangerousTooling.dangerousNames.length === 0, { dangerousNames: dangerousTooling.dangerousNames }));
   checks.push(check("known apply tools remain explicit/gated", dangerousTooling.gatedApplyScripts.every((file) => /--apply/.test(readSmallText(file) || "")), { gatedApplyScripts: dangerousTooling.gatedApplyScripts }));
 
+  if (allowLocalRuntimeUrls && localhostLeakage.runtimeMatches.length > 0) {
+    warnings.push(`[ACCEPTABLE LOCAL REHEARSAL] Runtime package contains the Laragon API URL: ${localhostLeakage.runtimeMatches.length} match(es). This is allowed only because LARAGON_REHEARSAL_ALLOW_LOCAL_RUNTIME_URLS=1 was set by the local Laragon runner; regenerate without this allowance before real hosting upload.`);
+  }
   if (localhostLeakage.documentationMatches.length > 0) {
-    warnings.push(`Localhost/Laragon examples found only in package documentation or env template: ${localhostLeakage.documentationMatches.length} match(es). Review before real hosting packaging.`);
+    warnings.push(`[ACCEPTABLE LOCAL REHEARSAL] Localhost/Laragon examples found only in package documentation or env template: ${localhostLeakage.documentationMatches.length} match(es). These are acceptable for local rehearsal and are not blockers; review them when preparing a real-hosting package.`);
   }
   if (localhostLeakage.environmentConfigMatches.length > 0) {
-    warnings.push(`Localhost/Laragon values found in packaged CORS/environment config: ${localhostLeakage.environmentConfigMatches.length} match(es). Replace/review for real hosting CORS before upload.`);
+    warnings.push(`[REAL HOSTING REVIEW REQUIRED] Localhost/Laragon origins found in packaged CORS/environment config: ${localhostLeakage.environmentConfigMatches.length} match(es). They are acceptable for Laragon rehearsal, but must be replaced with the real production domain/SSL origin or explicitly approved before real hosting upload.`);
   }
-  if (manifest?.dirty) warnings.push("Deployment package manifest reports dirty git state; acceptable for rehearsal, but tag/commit before real release packaging.");
-  if (dangerousTooling.gatedApplyScripts.length > 0) warnings.push(`Explicit --apply maintenance tools exist and must remain manual/operator gated: ${dangerousTooling.gatedApplyScripts.length} script(s).`);
+  if (manifest?.dirty) warnings.push("[REAL HOSTING REVIEW REQUIRED] Deployment package manifest reports dirty git state. Acceptable for local rehearsal, but commit/tag intentionally before real release packaging.");
+  if (dangerousTooling.gatedApplyScripts.length > 0) warnings.push(`[REAL HOSTING REVIEW REQUIRED] Explicit --apply maintenance tools exist and must remain manual/operator gated: ${dangerousTooling.gatedApplyScripts.length} script(s).`);
 
   const failed = checks.filter((result) => !result.pass);
   const report = {

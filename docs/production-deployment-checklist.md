@@ -270,3 +270,13 @@ Manual checks still required after a passing report:
 - real replay approval
 - rollback approval
 - real hosting credentials/domain/SSL/CORS/server environment checks
+
+## Warning Classification For Local Vs Real Hosting
+
+The automated rehearsal report separates warnings from blockers:
+
+- `[ACCEPTABLE LOCAL REHEARSAL]` means the reference is expected for Laragon/local checklist use and does not block the local rehearsal.
+- `[REAL HOSTING REVIEW REQUIRED]` means the local rehearsal can pass, but a human must replace or approve the value before real hosting upload.
+- Blocking failures are failed checks, not warnings.
+
+Local CORS origins such as `localhost`, `127.0.0.1`, or Laragon paths are allowed only during Laragon rehearsal. Before real hosting deployment, CORS must be reviewed and updated to the production HTTPS frontend origin/API domain. Passing the local rehearsal does not mean the package is ready for real hosting upload.

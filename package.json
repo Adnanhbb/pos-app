@@ -69,7 +69,8 @@
                     "release:manifest":  "node scripts/create-release-manifest.mjs",
                     "release:git-readiness":  "node scripts/report-release-git-readiness.mjs",
                     "deployment:package":  "node scripts/create-deployment-package.mjs",
-                    "rehearsal:local-production":  "node scripts/rehearse-local-production.mjs"
+                    "rehearsal:local-production":  "node scripts/rehearse-local-production.mjs",
+                    "rehearsal:laragon":  "node scripts/run-laragon-rehearsal.mjs"
                 },
     "dependencies":  {
                          "dexie":  "^4.2.1",

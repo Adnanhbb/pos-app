@@ -469,3 +469,46 @@ After copying into Laragon, manually verify:
 ### 7. Current Package Readiness Note
 
 The latest generated rehearsal report passes, but it warns that packaged CORS config includes local origins. That is acceptable for Laragon rehearsal. Before real hosting upload, replace/review those CORS origins with the real HTTPS frontend/API domain.
+
+## Safe Laragon Automation Runner
+
+A local-only setup/check runner exists:
+
+```powershell
+npm.cmd run rehearsal:laragon
+```
+
+Default behavior:
+
+- uses `http://localhost/jawad-bro-rehearsal/api` unless `--api-url=<url>` or `LARAGON_REHEARSAL_API_URL` is provided
+- regenerates `deployment-package/` with that `VITE_API_BASE_URL`
+- runs `npm.cmd run rehearsal:local-production`
+- checks the expected Laragon target path
+- checks safe endpoints: `health.php`, `login.php`, `session.php`
+- writes `laragon-rehearsal-run-report.json` and `laragon-rehearsal-run-report.md`
+- does not copy files unless `--copy` is provided
+
+To copy the package into the default Laragon rehearsal folder after verification:
+
+```powershell
+npm.cmd run rehearsal:laragon -- --copy
+```
+
+To override the API URL or target folder:
+
+```powershell
+npm.cmd run rehearsal:laragon -- --api-url=http://localhost/jawad-bro-rehearsal/api --target=C:\laragon\www\jawad-bro-rehearsal
+```
+
+The runner never uploads to real hosting, never enables auto-sync, never mutates IndexedDB/MySQL/replay queues/stock/accounting/auth tokens/business data, and never runs restore/import/rollback actions.
+
+Still manual:
+
+- creating/importing the local MySQL rehearsal database
+- visual UI verification
+- invoice print verification
+- login with a known local admin/test user
+- low-risk CRUD test data creation
+- manual replay approval
+- accounting/business validation review
+- rollback approval
