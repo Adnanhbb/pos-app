@@ -1353,3 +1353,9 @@ This is preparation-only and does not deploy, enable auto-sync, add CI/CD, add b
 Checkpoint reference: [release-checkpoint-production-build-verification.md](./release-checkpoint-production-build-verification.md)
 
 This checkpoint documents the release preparation baseline: production build succeeded, `dist/` exists with `index.html` and assets, localhost leakage matches were `0`, verifier errors/warnings were `0`, and the latest release manifest is `releases/release-manifest-2026-05-25T17-03-53-150Z.json`. Deployment, CI/CD, runtime sync changes, and auto-sync remain absent.
+
+## Deployment Package Preparation
+
+`npm.cmd run deployment:package` creates a local dry-run package under `deployment-package/` for client hosting review. It includes frontend build output, backend `api/`, selected public deployment docs, `.env.production.example`, and a `deployment-manifest.json` safety record.
+
+The package tool does not deploy, upload, enable auto-sync, or change runtime sync behavior. Generated package output is ignored by Git. Real secrets, local `.env` files, backups, release manifests, logs, `node_modules/`, and `tsconfig.tsbuildinfo` are excluded; production secrets must be configured directly on the server or hosting provider.

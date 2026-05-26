@@ -218,3 +218,17 @@ These commands are manual-first release preparation only. They do not deploy, en
 Checkpoint reference: [release-checkpoint-production-build-verification.md](./release-checkpoint-production-build-verification.md)
 
 This checkpoint records that `release:verify` and `release:manifest` exist, production build verification passed, `dist/` contains `index.html` and assets, localhost leakage matches were `0`, verifier errors were `0`, verifier warnings were `0`, and the latest manifest was written to `releases/release-manifest-2026-05-25T17-03-53-150Z.json`.
+
+## Dry-Run Deployment Package Preparation
+
+A local deployment package preparation command exists:
+
+```powershell
+npm.cmd run deployment:package
+```
+
+This command is preparation only. It runs a production build, creates a local `deployment-package/` folder, copies `dist/` output into `deployment-package/frontend/`, copies backend PHP files into `deployment-package/api/`, includes selected public deployment documentation under `deployment-package/docs/`, and writes `deployment-package/deployment-manifest.json`.
+
+The package excludes `node_modules/`, `backups/`, `releases/`, `.git/`, logs, local environment files, and `tsconfig.tsbuildinfo`. It includes `.env.production.example` only. Real production secrets must be configured on the hosting provider or server and must never be packaged.
+
+The manifest records `deploymentPerformed: false`, `uploadPerformed: false`, and `autoSyncEnabled: false`. Actual hosting upload remains manual and outside this repository tooling.
