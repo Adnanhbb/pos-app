@@ -345,3 +345,127 @@ Manual checks still required after a passing report:
 - real replay approval
 - rollback approval
 - real hosting credentials/domain/SSL/CORS/server environment checks
+
+## Warning Classification For Local Vs Real Hosting
+
+The automated rehearsal report separates warnings from blockers:
+
+- `[ACCEPTABLE LOCAL REHEARSAL]` means the reference is expected for Laragon/local checklist use and does not block the local rehearsal.
+- `[REAL HOSTING REVIEW REQUIRED]` means the local rehearsal can pass, but a human must replace or approve the value before real hosting upload.
+- Blocking failures are failed checks, not warnings.
+
+Local CORS origins such as `localhost`, `127.0.0.1`, or Laragon paths are allowed only during Laragon rehearsal. Before real hosting deployment, CORS must be reviewed and updated to the production HTTPS frontend origin/API domain. Passing the local rehearsal does not mean the package is ready for real hosting upload.
+
+## Minimum Practical Execution Steps
+
+Use this compact sequence when you are ready to actually run the Laragon rehearsal.
+
+### 1. Regenerate The Package For The Laragon API URL
+
+The package command uses `VITE_API_BASE_URL`. For a Laragon rehearsal, set it before packaging so the copied frontend calls the local rehearsal API instead of the placeholder production URL:
+
+```powershell
+$env:VITE_API_BASE_URL="http://localhost/jawad-bro-rehearsal/api"
+npm.cmd run deployment:package
+npm.cmd run rehearsal:local-production
+```
+
+Check `deployment-package/deployment-manifest.json` and confirm:
+
+```json
+"VITE_API_BASE_URL": "http://localhost/jawad-bro-rehearsal/api"
+```
+
+If the manifest still shows `https://api.example.com`, regenerate the package with the environment variable above before copying files into Laragon.
+
+### 2. Create The Laragon Web Root
+
+Create this folder if it does not exist:
+
+```text
+C:\laragon\www\jawad-bro-rehearsal\
+```
+
+Copy only the contents of `deployment-package/frontend/` into that folder:
+
+```text
+C:\laragon\www\jawad-bro-rehearsal\index.html
+C:\laragon\www\jawad-bro-rehearsal\assets\
+C:\laragon\www\jawad-bro-rehearsal\images\
+```
+
+Do not copy `deployment-package/` as a parent wrapper into the web root.
+
+### 3. Copy The API Folder
+
+Copy the packaged API folder to:
+
+```text
+C:\laragon\www\jawad-bro-rehearsal\api\
+```
+
+Expected first endpoint:
+
+```text
+http://localhost/jawad-bro-rehearsal/api/health.php
+```
+
+Test `health.php` before opening the frontend.
+
+### 4. Create Or Select The Local MySQL Database
+
+The packaged backend currently defaults to these local DB settings if environment variables are not supplied:
+
+```text
+DB_HOST=localhost
+DB_NAME=jawad_bro
+DB_USER=root
+DB_PASS=
+```
+
+For an isolated rehearsal database, create `jawad_bro_rehearsal` in Laragon/MySQL and configure `DB_NAME=jawad_bro_rehearsal` through Laragon/Apache environment handling or a local-only config adjustment in the rehearsal copy. Do not commit local credentials or local config edits.
+
+Import:
+
+```text
+deployment-package\api\sql\schema.sql
+```
+
+Then verify the schema before doing UI checks.
+
+### 5. First URLs To Test
+
+Test in this order:
+
+1. `http://localhost/jawad-bro-rehearsal/api/health.php`
+2. `http://localhost/jawad-bro-rehearsal/`
+3. login/session/logout flow from the app or API client
+4. create one low-risk CRUD record, such as a brand or unit
+5. confirm the MySQL row exists
+6. use Settings Developer Sync Replay only for queued/offline rows
+7. open Developer Control Panel as admin/Dev and confirm read-only status
+
+### 6. Before And After Checks
+
+Before copying into Laragon:
+
+```powershell
+npx.cmd tsc -b
+npm.cmd run deployment:package
+npm.cmd run rehearsal:local-production
+npm.cmd run release:verify
+```
+
+After copying into Laragon, manually verify:
+
+- frontend loads from `http://localhost/jawad-bro-rehearsal/`
+- API health endpoint returns safe success output
+- login/session works
+- low-risk CRUD sync works while backend is reachable
+- manual replay remains click-only
+- Developer Control Panel remains admin/Dev-only and read-only
+- auto-sync remains disabled
+
+### 7. Current Package Readiness Note
+
+The latest generated rehearsal report passes, but it warns that packaged CORS config includes local origins. That is acceptable for Laragon rehearsal. Before real hosting upload, replace/review those CORS origins with the real HTTPS frontend/API domain.
