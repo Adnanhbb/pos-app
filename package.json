@@ -68,7 +68,8 @@
                     "release:verify":  "node scripts/verify-production-build.mjs",
                     "release:manifest":  "node scripts/create-release-manifest.mjs",
                     "release:git-readiness":  "node scripts/report-release-git-readiness.mjs",
-                    "deployment:package":  "node scripts/create-deployment-package.mjs"
+                    "deployment:package":  "node scripts/create-deployment-package.mjs",
+                    "rehearsal:local-production":  "node scripts/rehearse-local-production.mjs"
                 },
     "dependencies":  {
                          "dexie":  "^4.2.1",

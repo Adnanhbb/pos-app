@@ -27,3 +27,5 @@ backups/
 releases/
 tsconfig.tsbuildinfo
 deployment-package/
+deployment-rehearsal-report.json
+deployment-rehearsal-report.md

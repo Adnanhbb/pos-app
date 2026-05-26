@@ -1359,3 +1359,21 @@ This checkpoint documents the release preparation baseline: production build suc
 `npm.cmd run deployment:package` creates a local dry-run package under `deployment-package/` for client hosting review. It includes frontend build output, backend `api/`, selected public deployment docs, `.env.production.example`, and a `deployment-manifest.json` safety record.
 
 The package tool does not deploy, upload, enable auto-sync, or change runtime sync behavior. Generated package output is ignored by Git. Real secrets, local `.env` files, backups, release manifests, logs, `node_modules/`, and `tsconfig.tsbuildinfo` are excluded; production secrets must be configured directly on the server or hosting provider.
+
+## Hosting-Agnostic Deployment Rehearsal
+
+A hosting-agnostic deployment rehearsal guide now exists at [hosting-agnostic-deployment-rehearsal.md](./hosting-agnostic-deployment-rehearsal.md). It prepares the exact manual steps to adapt once a shared-hosting or VPS target is known, including hosting capability collection, package upload layout, database import order, environment setup, HTTPS/CORS checks, first admin setup, health/login/CRUD/manual replay checks, Developer Control Panel checks, rollback steps, and go/no-go criteria.
+
+This remains documentation-only. No hosting credentials are required, no deployment/upload occurs, no CI/CD is added, no runtime behavior changes, and auto-sync remains disabled.
+
+## Local Production-Like Laragon Rehearsal
+
+A Laragon-based local production-like rehearsal checklist now exists at [local-production-rehearsal-laragon.md](./local-production-rehearsal-laragon.md). It provides practical steps for rehearsing package generation, frontend/API copying, local schema import, local production-like API configuration, health/login/session checks, low-risk CRUD sync checks, manual replay checks, Developer Control Panel checks, backup/export validation, release verification, leakage checks, rollback rehearsal, and go/no-go review.
+
+This is documentation/checklist only. It does not deploy to real hosting, does not add CI/CD, does not change runtime behavior, and does not enable auto-sync.
+
+## Automated Local Production Rehearsal Verifier
+
+`npm.cmd run rehearsal:local-production` now runs a safe read-only verifier for the local Laragon/deployment-package rehearsal. It checks package structure, expected frontend/API/schema/env-template assets, required deployment docs/scripts, Developer Control Panel source, runtime localhost/dev URL leakage, auto-sync signals, obvious background sync startup code, and dangerous restore/import tooling.
+
+The command writes `deployment-rehearsal-report.json` and `deployment-rehearsal-report.md` as local generated reports. It does not deploy, upload, mutate IndexedDB/MySQL, trigger replay, apply hydration, restore/import data, change runtime behavior, add background sync, or enable auto-sync. Visual UI, invoice printing, accounting review, replay approval, rollback approval, and real hosting domain/SSL/CORS/server credential checks remain manual.

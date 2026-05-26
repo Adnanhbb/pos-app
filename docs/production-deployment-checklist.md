@@ -232,3 +232,41 @@ This command is preparation only. It runs a production build, creates a local `d
 The package excludes `node_modules/`, `backups/`, `releases/`, `.git/`, logs, local environment files, and `tsconfig.tsbuildinfo`. It includes `.env.production.example` only. Real production secrets must be configured on the hosting provider or server and must never be packaged.
 
 The manifest records `deploymentPerformed: false`, `uploadPerformed: false`, and `autoSyncEnabled: false`. Actual hosting upload remains manual and outside this repository tooling.
+
+## Hosting-Agnostic Deployment Rehearsal
+
+Before real hosting is available, use [hosting-agnostic-deployment-rehearsal.md](./hosting-agnostic-deployment-rehearsal.md) as the manual rehearsal runbook. It defines shared-hosting and VPS layouts, frontend/API upload locations, MySQL import order, environment/config setup, HTTPS/CORS checks, first admin setup, post-upload health/login/CRUD/manual replay checks, Developer Control Panel checks, rollback steps, and go/no-go criteria.
+
+The rehearsal guide is documentation-only and requires no hosting credentials. It does not deploy, upload, add CI/CD, change runtime behavior, or enable auto-sync.
+
+## Local Laragon Production-Like Rehearsal
+
+A practical local rehearsal checklist exists at [local-production-rehearsal-laragon.md](./local-production-rehearsal-laragon.md). It simulates the future hosting deployment flow using Laragon: generate `deployment-package/`, copy frontend files, copy `api/`, import `schema.sql`, configure a local production-like API URL, test health/login/session/CRUD/manual replay/Developer Control Panel, run backup validation, run `release:verify`, check package leakage, and rehearse rollback.
+
+This local rehearsal is not real deployment. Real hosting still requires domain, HTTPS/TLS, production DB credentials, CORS, server environment config, backup ownership, and host rollback access.
+
+## Automated Read-Only Rehearsal Verifier
+
+The boring/read-only parts of this checklist can be checked with:
+
+```powershell
+npm.cmd run rehearsal:local-production
+```
+
+The verifier inspects the local `deployment-package/` and source tree without deploying, uploading, mutating IndexedDB/MySQL, triggering replay, applying hydration, restoring/importing data, changing runtime behavior, or enabling auto-sync.
+
+It writes generated local reports:
+
+- `deployment-rehearsal-report.json`
+- `deployment-rehearsal-report.md`
+
+The report checks package structure, frontend build files, API files, `schema.sql`, `.env.production.example`, required docs/scripts, Developer Control Panel source, runtime localhost/dev URL leakage, auto-sync signals, obvious background sync startup code, and dangerous restore/import tooling. Report files are local generated artifacts and should not be committed.
+
+Manual checks still required after a passing report:
+
+- visual UI verification
+- invoice print verification
+- real accounting effect review
+- real replay approval
+- rollback approval
+- real hosting credentials/domain/SSL/CORS/server environment checks

@@ -520,3 +520,9 @@ This command is preparation only. It runs a production build, creates a local `d
 The package excludes `node_modules/`, `backups/`, `releases/`, `.git/`, logs, local environment files, and `tsconfig.tsbuildinfo`. It includes `.env.production.example` only. Real production secrets must be configured on the hosting provider or server and must never be packaged.
 
 The manifest records `deploymentPerformed: false`, `uploadPerformed: false`, and `autoSyncEnabled: false`. Actual hosting upload remains manual and outside this repository tooling.
+
+## Hosting-Agnostic Deployment Rehearsal
+
+Before real hosting is available, use [hosting-agnostic-deployment-rehearsal.md](./hosting-agnostic-deployment-rehearsal.md) as the manual rehearsal runbook. It defines shared-hosting and VPS layouts, frontend/API upload locations, MySQL import order, environment/config setup, HTTPS/CORS checks, first admin setup, post-upload health/login/CRUD/manual replay checks, Developer Control Panel checks, rollback steps, and go/no-go criteria.
+
+The rehearsal guide is documentation-only and requires no hosting credentials. It does not deploy, upload, add CI/CD, change runtime behavior, or enable auto-sync.
