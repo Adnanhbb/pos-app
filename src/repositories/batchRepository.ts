@@ -1,20 +1,8 @@
 // src/repositories/batchRepository.ts
 
 import { db } from "../db";
-
-export interface ItemBatch {
-  id?: number;
-  itemId: number;
-  purchaseDate: string;
-  qtyPurchased: number;
-  qtySold: number;
-  balance: number;
-  costPrice: number;
-  sourceSaleId: number;
-  invoiceNo: string;
-  isDeleted: boolean;
-  deletedAt: number | null;
-}
+import type { ItemBatch } from "../types/entities";
+export type { ItemBatch };
 
 function promisify<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {

@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# Local generated release/backup artifacts
+backups/
+releases/
+tsconfig.tsbuildinfo

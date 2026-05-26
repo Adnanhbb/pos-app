@@ -1,10 +1,11 @@
 import {
-  CylinderCustomer,
+  getAllCylinderCustomers,
   getCylinderCustomersByCylinder,
   updateCylinderCustomer,
   addCylinderCustomer,
   deleteCylinderCustomer, // ✅ NEW
 } from "../db";
+import type { CylinderCustomer } from "../types/entities";
 
 /* =========================================================
    🔥 HELPERS
@@ -20,6 +21,10 @@ export const cylinderCustomerRepository = {
 
   /* ---------------- GET ---------------- */
 
+  async getAll(): Promise<CylinderCustomer[]> {
+    return await getAllCylinderCustomers();
+  },
+
   async getByCylinder(cylinderId: number): Promise<CylinderCustomer[]> {
     const all = await getCylinderCustomersByCylinder(cylinderId);
     return all.filter(c => !c.isDeleted);
@@ -27,6 +32,10 @@ export const cylinderCustomerRepository = {
 
   async getAllByCylinder(cylinderId: number): Promise<CylinderCustomer[]> {
     return await getCylinderCustomersByCylinder(cylinderId);
+  },
+
+  async update(customer: CylinderCustomer): Promise<void> {
+    await updateCylinderCustomer(customer);
   },
 
   /* ---------------- UPSERT (MAIN LOGIC) ---------------- */

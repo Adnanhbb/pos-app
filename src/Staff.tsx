@@ -1,7 +1,7 @@
 // src/Staff.tsx
 import React, { useEffect, useState, useMemo } from "react";
 import { staffRepository, StaffForm } from "./repositories/staffRepository";
-import { User, Role } from "./db";
+import type { User, Role } from "./types/entities";
 import { FaPlus, FaEdit, FaTrash, FaSearch, FaTh, FaList,FaUndo,FaEye } from "react-icons/fa";
 import { useLang } from "./i18n/LanguageContext";
 

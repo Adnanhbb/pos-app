@@ -1,7 +1,7 @@
 // src/repositories/SaleItemsRepository.ts
 
 import { db } from "../db";
-import type { DBSaleItem } from "../db";
+import type { DBSaleItem } from "../types/entities";
 
 function promisify<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {

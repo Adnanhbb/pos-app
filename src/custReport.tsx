@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Customer } from "./db";
+import type { Customer } from "./types/entities";
 import {
   FaUser,
   FaArrowUp,

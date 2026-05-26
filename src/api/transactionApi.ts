@@ -1,0 +1,17 @@
+import { apiClient } from "./client";
+import type { OfflineTransactionPayload } from "../types/sync";
+
+export const transactionApi = {
+  postTransaction(payload: OfflineTransactionPayload): Promise<any> {
+    /*
+     * Backend requirements:
+     * - Wrap all sale, item, stock, batch, accounting, payment, and cylinder
+     *   writes in one MySQL/MariaDB transaction.
+     * - Enforce clientTransactionId idempotency so retries never double-apply
+     *   stock or balances.
+     * - Roll back the whole transaction on any stock, accounting, cylinder, or
+     *   payment error.
+     */
+    return apiClient.post("/transactions.php", payload);
+  },
+};

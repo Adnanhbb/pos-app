@@ -8,19 +8,26 @@ import { customersRepository } from "./repositories/customerRepository";
 import { suppliersRepository as supplierRepo } from "./repositories/suppliersRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
-import { updateCylinderCustomer, type Brand, type Category,type DBHeld,type DBHeldItem,type Item, type ItemBatch } from "./db";
+import type { Brand, Category, DBHeld, DBHeldItem, Item, ItemBatch } from "./types/entities";
 import { salesRepository } from "./repositories/salesRepository";
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
 import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
 import { discountRepository } from "./repositories/discountRepository";
 import { taxRepository } from "./repositories/taxRepository";
-import type { Discount, Tax } from "./db";
+import type { Discount, Tax } from "./types/entities";
 import { printInvoice } from "./services/printing/printService";
 import { useLang } from "./i18n/LanguageContext";
 import { heldRepository } from "./repositories/heldRepository";
 import { batchRepository } from "./repositories/batchRepository";
 import { syncCylinderInventoryForSale,cylinderRepo_getByItemId,cylinderRepo_update } from "./repositories/cylinderRepository";
 import {cylinderCustomerRepo_addOrUpdate} from "./repositories/cylinderCustomerRepository";
+import {
+  buildReturnTransactionPayload,
+  buildSaleTransactionPayload,
+  createClientTransactionId,
+} from "./services/posTransactionPayloadBuilder";
+import { queueOfflineTransaction } from "./services/transactionQueueService";
+import { markPOSActivityStarted, markPOSActivityStopped } from "./services/posActivityState";
 
 // =====================
 // Types
@@ -401,7 +408,14 @@ export default function SalesPOS({ currentUser, onCartStateChange }: POSProps) {
 
 // Notify parent component when cart state changes
 useEffect(() => {
-  onCartStateChange?.(cart.length > 0);
+  const hasActiveCart = cart.length > 0;
+  onCartStateChange?.(hasActiveCart);
+
+  if (hasActiveCart) {
+    markPOSActivityStarted("pos-cart");
+  } else {
+    markPOSActivityStopped();
+  }
 }, [cart, onCartStateChange]);
 
 useEffect(() => {
@@ -548,6 +562,8 @@ async function handleCompleteTransaction(isPostponed: boolean) {
     return;
   }
 
+  const clientTransactionId = createClientTransactionId();
+
   /* --------------------------------------------------
      1️⃣ PREPARE PARTY (CUSTOMER / SUPPLIER)
   -------------------------------------------------- */
@@ -688,10 +704,7 @@ if (isSale || isCustomerReturn) {
   batchId: ci.batchId ?? null,
 }));
 
-  /* --------------------------------------------------
-     7️⃣ SAVE TRANSACTION
-  -------------------------------------------------- */
-  const saleId = await salesRepository.addTransaction({
+  const saleHeader = {
     invoiceNo,
     date: selectedDate ? new Date(selectedDate).toISOString() : new Date().toISOString(),
     transactionType,
@@ -712,7 +725,48 @@ if (isSale || isCustomerReturn) {
     arrears,
     profit,
     isPostponed,
+  };
 
+  const preMutationCustomer = customerId
+    ? await customersRepository.getById(customerId)
+    : undefined;
+  const preMutationSupplier = supplierId
+    ? await supplierRepo.getById(supplierId)
+    : undefined;
+  const preMutationItems = new Map<number, Item>();
+  const preMutationBatches = new Map<number, ItemBatch[]>();
+  const preMutationCylinders = new Map<
+    number,
+    Awaited<ReturnType<typeof cylinderRepo_getByItemId>>
+  >();
+
+  for (const ci of cart) {
+    const item = await itemsRepository.getById(ci.originalItemId);
+    if (!item) continue;
+
+    preMutationItems.set(ci.originalItemId, item);
+    preMutationBatches.set(
+      ci.originalItemId,
+      await batchRepository.getAllBatchesByItem(ci.originalItemId)
+    );
+
+    const isCylinderItem =
+      (item.category || "").toLowerCase().includes("gas") ||
+      (item.category || "").toLowerCase().includes("cylinder");
+
+    if (isCylinderItem && item.id != null) {
+      preMutationCylinders.set(
+        ci.originalItemId,
+        await cylinderRepo_getByItemId(item.id)
+      );
+    }
+  }
+
+  /* --------------------------------------------------
+     7️⃣ SAVE TRANSACTION
+  -------------------------------------------------- */
+  const saleId = await salesRepository.addTransaction({
+    ...saleHeader,
     items: transactionItems,
   });
 
@@ -1005,6 +1059,139 @@ const updatedCustomers = await customersRepository.getAll();
 setCustomers(
   updatedCustomers.map(mapDbCustomerToPosCustomer)
 );
+
+const postMutationCustomer = customerId
+  ? await customersRepository.getById(customerId)
+  : undefined;
+const postMutationSupplier = supplierId
+  ? await supplierRepo.getById(supplierId)
+  : undefined;
+const stockMovements = [];
+const batchMutations = [];
+const cylinderMutations = [];
+
+for (const ci of cart) {
+  const itemAfter = await itemsRepository.getById(ci.originalItemId);
+  const itemBefore = preMutationItems.get(ci.originalItemId);
+
+  if (itemBefore || itemAfter) {
+    stockMovements.push({
+      itemId: ci.originalItemId,
+      qtyDelta:
+        (itemAfter?.availableStock ?? itemBefore?.availableStock ?? 0) -
+        (itemBefore?.availableStock ?? itemAfter?.availableStock ?? 0),
+      beforeStock: itemBefore?.availableStock,
+      afterStock: itemAfter?.availableStock,
+      itemBefore,
+      itemAfter,
+    });
+  }
+
+  const batchesBefore = preMutationBatches.get(ci.originalItemId) ?? [];
+  const batchesAfter = await batchRepository.getAllBatchesByItem(ci.originalItemId);
+
+  for (const batchBefore of batchesBefore) {
+    const batchAfter = batchesAfter.find((batch) => batch.id === batchBefore.id);
+    if (
+      batchAfter &&
+      JSON.stringify(batchBefore) !== JSON.stringify(batchAfter)
+    ) {
+      batchMutations.push({
+        operation: "update" as const,
+        localId: batchAfter.id,
+        before: batchBefore,
+        after: batchAfter,
+      });
+    }
+
+    if (!batchAfter) {
+      batchMutations.push({
+        operation: "delete" as const,
+        localId: batchBefore.id,
+        before: batchBefore,
+      });
+    }
+  }
+
+  for (const batchAfter of batchesAfter) {
+    const batchBefore = batchesBefore.find((batch) => batch.id === batchAfter.id);
+    if (!batchBefore) {
+      batchMutations.push({
+        operation: "create" as const,
+        localId: batchAfter.id,
+        after: batchAfter,
+      });
+    }
+  }
+
+  const cylinderBefore = preMutationCylinders.get(ci.originalItemId);
+  const cylinderAfter = itemAfter?.id
+    ? await cylinderRepo_getByItemId(itemAfter.id)
+    : undefined;
+
+  if (cylinderBefore || cylinderAfter) {
+    cylinderMutations.push({
+      cylinderId: cylinderAfter?.id ?? cylinderBefore?.id,
+      before: cylinderBefore,
+      after: cylinderAfter,
+    });
+  }
+}
+
+try {
+  const transactionPayload = isReturn
+    ? buildReturnTransactionPayload({
+        clientTransactionId,
+        returnMode: isSupplierReturn ? "supplier" : "customer",
+        sale: saleHeader,
+        saleId,
+        saleItems: transactionItems,
+        customer:
+          isCustomerContext && (preMutationCustomer || postMutationCustomer)
+            ? {
+                before: preMutationCustomer,
+                after: postMutationCustomer,
+              }
+            : undefined,
+        supplier:
+          isSupplierContext && (preMutationSupplier || postMutationSupplier)
+            ? {
+                before: preMutationSupplier,
+                after: postMutationSupplier,
+              }
+            : undefined,
+        stockMovements,
+        batchMutations,
+        cylinderMutations,
+      })
+    : buildSaleTransactionPayload({
+        clientTransactionId,
+        sale: saleHeader,
+        saleId,
+        saleItems: transactionItems,
+        customer:
+          isCustomerContext && (preMutationCustomer || postMutationCustomer)
+            ? {
+                before: preMutationCustomer,
+                after: postMutationCustomer,
+              }
+            : undefined,
+        supplier:
+          isSupplierContext && (preMutationSupplier || postMutationSupplier)
+            ? {
+                before: preMutationSupplier,
+                after: postMutationSupplier,
+              }
+            : undefined,
+        stockMovements,
+        batchMutations,
+        cylinderMutations,
+      });
+
+  await queueOfflineTransaction(transactionPayload);
+} catch (error) {
+  console.warn("Transaction saved locally but failed to queue for sync.", error);
+}
 
   /* --------------------------------------------------
      1️⃣1️⃣ RESET UI
@@ -3300,3 +3487,4 @@ return (
     </div>    
   );
 }
+

@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 // ✅ Add
 import { indexedDbSupplierRepository as suppliersRepo } from "./repositories/indexedDbSupplierRepository";
-import {Supplier} from "./db";
+import type { Supplier } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
 
 import {

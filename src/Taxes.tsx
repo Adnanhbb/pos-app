@@ -1,14 +1,8 @@
 // src/Taxes.tsx
 import React, { useEffect, useState } from "react";
 import { FaEdit, FaTrash, FaPlus } from "react-icons/fa";
-import {
-  Tax,
-  getAllTaxes,
-  addTax,
-  updateTax,
-  deleteTax,
-  searchTaxes,
-} from "./db";
+import { taxRepository } from "./repositories/taxRepository";
+import type { Tax } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
 
 export default function Taxes() {
@@ -28,8 +22,8 @@ export default function Taxes() {
   
   const loadTaxes = async () => {
     const data = searchQuery
-      ? await searchTaxes(searchQuery)
-      : await getAllTaxes();
+      ? await taxRepository.search(searchQuery)
+      : await taxRepository.getAll();
     setTaxes(data);
   };
 
@@ -63,9 +57,9 @@ export default function Taxes() {
     if (!formData.name || isNaN(formData.value)) return;
 
     if (editingTax) {
-      await updateTax({ ...editingTax, ...formData });
+      await taxRepository.update({ ...editingTax, ...formData });
     } else {
-      await addTax(formData);
+      await taxRepository.create(formData);
     }
 
     resetForm();
@@ -76,7 +70,7 @@ export default function Taxes() {
   const handleDelete = async (id?: number) => {
     if (!id) return;
     if (window.confirm("Are you sure you want to delete this tax?")) {
-      await deleteTax(id);
+    await taxRepository.remove(id);
       loadTaxes();
     }
   };

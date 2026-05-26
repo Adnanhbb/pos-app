@@ -1,11 +1,11 @@
 // src/repositories/indexedDbSupplierPaymentRepository.ts
 import {
-  SupplierPayment,
   addSupplierPayment,
   updateSupplierPayment,
   deleteSupplierPayment,
   getAllSupplierPayments,
 } from "../db";
+import type { SupplierPayment } from "../types/entities";
 
 export const indexedDbSupplierPaymentRepository = {
   /** Get all supplier payments */

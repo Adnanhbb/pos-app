@@ -1,5 +1,5 @@
 import * as db from "../db";
-import type { Customer } from "../db";
+import type { Customer } from "../types/entities";
 import { customersRepository } from "./customerRepository";
 
 /**

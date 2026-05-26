@@ -1,13 +1,13 @@
 // src/repositories/indexedDbCustomerPaymentRepository.ts
 import {
   initDB,
-  CustomerPayment,
   addCustomerPayment,
   updateCustomerPayment,
   deleteCustomerPayment,
   getAllCustomerPayments,
   getCustomerPaymentsByCustomer,
 } from "../db";
+import type { CustomerPayment } from "../types/entities";
 
 /**
  * IndexedDB-based repository for customer payments.

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { FaBoxes, FaEye, FaUsers } from "react-icons/fa";
-import { CylinderCustomer, getAllCylinderCustomers } from "./db";
+import { cylinderCustomerRepository } from "./repositories/cylinderCustomerRepository";
+import type { CylinderCustomer } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
 
 type CustomerCylinderSummary = {
@@ -42,7 +43,7 @@ export default function CustomerCylinders() {
     setLoading(true);
 
     try {
-      const data = await getAllCylinderCustomers();
+      const data = await cylinderCustomerRepository.getAll();
       const active = data.filter(
         (cc: CylinderCustomer) => !cc.isDeleted && Number(cc.qtyHeld || 0) > 0
       );

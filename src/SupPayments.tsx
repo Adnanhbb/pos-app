@@ -2,7 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { indexedDbSupplierPaymentRepository as supplierPayRepo } from "./repositories/indexedDbSupplierPaymentRepository";
 import { indexedDbSupplierRepository as supplierRepo } from "./repositories/indexedDbSupplierRepository";
-import { SupplierPayment, Supplier } from "./db";
+import type { SupplierPayment, Supplier } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
 
 import {

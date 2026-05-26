@@ -1,19 +1,11 @@
 // src/CylindersQty.tsx
 import React, { useEffect, useState } from "react";
-import {
-  getAllCylinders,
-  getCylinderCustomersByCylinder,
-  updateCylinder,
-  updateCylinderCustomer,
-  Cylinder,
-  CylinderCustomer,
-} from "./db";
 import { FaBoxes, FaFill, FaCircle, FaUsers, FaEye, FaUndo,FaEdit } from "react-icons/fa";
 import { useLang } from "./i18n/LanguageContext";
-import { getAllItems } from "./db";
 import {cylinderCustomerRepository} from "./repositories/cylinderCustomerRepository";
-import { cylinderRepo_update } from "./repositories/cylinderRepository";
+import { cylinderRepo_getAll, cylinderRepo_getCustomers, cylinderRepo_update } from "./repositories/cylinderRepository";
 import { customersRepository } from "./repositories/customerRepository";
+import type { Cylinder, CylinderCustomer } from "./types/entities";
 
 export default function CylindersQty() {
   const [cylinders, setCylinders] = useState<Cylinder[]>([]);
@@ -70,7 +62,7 @@ async function loadData() {
   setLoading(true);
 
   try {
-    const data = await getAllCylinders();
+    const data = await cylinderRepo_getAll();
 
     const active = data.filter((c: any) => !c.isDeleted);
 
@@ -132,7 +124,7 @@ async function loadData() {
   async function handleViewCustomers(cylinder: Cylinder) {
     setSelectedCylinder(cylinder);
     try {
-      const data = await getCylinderCustomersByCylinder(cylinder.id!);
+      const data = await cylinderRepo_getCustomers(cylinder.id!);
       const active = data.filter((cc: CylinderCustomer) => !cc.isDeleted && cc.qtyHeld > 0);
       setCylinderCustomers(active);
     } catch (error) {
@@ -178,7 +170,7 @@ async function handleSupplierReturn() {
         continue;
       }
 
-      await updateCylinder({
+      await cylinderRepo_update({
         ...cylinder,
         emptyCylinders: cylinder.emptyCylinders - row.returnQty,
       });
@@ -203,7 +195,7 @@ async function handleSupplierReturn() {
 
     // Load customers with holdings
     try {
-      const data = await getCylinderCustomersByCylinder(cylinder.id!);
+      const data = await cylinderRepo_getCustomers(cylinder.id!);
       const active = data.filter((cc: CylinderCustomer) => !cc.isDeleted && cc.qtyHeld > 0);
       setCylinderCustomers(active);
     } catch (error) {
@@ -237,7 +229,7 @@ async function handleSupplierReturn() {
         emptyCylinders: selectedCylinder.emptyCylinders + qtyReturned,
       };
 
-      await updateCylinder(updatedCylinder);
+      await cylinderRepo_update(updatedCylinder);
 
       await loadData();
       setReturnCylinderModal(false);
@@ -255,7 +247,7 @@ async function handleSupplierReturn() {
       return;
     }
 
-    const allCustomers = await getCylinderCustomersByCylinder(selectedCylinder.id!);
+    const allCustomers = await cylinderRepo_getCustomers(selectedCylinder.id!);
 
     const customerRecord = allCustomers.find(
       (cc: CylinderCustomer) =>
@@ -270,7 +262,7 @@ async function handleSupplierReturn() {
     }
 
     /* ---------------- UPDATE CUSTOMER ---------------- */
-    await updateCylinderCustomer({
+    await cylinderCustomerRepository.update({
       ...customerRecord,
       qtyHeld: customerRecord.qtyHeld - qtyReturned,
     });
@@ -282,7 +274,7 @@ async function handleSupplierReturn() {
       emptyCylinders: selectedCylinder.emptyCylinders + qtyReturned,
     };
 
-    await updateCylinder(updatedCylinder);
+    await cylinderRepo_update(updatedCylinder);
 
     await loadData();
     setReturnCylinderModal(false);

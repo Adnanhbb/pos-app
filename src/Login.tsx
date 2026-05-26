@@ -1,8 +1,9 @@
 // src/Login.tsx
 import React, { useEffect, useState } from "react";
-import { validateUser, getSettings, getUserByUsername } from "./db";
 import { FaUser, FaLock } from "react-icons/fa";
 import { useLang } from "./i18n/LanguageContext";
+import { authRepository } from "./repositories/authRepository";
+import { settingsRepository } from "./repositories/settingsRepository";
 
 /* ✅ unified role type */
 type Role = "admin" | "saleboy" | "Dev";
@@ -30,7 +31,7 @@ export default function Login({ onLogin }: LoginProps) {
 
     // Load settings from DB
     async function loadSettings() {
-      const s = await getSettings();
+      const s = await settingsRepository.getRaw();
       if (s) {
         setSettings({
           businessName: s.businessName,
@@ -65,7 +66,7 @@ export default function Login({ onLogin }: LoginProps) {
       /* ======================================================
          NORMAL DATABASE LOGIN
       ====================================================== */
-      const user = await validateUser(uname, password);
+      const user = await authRepository.validateUser(uname, password);
 
       if (user) {
         // Verify role
@@ -99,7 +100,7 @@ export default function Login({ onLogin }: LoginProps) {
       return;
     }
 
-    const user = await getUserByUsername(username.trim());
+    const user = await authRepository.getUserByUsername(username.trim());
     if (!user) {
       alert("This username does not exist.");
       return;

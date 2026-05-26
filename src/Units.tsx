@@ -1,7 +1,8 @@
 // src/units.tsx
 import React, { useEffect, useState } from "react";
 import { FaPlus, FaEdit, FaTrash } from "react-icons/fa";
-import { getUnits, addUnit, updateUnit, deleteUnit, Unit } from "./db";
+import { unitRepository } from "./repositories/unitRepository";
+import type { Unit } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
 
 export default function UnitsPage() {
@@ -13,7 +14,7 @@ export default function UnitsPage() {
   const { t, lang, setLang } = useLang();
   
   async function loadUnits() {
-    const data = await getUnits();
+    const data = await unitRepository.getAll();
     setUnits(data);
   }
 
@@ -46,9 +47,9 @@ export default function UnitsPage() {
     }
 
     if (editingUnit) {
-      await updateUnit({ ...editingUnit, name: newUnit.trim() });
+      await unitRepository.update({ ...editingUnit, name: newUnit.trim() });
     } else {
-      await addUnit({ name: newUnit.trim(), itemCount: 0 });
+      await unitRepository.create({ name: newUnit.trim(), itemCount: 0 });
     }
 
     await loadUnits();
@@ -58,7 +59,7 @@ export default function UnitsPage() {
   async function handleDelete(id?: number) {
     if (!id) return;
     if (!confirm("Delete this unit?")) return;
-    await deleteUnit(id);
+    await unitRepository.remove(id);
     await loadUnits();
   }
 

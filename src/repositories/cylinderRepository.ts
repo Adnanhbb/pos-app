@@ -1,7 +1,5 @@
 import {
   db,
-  Cylinder,
-  CylinderCustomer,
   getAllCylinders,
   updateCylinder,
   getCylinderCustomersByCylinder,
@@ -9,6 +7,7 @@ import {
   getCylinderByItemId,
   addCylinder,
 } from "../db";
+import type { Cylinder, CylinderCustomer } from "../types/entities";
 
 import { itemsRepository } from "./itemsRepository";
 

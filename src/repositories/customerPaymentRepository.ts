@@ -1,6 +1,6 @@
 //src/customerPaymentRepository.ts
 import { initDB } from "../db"; // whatever your modern idb init function is
-import type { CustomerPayment } from "../db";
+import type { CustomerPayment } from "../types/entities";
 
 export const customerPaymentRepository = {
   async getAll(): Promise<CustomerPayment[]> {

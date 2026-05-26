@@ -1,7 +1,7 @@
 //src/Invoices.tsx
 import { useEffect, useState } from "react";
 import { salesRepository } from "./repositories/salesRepository";
-import type { DBSale, DBSaleItem } from "./db";
+import type { DBSale, DBSaleItem } from "./types/entities";
 import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight, FaTrash,FaPrint, FaEye } from "react-icons/fa";
 import { customersRepository } from "./repositories/customerRepository";
 import { customerPaymentRepository } from "./repositories/customerPaymentRepository";

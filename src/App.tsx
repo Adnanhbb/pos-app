@@ -6,8 +6,9 @@ import {
   useLang,
 } from "./i18n/LanguageContext";
 import { settingsRepository } from "./repositories/settingsRepository";
+import { authRepository } from "./repositories/authRepository";
 
-/* ✅ Unified role type */
+/* Ã¢Å“â€¦ Unified role type */
 type Role = "admin" | "saleboy" | "Dev";
 
 /* =====================================================
@@ -54,14 +55,11 @@ function AppContent({
 
   /* LOGOUT */
   const handleLogout = () => {
-    localStorage.removeItem("loggedInUserId");
-    localStorage.removeItem("loggedInUserName");
-    localStorage.removeItem("loggedInUserRole");
-
+    authRepository.logout();
     setUser(null);
   };
 
-  // 🔐 AUTH GATE
+  // Ã°Å¸â€Â AUTH GATE
   if (!user) {
     return <Login onLogin={handleLogin} />;
   }
@@ -80,6 +78,7 @@ export default function App() {
 
   /* AUTO LOGIN CHECK */
   useEffect(() => {
+    let cancelled = false;
     const id = localStorage.getItem("loggedInUserId");
     const role = localStorage.getItem("loggedInUserRole");
     const username = localStorage.getItem("loggedInUserName");
@@ -91,7 +90,20 @@ export default function App() {
         username,
         role: role as Role,
       });
+      return;
     }
+
+    authRepository.getCurrentSession().then((sessionUser) => {
+      if (cancelled || !sessionUser || !validRoles.includes(sessionUser.Role as Role)) return;
+      localStorage.setItem("loggedInUserId", String(sessionUser.id ?? sessionUser.Username));
+      localStorage.setItem("loggedInUserName", sessionUser.Name);
+      localStorage.setItem("loggedInUserRole", sessionUser.Role);
+      setUser({ username: sessionUser.Name, role: sessionUser.Role as Role });
+    });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { itemsRepository } from "./repositories/itemsRepository";
 import { batchRepository } from "./repositories/batchRepository";
-import type { Item } from "@/db"; // adjust path if needed
+import type { Item } from "@/types/entities"; // adjust path if needed
 import type { ItemBatch } from "./repositories/batchRepository";
 import { FaBoxes, FaLayerGroup, FaCheckCircle, FaBalanceScale, FaFilePdf, FaFileExcel} from "react-icons/fa";
 import { useLang } from "./i18n/LanguageContext";

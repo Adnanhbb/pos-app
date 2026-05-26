@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { DBSale } from "./db";
+import type { DBSale } from "./types/entities";
 import { FaShoppingCart, FaTruck, FaUndo, FaFileInvoice } from "react-icons/fa";
 import { FaFilePdf, FaFileExcel } from "react-icons/fa";
 import { jsPDF } from "jspdf";

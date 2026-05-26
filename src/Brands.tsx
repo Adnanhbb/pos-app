@@ -3,7 +3,7 @@ import React, { useEffect, useState } from "react";
 import { FaPlus, FaEdit, FaTrash } from "react-icons/fa";
 // ✅ Add
 import { brandsRepository as brandsRepo } from "./repositories/brandsRepository";
-import {Brand} from "./db";
+import type { Brand } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
 
 export default function BrandsPage() {

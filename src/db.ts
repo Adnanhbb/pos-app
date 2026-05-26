@@ -1,305 +1,30 @@
 // src/db.ts
 import { openDB, DBSchema, IDBPDatabase } from "idb";
-import { StackId } from "recharts/types/util/ChartUtils";
-
-/* ==========================================================
-   DATA TYPES
-   ========================================================== */
-
-export type Role = "admin" | "saleboy" | "Dev" | string;
-
-export interface User {
-  id?: number;
-  Name: string;
-  Mobile: string;
-  Role: Role;
-  Username: string;
-  Password: string;
-  isDeleted: boolean;
-  deletedAt: number | null;
-}
-
-export interface Customer {
-  id?: number;
-  name: string;
-  mobile: string;
-  cnic?: string;
-  address?: string;
-  invoices?: number;
-  payable?: number;
-  paid?: number;
-  balance?: number;
-  isDeleted: boolean;
-  deletedAt: number | null;
-}
-
-export interface Supplier {
-  id?: number;
-  name: string;
-  mobile: string;
-  cnic?: string;
-  address?: string;
-  invoices?: number;
-  payable?: number;
-  paid?: number;
-  balance?: number;
-  isDeleted: boolean;
-  deletedAt: number | null;
-}
-
-export interface Item {
-  id?: number;
-  name: string;
-  barcode: string;
-  brand: string;
-  category: string;
-  minunit: string;
-  maxunit: string;
-  ConvQty: number;
-  purchasePrice: number;
-  retailPrice: number;
-  discountPrice?: number;
-  wholesalePrice: number;
-  description?: string;
-  availableStock: number;
-  isDeleted: boolean;
-  deletedAt: number | null;
-}
-
-export interface Category {
-  id?: number;
-  name: string;
-  itemCount: number;
-}
-
-export interface Brand {
-  id?: number;
-  name: string;
-  itemCount: number;
-}
-
-export interface Unit {
-  id?: number;
-  name: string;
-  itemCount: number;
-}
-
-export interface Discount {
-  id?: number;
-  name: string;
-  type: "percentage" | "amount";
-  value: number;
-}
-
-export interface Tax {
-  id?: number;
-  name: string;
-  type: "percentage" | "amount";
-  value: number;
-}
-
-/* NEW - Expenses model: Date stored as string per your choice (A) */
-export interface Expense {
-  id?: number;
-  date: string; // stored as string, e.g. "2025-11-26"
-  category: string;
-  amount: number;
-  description?: string;
-  isDeleted: boolean;
-  deletedAt: number | null;
-}
-
-export interface ExpCateg{
-  id?:number;
-  category: string
-}
-/* ====================== Settings ====================== */
-export interface Settings {
-  id?: number;
-  businessName: string;
-  email: string;
-  contact: string;
-  address: string;
-  logo?: string; // base64 image
-  cylBPrice: string;
-  cylSPrice: string
-  cylDPrice: string,   
-  cylWPrice: string,
-  printer: "pos" | "a4";
-  language: "en" | "ur";
-}
-
-export interface CustomerPayment {
-  id?: number;
-  customerId: number;
-  customerName: string;
-  invoiceNo: string;
-  amount: number;
-  paymentDate: string;        // ISO date string
-  remarks?: string;
-  payableSnapshot: number;    // payable at time of payment
-  balanceSnapshot: number;    // balance after this payment
-}
-
-export interface SupplierPayment {
-  id?: number;
-  supplierId: number;
-  supplierName: string;
-  invoiceNo: string;
-  amount: number;
-  paymentDate: string;
-  remarks?: string;
-  payableSnapshot: number;
-  balanceSnapshot: number;
-}
-
-export interface DBSale {
-  id?: number;
-  invoiceNo: string;
-  date: string;
-  transactionType: "Sale" | "Purchase" | "Return" | "Quotation";
-  customerId: number | null;
-  supplierId: number | null;
-  customerName: string;
-  supplierName: string;
-  subtotal: number;
-  discount: number;
-  tax: number;
-  dues: number;
-  grandTotal: number;
-  paid: number;
-  arrears: number;
-  profit:number;
-  isPostponed?: boolean;
-}
-
-export interface DBSaleItem {
-  id?: number;
-  saleId: number;
-  originalItemId: number;
-  name: string;
-  qty: number;
-  price: number;
-  priceCategory: "Retail" | "Discount" | "Wholesale";
-  discountType: "%" | "flat";
-  discountValue: number;
-  taxType: "%" | "flat";
-  taxValue: number;
-
-}
-
-/* ---------------------------------------
-   HELD TRANSACTION
-----------------------------------------*/
-export interface DBHeld {
-  id?: number;
-
-  invoiceNo: string;
-  date: string;
-
-  transactionType: "Sale" | "Purchase" | "Return" | "Quotation";
-
-  customerId: number | null;
-  supplierId: number | null;
-
-  customerName: string;
-  supplierName: string;
-
-  subtotal: number;
-  discount: number;
-  tax: number;
-  grandTotal: number;
-
-  paid: number;
-
-  discountMode: "%" | "flat";
-  discountValue: number;
-  taxMode: "%" | "flat";
-  taxValue: number;
-
-  returnMode?: "customer" | "supplier";
-
-  items: DBHeldItem[];
-}
-
-export interface DBHeldItem {
-  id?: number;
-  heldId: number;
-
-  originalItemId: number;
-  name: string;
-
-  qty: number;
-  price: number; // min unit price
-
-  convQty: number;
-
-  priceCategory: "Retail" | "Discount" | "Wholesale";
-
-  discountType: "%" | "flat";
-  discountValue: number;
-  taxType: "%" | "flat";
-  taxValue: number;
-
-  /** unit selector (logic) */
-  unitMode: "min" | "max";
-
-  /** actual label (Kg, Box, etc) */
-  unit: string;
-
-  costPrice?: number;
-}
-
-export interface ItemBatch {
-  id?: number;
-
-  itemId: number;
-
-  purchaseDate: string;
-
-  qtyPurchased: number;
-  qtySold: number;
-  balance: number;
-
-  costPrice: number;
-
-  sourceSaleId: number; // purchase invoice reference
-  invoiceNo: string; 
-
-  isDeleted: boolean;
-  deletedAt: number | null;
-}
-
-export interface Cylinder {
-  id?: number;
-  itemId: number;
-  title: string;
-
-  qtyInStock: number;
-
-  filledCylinders: number;
-  emptyCylinders: number;
-  withCustomers: number;
-
-  convQty: number;
-
-  isDeleted: boolean;
-  deletedAt: number | null;
-}
-
-export interface CylinderCustomer {
-  id?: number;
-
-  cylinderId: number;
-  cylinderType: string;
-
-  customerName: string;
-
-  qtyHeld: number; // ALWAYS in minUnit
-
-  isDeleted: boolean;
-  deletedAt: number | null;
-}
+import type {
+  Brand,
+  Category,
+  Customer,
+  CustomerPayment,
+  Cylinder,
+  CylinderCustomer,
+  DBHeld,
+  DBHeldItem,
+  DBSale,
+  DBSaleItem,
+  Discount,
+  ExpCateg,
+  Expense,
+  Item,
+  ItemBatch,
+  Role,
+  Settings,
+  Supplier,
+  SupplierPayment,
+  Tax,
+  Unit,
+  User,
+} from "./types/entities";
+import type { SyncQueueItem } from "./types/sync";
 
 /* ==========================================================
    DATABASE SCHEMA
@@ -463,6 +188,17 @@ export interface CylinderCustomer {
     };
   };
 
+  sync_queue: {
+    key: number;
+    value: SyncQueueItem;
+    indexes: {
+      "by-status": SyncQueueItem["status"];
+      "by-entity": SyncQueueItem["entity"];
+      "by-createdAt": number;
+      "by-operation": SyncQueueItem["operation"];
+    };
+  };
+
 }
 
 
@@ -476,7 +212,7 @@ let _db: IDBPDatabase<POSDB> | null = null;
 export async function initDB() {
   if (_db) return _db;
 
-  _db = await openDB<POSDB>("POSDatabase", 18,{
+  _db = await openDB<POSDB>("POSDatabase", 20,{
     // bumped version to 9 to include expenses store
     upgrade(db, oldVersion, newVersion, transaction) {
       /* ---------------- USERS STORE ---------------- */
@@ -746,6 +482,31 @@ if (!db.objectStoreNames.contains("cylinder_customers")) {
   store.createIndex("by-cylinderId", "cylinderId");
   store.createIndex("by-cylinderType", "cylinderType");
   store.createIndex("by-customerName", "customerName");
+}
+
+if (!db.objectStoreNames.contains("sync_queue")) {
+  const store = db.createObjectStore("sync_queue", {
+    keyPath: "id",
+    autoIncrement: true,
+  });
+  store.createIndex("by-status", "status");
+  store.createIndex("by-entity", "entity");
+  store.createIndex("by-createdAt", "createdAt");
+  store.createIndex("by-operation", "operation");
+} else {
+  const store = transaction.objectStore("sync_queue");
+  if (!store.indexNames.contains("by-status")) {
+    store.createIndex("by-status", "status");
+  }
+  if (!store.indexNames.contains("by-entity")) {
+    store.createIndex("by-entity", "entity");
+  }
+  if (!store.indexNames.contains("by-createdAt")) {
+    store.createIndex("by-createdAt", "createdAt");
+  }
+  if (!store.indexNames.contains("by-operation")) {
+    store.createIndex("by-operation", "operation");
+  }
 }
 
     },
@@ -1667,7 +1428,7 @@ export const addExpCategory = async (category: string): Promise<number> => {
 };
 
 const DB_NAME = "POSDatabase";
-const DB_VERSION = 18;
+const DB_VERSION = 20;
 
 class Database {
   private conn: IDBDatabase | null = null;
@@ -1718,6 +1479,32 @@ request.onupgradeneeded = (event) => {
   const conn = request.result;
 
 };
+
+        if (!conn.objectStoreNames.contains("sync_queue")) {
+          const store = conn.createObjectStore("sync_queue", {
+            keyPath: "id",
+            autoIncrement: true,
+          });
+          store.createIndex("by-status", "status");
+          store.createIndex("by-entity", "entity");
+          store.createIndex("by-createdAt", "createdAt");
+          store.createIndex("by-operation", "operation");
+        } else {
+          const upgradeTx = request.transaction;
+          const store = upgradeTx?.objectStore("sync_queue");
+          if (store && !store.indexNames.contains("by-status")) {
+            store.createIndex("by-status", "status");
+          }
+          if (store && !store.indexNames.contains("by-entity")) {
+            store.createIndex("by-entity", "entity");
+          }
+          if (store && !store.indexNames.contains("by-createdAt")) {
+            store.createIndex("by-createdAt", "createdAt");
+          }
+          if (store && !store.indexNames.contains("by-operation")) {
+            store.createIndex("by-operation", "operation");
+          }
+        }
       };
 
       request.onsuccess = () => {

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { indexedDbCustomerPaymentRepository as customerPaymentsRepo } from "./repositories/indexedDbCustomerPaymentRepository";
 import { indexedDbCustomerRepository as customerRepo } from "./repositories/indexedDbCustomerRepository";
-import {CustomerPayment,Customer} from "./db";
+import type { CustomerPayment, Customer } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
 
 import {

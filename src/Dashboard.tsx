@@ -76,6 +76,7 @@ import InvReport from "./invReport";
 import CylindersQty from "./CylindersQty";
 import CylindersPrices from "./CylindersPrices";
 import CustomerCylinders from "./CustomerCylinders";
+import DeveloperControlPanel from "./DeveloperControlPanel";
 
 // DB helpers
 import { authRepository } from "./repositories/authRepository";
@@ -87,7 +88,7 @@ import { supplierPaymentRepository } from "./repositories/supplierPaymentReposit
 import { expenseRepository } from "./repositories/expenseRepository";
 import { useLang } from "./i18n/LanguageContext";
 
-import type { User } from "./db";
+import type { User } from "./types/entities";
 import PurchaseReport from "./purReport";
 import { FaFolderTree } from "react-icons/fa6";
 // import ProdReport from "prodReport";
@@ -148,6 +149,9 @@ export default function Dashboard({ user, onLogout }: Props) {
   { key: "expenses", label: "expenses", icon: <FaDollarSign className="text-blue-400" />, disabled: user?.role === "saleboy" },
   { key: "reports", label: "reports", icon: <FaChartBar className="text-yellow-400" />, disabled: user?.role === "saleboy" },
   { key: "settings", label: "settings", icon: <FaCog className="text-red-400" />, disabled: user?.role === "saleboy" },
+  ...(user?.role === "admin" || user?.role === "Dev" ? [
+    { key: "developer_control_panel", label: "developer_control_panel", icon: <FaDatabase className="text-slate-600" />, disabled: false },
+  ] : []),
 ], [t, user?.role]);
   
 
@@ -321,7 +325,7 @@ const months = [
 ];
 
 const salesByMonth: { month: string; sales: number }[] = months.map((m, i) => {
-  const total = transactions   // 👈 IMPORTANT: use ALL transactions
+  const total = transactions   // ðŸ‘ˆ IMPORTANT: use ALL transactions
     .filter(t => t.transactionType === "Sale")
     .filter(t => {
       const d = new Date(t.date);
@@ -837,6 +841,8 @@ const saveEditedUser = async () => {
           <Expenses />
         ) : activeItem === "settings" ? (
           <Settings />
+        ) : activeItem === "developer_control_panel" ? (
+          <DeveloperControlPanel user={user} />
         ) : activeItem === "customer" ? (
           <CustPayments />
         ) : activeItem === "supplier" ? (

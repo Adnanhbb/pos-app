@@ -1,6 +1,6 @@
 // src/supplierPaymentRepository.ts
 import { initDB } from "../db";
-import type { SupplierPayment } from "../db";
+import type { SupplierPayment } from "../types/entities";
 
 export const supplierPaymentRepository = {
   async getAll(): Promise<SupplierPayment[]> {

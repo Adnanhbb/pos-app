@@ -1,7 +1,5 @@
 import {
   initDB,
-  Supplier,
-  SupplierPayment,
   addSupplier,
   getSuppliersPaged,
   updateSupplier,
@@ -11,6 +9,7 @@ import {
   getAllSupplierPayments,
   deleteSupplierPayment,
 } from "../db";
+import type { Supplier, SupplierPayment } from "../types/entities";
 
 import type { SuppliersRepository } from "./suppliersRepository";
 

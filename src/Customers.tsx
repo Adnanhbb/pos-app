@@ -1,6 +1,6 @@
 // src/Customers.tsx
 import React, { useEffect, useState } from "react";
-import { Customer } from "./db";
+import type { Customer } from "./types/entities";
 import { indexedDbCustomerRepository as customersRepo } from "./repositories/indexedDbCustomerRepository";
 import { useLang } from "./i18n/LanguageContext";
 

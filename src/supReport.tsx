@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Supplier } from "./db";
+import type { Supplier } from "./types/entities";
 import {
   FaArrowUp,
   FaArrowDown,

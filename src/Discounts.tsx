@@ -1,14 +1,8 @@
 // src/Discounts.tsx
 import React, { useEffect, useState } from "react";
 import { FaEdit, FaTrash, FaPlus,FaBars,FaTh } from "react-icons/fa";
-import {
-  Discount,
-  getAllDiscounts,
-  addDiscount,
-  updateDiscount,
-  deleteDiscount,
-  searchDiscounts,
-} from "./db";
+import { discountRepository } from "./repositories/discountRepository";
+import type { Discount } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
 
 export default function Discounts() {
@@ -27,8 +21,8 @@ export default function Discounts() {
 
   const loadDiscounts = async () => {
     const data = searchQuery
-      ? await searchDiscounts(searchQuery)
-      : await getAllDiscounts();
+      ? await discountRepository.search(searchQuery)
+      : await discountRepository.getAll();
     setDiscounts(data);
   };
 
@@ -64,9 +58,9 @@ export default function Discounts() {
     if (!formData.name || isNaN(formData.value)) return;
 
     if (editingDiscount) {
-      await updateDiscount({ ...editingDiscount, ...formData });
+      await discountRepository.update({ ...editingDiscount, ...formData });
     } else {
-      await addDiscount(formData);
+      await discountRepository.create(formData);
     }
 
     resetForm();
@@ -77,7 +71,7 @@ export default function Discounts() {
   const handleDelete = async (id?: number) => {
     if (!id) return;
     if (window.confirm("Are you sure you want to delete this discount?")) {
-      await deleteDiscount(id);
+    await discountRepository.remove(id);
       loadDiscounts();
     }
   };

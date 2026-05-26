@@ -1,8 +1,7 @@
 // src/CylindersPrices.tsx
 import React, { useEffect, useState } from "react";
-import { getSettings, saveSettings, updateItem } from "./db";
-import { categoriesRepository } from "./repositories/categoriesRepository";
 import { itemsRepository } from "./repositories/itemsRepository";
+import { settingsRepository } from "./repositories/settingsRepository";
 import { useLang } from "./i18n/LanguageContext";
 
 export default function CylindersPrices() {
@@ -24,7 +23,7 @@ export default function CylindersPrices() {
   // Load settings
   useEffect(() => {
     async function load() {
-      const settings = await getSettings();
+      const settings = await settingsRepository.getRaw();
       if (settings) {
         setFormData(prev => ({
           ...prev,
@@ -51,10 +50,10 @@ export default function CylindersPrices() {
 
   const saveGasPrices = async () => {
 
-    const currentSettings = await getSettings();
+    const currentSettings = await settingsRepository.getRaw();
     if (!currentSettings) return;
 
-    await saveSettings({
+    await settingsRepository.save({
       ...currentSettings,
       cylBPrice: formData.cylBPrice,
       cylSPrice: formData.cylSPrice,
@@ -70,7 +69,7 @@ export default function CylindersPrices() {
     );
 
     for (const item of gasItems) {
-      await updateItem({
+      await itemsRepository.update({
         ...item,
         purchasePrice: Number((Number(formData.cylBPrice)/11.8).toFixed(2)),   //Purchase price
         retailPrice: Number((Number(formData.cylSPrice)/11.8).toFixed(2)),     // retail price

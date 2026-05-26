@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { DBSale, Item } from "./db";
+import type { DBSale, Item } from "./types/entities";
 import { salesRepository } from "./repositories/salesRepository";
 import { saleItemsRepository } from "./repositories/saleItemsRepository";
 import { itemsRepository } from "./repositories/itemsRepository";
