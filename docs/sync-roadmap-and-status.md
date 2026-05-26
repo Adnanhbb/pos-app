@@ -1377,3 +1377,16 @@ This is documentation/checklist only. It does not deploy to real hosting, does n
 `npm.cmd run rehearsal:local-production` now runs a safe read-only verifier for the local Laragon/deployment-package rehearsal. It checks package structure, expected frontend/API/schema/env-template assets, required deployment docs/scripts, Developer Control Panel source, runtime localhost/dev URL leakage, auto-sync signals, obvious background sync startup code, and dangerous restore/import tooling.
 
 The command writes `deployment-rehearsal-report.json` and `deployment-rehearsal-report.md` as local generated reports. It does not deploy, upload, mutate IndexedDB/MySQL, trigger replay, apply hydration, restore/import data, change runtime behavior, add background sync, or enable auto-sync. Visual UI, invoice printing, accounting review, replay approval, rollback approval, and real hosting domain/SSL/CORS/server credential checks remain manual.
+## Repository Sync Coverage Audit
+
+Repository-level CRUD sync coverage and the focused `sync:verify-existing` verifier are documented in [repository-sync-coverage.md](./repository-sync-coverage.md).
+
+Current summary:
+
+- backend-sync-aware low-risk master repositories: units, taxes, discounts, brands, categories
+- additional backend-sync-aware repositories: expenses, users/staff, settings, held carts
+- customers/suppliers: profile-fields-only sync-aware; accounting fields remain transaction/replay-owned
+- items: partial safe-profile update awareness only; create/delete/stock/cascade effects remain local-only
+- sales, sale_items, payments, batches, cylinders, and customer-cylinder holdings remain direct-CRUD local-only and should not be migrated outside atomic transaction/replay endpoints
+
+This is an audit/documentation update only. It does not migrate repositories, trigger replay, mutate local/backend data, add background sync, or enable auto-sync.

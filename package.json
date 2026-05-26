@@ -70,7 +70,8 @@
                     "release:git-readiness":  "node scripts/report-release-git-readiness.mjs",
                     "deployment:package":  "node scripts/create-deployment-package.mjs",
                     "rehearsal:local-production":  "node scripts/rehearse-local-production.mjs",
-                    "rehearsal:laragon":  "node scripts/run-laragon-rehearsal.mjs"
+                    "rehearsal:laragon":  "node scripts/run-laragon-rehearsal.mjs",
+                    "sync:verify-existing":  "node scripts/verify-existing-sync-coverage.mjs"
                 },
     "dependencies":  {
                          "dexie":  "^4.2.1",
