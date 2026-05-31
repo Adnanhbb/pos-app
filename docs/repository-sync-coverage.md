@@ -142,11 +142,11 @@ The verifier performs three safe checks:
 
 - static source coverage inspection for the repositories listed in this document
 - backend endpoint create/update/delete or create/delete checks with clearly named `Rehearsal Verify ...` test records
-- packaged Laragon browser lifecycles for customer, supplier, and expense UI paths, plus safety skip reporting for settings live mutation, item safe-profile update without a fixture, and transaction/replay-owned domains
+- packaged Laragon browser delete lifecycles for lookup UI paths plus customer, supplier, and expense UI lifecycles, with safety skip reporting for settings live mutation, item safe-profile update without a fixture, and transaction/replay-owned domains
 
-The verifier now drives the copied Laragon frontend with Playwright for customer, supplier, and expense lifecycle checks. It clicks the real forms and records safe method, URL, and response-status metadata only. It verifies that UI creates call `POST`, edits call `PUT ?id=<serverId>`, deletes call `DELETE ?id=<serverId>`, and normal backend reads hide soft-deleted rows.
+The verifier now drives the copied Laragon frontend with Playwright. It records safe method, URL, response-status, and DELETE-mode metadata only. Lookup-table UI fixtures prove that DELETE targets `?id=<serverId>`, reports `deleteMode: hard`, and removes the row from normal backend reads. Customer, supplier, and expense UI lifecycles prove POST create, PUT update, `deleteMode: soft`, and hidden follow-up GET behavior.
 
-Remote create rows are now localized before IndexedDB insert: the backend id is preserved as serverId, while IndexedDB receives its own local key. This avoids key collisions that could otherwise leave a UI row without serverId and cause later delete operations to fall back to local-only deletion/queueing. The backend delete convention remains HTTP DELETE with soft delete (is_deleted/deleted_at), and the verifier confirms deleted test rows are hidden from GET and list responses.
+Remote create rows are now localized before IndexedDB insert: the backend id is preserved as serverId, while IndexedDB receives its own local key. This avoids key collisions that could otherwise leave a UI row without serverId and cause later delete operations to fall back to local-only deletion/queueing. Backend delete still uses HTTP DELETE, with endpoint-specific semantics: units, brands, categories, discounts, and taxes hard-delete; customers, suppliers, and expenses soft-delete with is_deleted/deleted_at because their frontend models expose deleted-row restore workflows.
 
 Generated local reports:
 
@@ -173,3 +173,19 @@ For each repository fixture, the verifier creates a clearly named `Rehearsal Ver
 The verifier also inspects UI source paths so customer and supplier pages cannot silently regress to IndexedDB-only compatibility repositories. Customer and supplier create/update test payloads exclude `invoices`, `payable`, `paid`, and `balance`, and backend checks confirm those accounting summaries remain unchanged. Backend-returned summary values are normalized to local numbers for display only. Customer edits preserve mirrored `serverId`, and expense IndexedDB normalization preserves mirrored `serverId`, so subsequent UI updates and soft deletes target MySQL correctly.
 
 Live settings mutation, authentication actor mutation, held cart mutation, item profile mutation, and transaction-owned domains remain skipped with explicit reasons. No new repository is migrated and no auto-sync is enabled.
+## Backend Delete Policy Alignment
+
+Backend deletion now follows the existing frontend and IndexedDB model instead of applying soft delete uniformly:
+
+| Repository/table | Backend DELETE behavior | Reason |
+| --- | --- | --- |
+| `units` | hard delete | Lookup UI and IndexedDB remove rows directly; no restore model exists. |
+| `brands` | hard delete | Lookup UI and IndexedDB remove rows directly; no restore model exists. |
+| `categories` | hard delete | Lookup UI and IndexedDB remove rows directly; no restore model exists. |
+| `discounts` | hard delete | Lookup UI and IndexedDB remove rows directly; no restore model exists. |
+| `taxes` | hard delete | Lookup UI and IndexedDB remove rows directly; no restore model exists. |
+| `customers` | soft delete | UI and IndexedDB already support deleted rows, restore, and permanent delete. |
+| `suppliers` | soft delete | UI and IndexedDB already support deleted rows, restore, and permanent delete. |
+| `expenses` | soft delete | UI and IndexedDB already support deleted rows, restore, and permanent delete. |
+
+The shared PHP CRUD handler exposes a safe `deleteMode` response marker for DELETE verification. The packaged Laragon Playwright verifier now exercises lookup-table UI deletes and requires `deleteMode: hard`; customer, supplier, and expense UI deletes require `deleteMode: soft`. No soft-delete UI or IndexedDB fields were added to lookup tables.

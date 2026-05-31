@@ -31,14 +31,14 @@ const sourceChecks = [
 ];
 
 const backendChecks = [
-  ["units", "units.php", "name", () => ({ name: `Rehearsal Verify Unit ${runId}`, shortName: "rvu", itemCount: 0 }), () => ({ name: `Rehearsal Verify Unit Updated ${runId}`, shortName: "rvu2" }), null, { shortName: "rvu2" }],
-  ["taxes", "taxes.php", "name", () => ({ name: `Rehearsal Verify Tax ${runId}`, value: 6, type: "percentage" }), () => ({ value: 7 }), null, { value: 7 }],
-  ["discounts", "discounts.php", "name", () => ({ name: `Rehearsal Verify Discount ${runId}`, value: 4, type: "amount" }), () => ({ value: 5 }), null, { value: 5 }],
-  ["brands", "brands.php", "name", () => ({ name: `Rehearsal Verify Brand ${runId}`, itemCount: 0 }), () => ({ itemCount: 1 }), null, { itemCount: 1 }],
-  ["categories", "categories.php", "name", () => ({ name: `Rehearsal Verify Category ${runId}`, itemCount: 0 }), () => ({ itemCount: 1 }), null, { itemCount: 1 }],
-  ["expenses", "expenses.php", "category", () => ({ date: "2026-05-31", category: `Rehearsal Verify Expense ${runId}`, amount: 12, description: "safe rehearsal expense create" }), () => ({ amount: 13, description: "safe rehearsal expense updated" }), null, { amount: 13, description: "safe rehearsal expense updated" }],
-  ["customers", "customers.php", "name", () => ({ name: `Rehearsal Verify Customer ${runId}`, mobile: "03000000001", cnic: "RV-CNIC", address: "safe rehearsal customer" }), () => ({ address: "safe rehearsal customer updated" }), "profile fields only; no accounting fields sent", { address: "safe rehearsal customer updated" }, true],
-  ["suppliers", "suppliers.php", "name", () => ({ name: `Rehearsal Verify Supplier ${runId}`, mobile: "03000000002", cnic: "RV-SCNIC", address: "safe rehearsal supplier" }), () => ({ address: "safe rehearsal supplier updated" }), "profile fields only; no accounting fields sent", { address: "safe rehearsal supplier updated" }, true],
+  ["units", "units.php", "name", () => ({ name: `Rehearsal Verify Unit ${runId}`, shortName: "rvu", itemCount: 0 }), () => ({ name: `Rehearsal Verify Unit Updated ${runId}`, shortName: "rvu2" }), null, { shortName: "rvu2" }, false, "hard"],
+  ["taxes", "taxes.php", "name", () => ({ name: `Rehearsal Verify Tax ${runId}`, value: 6, type: "percentage" }), () => ({ value: 7 }), null, { value: 7 }, false, "hard"],
+  ["discounts", "discounts.php", "name", () => ({ name: `Rehearsal Verify Discount ${runId}`, value: 4, type: "amount" }), () => ({ value: 5 }), null, { value: 5 }, false, "hard"],
+  ["brands", "brands.php", "name", () => ({ name: `Rehearsal Verify Brand ${runId}`, itemCount: 0 }), () => ({ itemCount: 1 }), null, { itemCount: 1 }, false, "hard"],
+  ["categories", "categories.php", "name", () => ({ name: `Rehearsal Verify Category ${runId}`, itemCount: 0 }), () => ({ itemCount: 1 }), null, { itemCount: 1 }, false, "hard"],
+  ["expenses", "expenses.php", "category", () => ({ date: "2026-05-31", category: `Rehearsal Verify Expense ${runId}`, amount: 12, description: "safe rehearsal expense create" }), () => ({ amount: 13, description: "safe rehearsal expense updated" }), null, { amount: 13, description: "safe rehearsal expense updated" }, false, "soft"],
+  ["customers", "customers.php", "name", () => ({ name: `Rehearsal Verify Customer ${runId}`, mobile: "03000000001", cnic: "RV-CNIC", address: "safe rehearsal customer" }), () => ({ address: "safe rehearsal customer updated" }), "profile fields only; no accounting fields sent", { address: "safe rehearsal customer updated" }, true, "soft"],
+  ["suppliers", "suppliers.php", "name", () => ({ name: `Rehearsal Verify Supplier ${runId}`, mobile: "03000000002", cnic: "RV-SCNIC", address: "safe rehearsal supplier" }), () => ({ address: "safe rehearsal supplier updated" }), "profile fields only; no accounting fields sent", { address: "safe rehearsal supplier updated" }, true, "soft"],
 ];
 
 const skipped = [
@@ -82,7 +82,7 @@ function hasDeletedAt(row) { return row?.deleted_at != null || row?.deletedAt !=
 function valuesMatch(row, expected) { return !expected || Object.entries(expected).every(([key, value]) => String(row?.[key]) === String(value)); }
 function accountingSnapshot(row) { return Object.fromEntries(ACCOUNTING_FIELDS.map((field) => [field, Number(row?.[field] ?? 0)])); }
 function accountingIsZero(row) { return ACCOUNTING_FIELDS.every((field) => Number(row?.[field] ?? 0) === 0); }
-async function verifyEndpoint([entity, endpoint, labelField, makeCreate, makeUpdate, expectation, expectedUpdate, profileOnly = false]) {
+async function verifyEndpoint([entity, endpoint, labelField, makeCreate, makeUpdate, expectation, expectedUpdate, profileOnly = false, deleteMode = "soft"]) {
   const payload = { ...makeCreate(), localId: `${runId}-${entity}` };
   const updatePayload = makeUpdate ? makeUpdate() : null;
   const checks = [];
@@ -115,14 +115,18 @@ async function verifyEndpoint([entity, endpoint, labelField, makeCreate, makeUpd
     }
     deleteResponse = await fetchJson(`${endpoint}?id=${encodeURIComponent(String(id))}`, { method: "DELETE" });
     const deletedRow = unwrap(deleteResponse.body);
-    checks.push({ name: "DELETE soft-deletes backend row using serverId", method: "DELETE", endpoint: `${endpoint}?id=<serverId>`, ok: deleteResponse.ok && isDeletedRow(deletedRow) && hasDeletedAt(deletedRow), status: deleteResponse.status, softDeleted: isDeletedRow(deletedRow), deletedAtPresent: hasDeletedAt(deletedRow) });
+    if (deleteMode === "hard") {
+      checks.push({ name: "DELETE hard-deletes backend lookup row using serverId", method: "DELETE", endpoint: `${endpoint}?id=<serverId>`, ok: deleteResponse.ok && deletedRow?.deleteMode === "hard" && !isDeletedRow(deletedRow) && !hasDeletedAt(deletedRow), status: deleteResponse.status, deleteMode: deletedRow?.deleteMode ?? null });
+    } else {
+      checks.push({ name: "DELETE soft-deletes backend row using serverId", method: "DELETE", endpoint: `${endpoint}?id=<serverId>`, ok: deleteResponse.ok && deletedRow?.deleteMode === "soft" && isDeletedRow(deletedRow) && hasDeletedAt(deletedRow), status: deleteResponse.status, deleteMode: deletedRow?.deleteMode ?? null, softDeleted: isDeletedRow(deletedRow), deletedAtPresent: hasDeletedAt(deletedRow) });
+    }
     deletedGetResponse = await fetchJson(`${endpoint}?id=${encodeURIComponent(String(id))}`);
-    checks.push({ name: "soft-deleted row is hidden from normal GET", method: "GET", endpoint: `${endpoint}?id=<serverId>`, ok: deletedGetResponse.status === 404, status: deletedGetResponse.status });
+    checks.push({ name: `${deleteMode}-deleted row is hidden from normal GET`, method: "GET", endpoint: `${endpoint}?id=<serverId>`, ok: deletedGetResponse.status === 404, status: deletedGetResponse.status });
     listAfterDeleteResponse = await fetchJson(endpoint);
     const rows = Array.isArray(unwrap(listAfterDeleteResponse.body)) ? unwrap(listAfterDeleteResponse.body) : [];
-    checks.push({ name: "soft-deleted row is hidden from normal list", method: "GET", endpoint, ok: listAfterDeleteResponse.ok && !rows.some((row) => String(serverId(row)) === String(id)), status: listAfterDeleteResponse.status });
+    checks.push({ name: `${deleteMode}-deleted row is hidden from normal list`, method: "GET", endpoint, ok: listAfterDeleteResponse.ok && !rows.some((row) => String(serverId(row)) === String(id)), status: listAfterDeleteResponse.status });
   }
-  return { entity, endpoint, expectation: expectation ?? null, localMirrorContract: "backend id stored as serverId; IndexedDB key generated separately", ok: checks.every((check) => check.ok), checks, safeMetadata: { serverId: id, label: created?.[labelField] ?? payload[labelField] ?? null, createdStatus: createdResponse.status, updatedStatus: updateResponse?.status ?? null, deletedStatus: deleteResponse?.status ?? null, hiddenGetStatus: deletedGetResponse?.status ?? null, hiddenFromList: listAfterDeleteResponse?.ok ?? null } };
+  return { entity, endpoint, expectation: expectation ?? null, localMirrorContract: "backend id stored as serverId; IndexedDB key generated separately", ok: checks.every((check) => check.ok), checks, safeMetadata: { serverId: id, label: created?.[labelField] ?? payload[labelField] ?? null, createdStatus: createdResponse.status, updatedStatus: updateResponse?.status ?? null, deletedStatus: deleteResponse?.status ?? null, hiddenGetStatus: deletedGetResponse?.status ?? null, hiddenFromList: listAfterDeleteResponse?.ok ?? null, deleteMode } };
 }
 
 function md(report) {
@@ -131,7 +135,7 @@ function md(report) {
   out.push("", "## Backend Endpoint Verification");
   for (const r of report.backendEndpoints) {
     out.push(`- ${r.ok ? "PASS" : "FAIL"}: ${r.entity} serverId=${r.safeMetadata?.serverId ?? "none"}${r.expectation ? ` (${r.expectation})` : ""}`);
-    for (const check of r.checks) out.push(`  - ${check.ok ? "PASS" : "FAIL"}: ${check.method ? `${check.method} ` : ""}${check.endpoint ?? ""} ${check.name}${check.status != null ? ` status=${check.status}` : ""}${check.softDeleted != null ? ` softDeleted=${check.softDeleted}` : ""}${check.deletedAtPresent != null ? ` deletedAtPresent=${check.deletedAtPresent}` : ""}`);
+    for (const check of r.checks) out.push(`  - ${check.ok ? "PASS" : "FAIL"}: ${check.method ? `${check.method} ` : ""}${check.endpoint ?? ""} ${check.name}${check.status != null ? ` status=${check.status}` : ""}${check.softDeleted != null ? ` softDeleted=${check.softDeleted}` : ""}${check.deletedAtPresent != null ? ` deletedAtPresent=${check.deletedAtPresent}` : ""}${check.deleteMode ? ` deleteMode=${check.deleteMode}` : ""}`);
   }
   out.push("", "## Packaged Laragon UI Verification");
   for (const r of report.packagedUi.lifecycles ?? []) {
@@ -154,7 +158,7 @@ async function main() {
   const sourceFailures = sourceCoverage.filter((r) => !r.ok).length;
   const backendFailures = health.ok ? backendEndpoints.filter((r) => !r.ok).length : backendChecks.length;
   const packagedUiFailures = packagedUi.ok ? 0 : 1;
-  const report = { generatedAt, runId, apiBaseUrl: API_BASE_URL, bugFixes: ["customer/supplier UI pages use backend-aware profile repositories", "remote create mirror stores backend id as serverId with separate local IndexedDB key", "customer/supplier profile create and queue payloads exclude accounting fields", "customer/supplier PHP profile endpoints reject accounting-field writes by omission", "customer/supplier remote accounting summaries normalize to local numeric display values", "customer UI edit preserves mirrored serverId metadata", "expense IndexedDB normalization preserves mirrored serverId metadata"], ok: sourceFailures === 0 && backendFailures === 0 && packagedUiFailures === 0, summary: { sourceChecks: sourceCoverage.length, sourceFailures, backendHealthOk: health.ok, backendEndpointChecks: backendEndpoints.length, backendFailures, packagedUiFailures, skipped: skipped.length }, backendHealth: { ok: health.ok, status: health.status ?? null }, sourceCoverage, backendEndpoints, packagedUi, skipped: skipped.map(([entity, reason]) => ({ entity, reason })), safety: { safeTestRecordsOnly: true, noNewRepositoryMigration: true, runtimeBehaviorChanged: false, autoSyncEnabled: false, replayTriggered: false, posStockAccountingTransactionChanged: false, sensitiveBodiesLogged: false } };
+  const report = { generatedAt, runId, apiBaseUrl: API_BASE_URL, bugFixes: ["customer/supplier UI pages use backend-aware profile repositories", "remote create mirror stores backend id as serverId with separate local IndexedDB key", "customer/supplier profile create and queue payloads exclude accounting fields", "customer/supplier PHP profile endpoints reject accounting-field writes by omission", "customer/supplier remote accounting summaries normalize to local numeric display values", "customer UI edit preserves mirrored serverId metadata", "expense IndexedDB normalization preserves mirrored serverId metadata", "lookup endpoints hard-delete while restore-capable endpoints remain soft-delete"], ok: sourceFailures === 0 && backendFailures === 0 && packagedUiFailures === 0, summary: { sourceChecks: sourceCoverage.length, sourceFailures, backendHealthOk: health.ok, backendEndpointChecks: backendEndpoints.length, backendFailures, packagedUiFailures, skipped: skipped.length }, backendHealth: { ok: health.ok, status: health.status ?? null }, sourceCoverage, backendEndpoints, packagedUi, skipped: skipped.map(([entity, reason]) => ({ entity, reason })), safety: { safeTestRecordsOnly: true, noNewRepositoryMigration: true, runtimeBehaviorChanged: false, autoSyncEnabled: false, replayTriggered: false, posStockAccountingTransactionChanged: false, sensitiveBodiesLogged: false } };
   const safe = redact(report);
   writeFileSync(jsonPath, `${JSON.stringify(safe, null, 2)}\n`, "utf8");
   writeFileSync(mdPath, md(safe), "utf8");

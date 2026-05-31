@@ -89,8 +89,22 @@ function handle_entity_crud_endpoint(array $config): void
                 error_response($entityLabel . ' not found.', 404);
             }
 
-            $row = crud_soft_delete($pdo, $table, $id);
-            success_response(normalize_entity_response($row, $config));
+            $deleteMode = (string) ($config['deleteMode'] ?? 'soft');
+
+            if ($deleteMode === 'hard') {
+                $row = crud_hard_delete($pdo, $table, $id);
+            } else {
+                $deleteMode = 'soft';
+                $row = crud_soft_delete($pdo, $table, $id);
+            }
+
+            $response = normalize_entity_response($row, $config);
+
+            if ($response !== null) {
+                $response['deleteMode'] = $deleteMode;
+            }
+
+            success_response($response);
         }
 
         error_response('Method not allowed.', 405);

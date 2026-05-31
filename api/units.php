@@ -16,6 +16,7 @@ require_once __DIR__ . '/lib/entity_endpoint.php';
 
 handle_entity_crud_endpoint([
     'table' => 'units',
+    'deleteMode' => 'hard',
     'entityLabel' => 'Unit',
     'allowedFields' => ['client_id', 'name', 'shortName', 'itemCount'],
     'requiredOnCreate' => ['name'],

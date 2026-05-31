@@ -1390,3 +1390,12 @@ Current summary:
 - sales, sale_items, payments, batches, cylinders, and customer-cylinder holdings remain direct-CRUD local-only and should not be migrated outside atomic transaction/replay endpoints
 
 This is an audit/documentation update only. It does not migrate repositories, trigger replay, mutate local/backend data, add background sync, or enable auto-sync.
+
+## Existing CRUD Delete Policy Alignment
+
+Existing backend-aware CRUD deletion now matches the local frontend model:
+
+- `units`, `brands`, `categories`, `discounts`, and `taxes` hard-delete backend lookup rows.
+- `customers`, `suppliers`, and `expenses` keep soft-delete behavior because their local UI and IndexedDB flows already include deleted-row review, restore, and permanent-delete concepts.
+- Packaged Laragon verification asserts the endpoint-specific DELETE mode through safe response metadata and follow-up normal GET behavior.
+- No lookup-table restore UI, POS mutation behavior, replay behavior, or auto-sync behavior was added.

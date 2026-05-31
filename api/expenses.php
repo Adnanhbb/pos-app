@@ -16,6 +16,7 @@ require_once __DIR__ . '/lib/entity_endpoint.php';
 
 handle_entity_crud_endpoint([
     'table' => 'expenses',
+    'deleteMode' => 'soft',
     'entityLabel' => 'Expense',
     'allowedFields' => [
         'client_id',
