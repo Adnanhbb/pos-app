@@ -1022,6 +1022,7 @@ export async function addExpense(expense: Omit<Expense, "id">): Promise<number> 
   const db = await initDB();
   // basic normalization/validation
   const e: Expense = {
+    ...expense,
     date: expense.date,
     category: expense.category,
     amount: Number(expense.amount || 0),
@@ -1036,6 +1037,7 @@ export async function updateExpense(expense: Expense): Promise<void> {
   if (!expense.id) throw new Error("updateExpense requires expense.id");
   const db = await initDB();
   const e: Expense = {
+    ...expense,
     id: expense.id,
     date: expense.date,
     category: expense.category,
@@ -1057,6 +1059,7 @@ export async function searchExpenses(q: string): Promise<Expense[]> {
   if (!q) return all;
   const s = q.trim().toLowerCase();
   return all.filter(e =>
+    (e.category ?? "").toLowerCase().includes(s) ||
     (e.description ?? "").toLowerCase().includes(s) ||
     (e.date ?? "").toLowerCase().includes(s) ||
     String(e.amount).toLowerCase().includes(s)

@@ -10,6 +10,7 @@ import {
   canUseApi,
   getServerId,
   normalizeRemoteRecord,
+  prepareRemoteRecordForLocalInsert,
   queueEntityCreate,
   queueEntityDelete,
   queueEntityUpdate,
@@ -75,7 +76,7 @@ export const categoriesRepository = {
         const remoteCategory = normalizeRemoteCategory(remote, category);
 
         if (remoteCategory) {
-          return await addCategory(remoteCategory as Omit<Category, "id">);
+          return await addCategory(prepareRemoteRecordForLocalInsert(remoteCategory) as Omit<Category, "id">);
         }
 
         return await addCategory(category);

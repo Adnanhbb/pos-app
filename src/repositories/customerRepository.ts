@@ -15,7 +15,7 @@ import {
   getServerId,
   hasAccountingFieldChange,
   normalizeRemoteRecord,
-  queueEntityCreate,
+  prepareRemoteRecordForLocalInsert,
   queueEntityDelete,
   queueEntityOperation,
   stripAccountingFields,
@@ -31,11 +31,21 @@ function normalizeRemoteCustomer(
   remote: unknown,
   fallback: Partial<SyncableCustomer>
 ): SyncableCustomer | null {
-  return normalizeRemoteRecord<Customer>(
+  const record = normalizeRemoteRecord<Customer>(
     remote,
     fallback,
-    (record) => Boolean(record.name && record.mobile)
+    (candidate) => Boolean(candidate.name && candidate.mobile)
   );
+
+  if (!record) return null;
+
+  return {
+    ...record,
+    invoices: Number(record.invoices ?? 0),
+    payable: Number(record.payable ?? 0),
+    paid: Number(record.paid ?? 0),
+    balance: Number(record.balance ?? 0),
+  };
 }
 
 
@@ -75,7 +85,7 @@ function normalizeDeletedAt(value: unknown, fallback: number | null): number | n
   return fallback;
 }
 async function queueCustomerCreate(customer: SyncableCustomer) {
-  await queueEntityCreate("customers", customer);
+  await queueEntityOperation("customers", "create", stripAccountingFields(customer));
 }
 
 async function queueCustomerProfileUpdate(customer: SyncableCustomer) {
@@ -175,11 +185,11 @@ export const customersRepository: CustomersRepository = {
 
     if (await canUseApi()) {
       try {
-        const remote = await entityApi.create<SyncableCustomer>("customers", cust);
+        const remote = await entityApi.create<SyncableCustomer>("customers", stripAccountingFields(cust));
         const remoteCustomer = normalizeRemoteCustomer(remote, cust);
 
         if (remoteCustomer) {
-          return await addCustomer(remoteCustomer as Omit<Customer, "id">);
+          return await addCustomer(prepareRemoteRecordForLocalInsert(remoteCustomer) as Omit<Customer, "id">);
         }
 
         return await addCustomer(cust);

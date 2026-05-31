@@ -10,6 +10,7 @@ import {
   canUseApi,
   getServerId,
   normalizeRemoteRecord,
+  prepareRemoteRecordForLocalInsert,
   queueEntityCreate,
   queueEntityDelete,
   queueEntityUpdate,
@@ -70,7 +71,7 @@ export const taxRepository = {
         const remoteTax = normalizeRemoteTax(remote, tax);
 
         if (remoteTax) {
-          return await addTax(remoteTax as Omit<Tax, "id">);
+          return await addTax(prepareRemoteRecordForLocalInsert(remoteTax) as Omit<Tax, "id">);
         }
 
         return await addTax(tax);

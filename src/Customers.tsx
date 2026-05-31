@@ -1,7 +1,7 @@
 // src/Customers.tsx
 import React, { useEffect, useState } from "react";
 import type { Customer } from "./types/entities";
-import { indexedDbCustomerRepository as customersRepo } from "./repositories/indexedDbCustomerRepository";
+import { customersRepository as customersRepo } from "./repositories/customerRepository";
 import { useLang } from "./i18n/LanguageContext";
 
 import {
@@ -211,7 +211,7 @@ async function handleSave() {
   }
 
   const customerToSave: Customer = {
-    ...(editingCustomer ? { id: editingCustomer.id } : {}),
+    ...(editingCustomer ?? {}),
     name: form.name,
     mobile: form.mobile,
     cnic: form.cnic,

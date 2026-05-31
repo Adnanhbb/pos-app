@@ -24,13 +24,7 @@ handle_entity_crud_endpoint([
         'mobile',
         'cnic',
         'address',
-        'invoices',
-        'payable',
-        'paid',
-        'balance',
     ],
     'requiredOnCreate' => ['name'],
     'trimFields' => ['name', 'mobile', 'cnic', 'address'],
-    'intFields' => ['invoices'],
-    'numericFields' => ['payable', 'paid', 'balance'],
 ]);

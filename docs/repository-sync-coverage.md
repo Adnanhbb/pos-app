@@ -142,9 +142,11 @@ The verifier performs three safe checks:
 
 - static source coverage inspection for the repositories listed in this document
 - backend endpoint create/update/delete or create/delete checks with clearly named `Rehearsal Verify ...` test records
-- safety skip reporting for settings live mutation, live IndexedDB mirror under packaged Laragon, item safe-profile update without a fixture, and transaction/replay-owned domains
+- packaged Laragon browser lifecycles for customer, supplier, and expense UI paths, plus safety skip reporting for settings live mutation, item safe-profile update without a fixture, and transaction/replay-owned domains
 
-The packaged Laragon verifier does not directly import source repository modules to mutate IndexedDB. Local `serverId` mirror behavior is verified here by source inspection and should remain covered by source-level sync tests; backend endpoint acceptance is verified live against the rehearsal API.
+The verifier now drives the copied Laragon frontend with Playwright for customer, supplier, and expense lifecycle checks. It clicks the real forms and records safe method, URL, and response-status metadata only. It verifies that UI creates call `POST`, edits call `PUT ?id=<serverId>`, deletes call `DELETE ?id=<serverId>`, and normal backend reads hide soft-deleted rows.
+
+Remote create rows are now localized before IndexedDB insert: the backend id is preserved as serverId, while IndexedDB receives its own local key. This avoids key collisions that could otherwise leave a UI row without serverId and cause later delete operations to fall back to local-only deletion/queueing. The backend delete convention remains HTTP DELETE with soft delete (is_deleted/deleted_at), and the verifier confirms deleted test rows are hidden from GET and list responses.
 
 Generated local reports:
 
@@ -152,3 +154,22 @@ Generated local reports:
 - `sync-coverage-verification-report.md`
 
 The verifier intentionally does not migrate any new repository, does not trigger replay, does not enable auto-sync, and does not touch sales, sale_items, payment ledgers, batch balances, cylinder counts, item stock, or POS transaction/accounting behavior.
+
+## Fully Automated CRUD Lifecycle Verification
+
+`npm.cmd run sync:verify-existing` now verifies the full safe lifecycle for existing backend-aware low-risk repositories:
+
+- categories
+- brands
+- units
+- taxes
+- discounts
+- expenses
+- customers profile fields only
+- suppliers profile fields only
+
+For each repository fixture, the verifier creates a clearly named `Rehearsal Verify ...` backend row, confirms the returned `serverId`, reads the row back, updates it through `PUT ?id=<serverId>`, confirms the updated backend values, soft-deletes it through `DELETE ?id=<serverId>`, confirms `is_deleted` and `deleted_at`, confirms normal `GET` returns `404`, and confirms the row is absent from normal list results.
+
+The verifier also inspects UI source paths so customer and supplier pages cannot silently regress to IndexedDB-only compatibility repositories. Customer and supplier create/update test payloads exclude `invoices`, `payable`, `paid`, and `balance`, and backend checks confirm those accounting summaries remain unchanged. Backend-returned summary values are normalized to local numbers for display only. Customer edits preserve mirrored `serverId`, and expense IndexedDB normalization preserves mirrored `serverId`, so subsequent UI updates and soft deletes target MySQL correctly.
+
+Live settings mutation, authentication actor mutation, held cart mutation, item profile mutation, and transaction-owned domains remain skipped with explicit reasons. No new repository is migrated and no auto-sync is enabled.

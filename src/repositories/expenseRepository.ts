@@ -14,6 +14,7 @@ import {
   canUseApi,
   getServerId,
   normalizeRemoteRecord,
+  prepareRemoteRecordForLocalInsert,
   queueEntityCreate,
   queueEntityDelete,
   queueEntityUpdate,
@@ -122,7 +123,7 @@ export const expenseRepository = {
         const remoteExpense = normalizeRemoteExpense(remote, exp);
 
         if (remoteExpense) {
-          return await addExpense(remoteExpense as Omit<Expense, "id">);
+          return await addExpense(prepareRemoteRecordForLocalInsert(remoteExpense) as Omit<Expense, "id">);
         }
 
         return await addExpense(exp);

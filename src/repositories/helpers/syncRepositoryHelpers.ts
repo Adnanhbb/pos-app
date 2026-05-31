@@ -103,6 +103,16 @@ export function pickSafeItemProfilePayload<
   return payload;
 }
 
+export function prepareRemoteRecordForLocalInsert<T extends SyncableRecord>(
+  record: T
+): Omit<T, "id"> & SyncMetadata {
+  const { id, ...localRecord } = record as T & { id?: number | string };
+
+  return {
+    ...localRecord,
+    serverId: record.serverId ?? id ?? null,
+  } as Omit<T, "id"> & SyncMetadata;
+}
 export function normalizeRemoteRecord<T extends { id?: number | string; name: string }>(
   remote: unknown,
   fallback: Partial<T & SyncMetadata>,

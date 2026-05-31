@@ -6,6 +6,7 @@ import { entityApi } from "../api/entityApi";
 import {
   canUseApi,
   getServerId,
+  prepareRemoteRecordForLocalInsert,
   queueEntityCreate,
   queueEntityDelete,
   queueEntityUpdate,
@@ -136,7 +137,7 @@ export const staffRepository = {
         const remoteUser = normalizeRemoteUser(remote, user);
 
         if (remoteUser) {
-          return await addUser(remoteUser);
+          return await addUser(prepareRemoteRecordForLocalInsert(remoteUser) as Omit<User, "id">);
         }
 
         return await addUser(user);

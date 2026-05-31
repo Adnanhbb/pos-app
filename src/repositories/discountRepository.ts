@@ -10,6 +10,7 @@ import {
   canUseApi,
   getServerId,
   normalizeRemoteRecord,
+  prepareRemoteRecordForLocalInsert,
   queueEntityCreate,
   queueEntityDelete,
   queueEntityUpdate,
@@ -73,7 +74,7 @@ export const discountRepository = {
         const remoteDiscount = normalizeRemoteDiscount(remote, discount);
 
         if (remoteDiscount) {
-          return await addDiscount(remoteDiscount as Omit<Discount, "id">);
+          return await addDiscount(prepareRemoteRecordForLocalInsert(remoteDiscount) as Omit<Discount, "id">);
         }
 
         return await addDiscount(discount);

@@ -10,6 +10,7 @@ import {
   canUseApi,
   getServerId,
   normalizeRemoteRecord,
+  prepareRemoteRecordForLocalInsert,
   queueEntityCreate,
   queueEntityDelete,
   queueEntityUpdate,
@@ -72,7 +73,7 @@ export const brandsRepository = {
         const remoteBrand = normalizeRemoteBrand(remote, brand);
 
         if (remoteBrand) {
-          return await addBrand(remoteBrand as Omit<Brand, "id">);
+          return await addBrand(prepareRemoteRecordForLocalInsert(remoteBrand) as Omit<Brand, "id">);
         }
 
         return await addBrand(brand);

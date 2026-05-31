@@ -1,7 +1,7 @@
 // src/Suppliers.tsx
 import React, { useEffect, useState } from "react";
 // ✅ Add
-import { indexedDbSupplierRepository as suppliersRepo } from "./repositories/indexedDbSupplierRepository";
+import { suppliersRepository as suppliersRepo } from "./repositories/suppliersRepository";
 import type { Supplier } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
 

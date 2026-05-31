@@ -5,6 +5,7 @@ import { entityApi } from "../api/entityApi";
 import {
   canUseApi,
   getServerId,
+  prepareRemoteRecordForLocalInsert,
   queueEntityOperation,
 } from "./helpers/syncRepositoryHelpers";
 
@@ -209,8 +210,9 @@ export const heldRepository = {
 
         if (remotePayload) {
           const { items: remoteItems, ...remoteHeld } = remotePayload;
+          const localRemoteHeld = prepareRemoteRecordForLocalInsert(remoteHeld as SyncableHeldHeader);
           return await addHeldLocal(
-            remoteHeld as HeldHeader,
+            localRemoteHeld as HeldHeader,
             remoteItems as NewHeldItem[]
           );
         }

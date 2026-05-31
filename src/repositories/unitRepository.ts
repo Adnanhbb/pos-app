@@ -10,6 +10,7 @@ import {
   canUseApi,
   getServerId,
   normalizeRemoteRecord,
+  prepareRemoteRecordForLocalInsert,
   queueEntityCreate,
   queueEntityDelete,
   queueEntityUpdate,
@@ -70,7 +71,7 @@ export const unitRepository = {
         const remoteUnit = normalizeRemoteUnit(remote, unit);
 
         if (remoteUnit) {
-          return await addUnit(remoteUnit as Omit<Unit, "id">);
+          return await addUnit(prepareRemoteRecordForLocalInsert(remoteUnit) as Omit<Unit, "id">);
         }
 
         return await addUnit(unit);
