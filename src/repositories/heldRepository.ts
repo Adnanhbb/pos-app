@@ -105,9 +105,11 @@ function normalizeRemoteHeldPayload(
 ): HeldCartPayload | null {
   if (!remote || typeof remote !== "object") return null;
 
-  const record = remote as Partial<HeldCartPayload> & {
+  const record = getRemoteHeldData(remote) as (Partial<HeldCartPayload> & {
     held?: Partial<SyncableHeldHeader>;
-  };
+  }) | null;
+  if (!record) return null;
+
   const remoteHeader = record.held ?? record;
   const remoteItems = Array.isArray(record.items) ? record.items : fallback.items;
 

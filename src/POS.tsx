@@ -1321,7 +1321,7 @@ async function handleHoldTransaction() {
   /* -----------------------------
      SAVE HOLD
   ------------------------------*/
-heldRepository.addHeld(
+await heldRepository.addHeld(
   {
     invoiceNo,
     date: selectedDate.toString(),

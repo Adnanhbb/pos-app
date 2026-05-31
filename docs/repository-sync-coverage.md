@@ -172,7 +172,7 @@ For each repository fixture, the verifier creates a clearly named `Rehearsal Ver
 
 The verifier also inspects UI source paths so customer and supplier pages cannot silently regress to IndexedDB-only compatibility repositories. Customer and supplier create/update test payloads exclude `invoices`, `payable`, `paid`, and `balance`, and backend checks confirm those accounting summaries remain unchanged. Backend-returned summary values are normalized to local numbers for display only. Customer edits preserve mirrored `serverId`, and expense IndexedDB normalization preserves mirrored `serverId`, so subsequent UI updates and soft deletes target MySQL correctly.
 
-Live settings mutation, authentication actor mutation, held cart mutation, item profile mutation, and transaction-owned domains remain skipped with explicit reasons. No new repository is migrated and no auto-sync is enabled.
+Live settings mutation, authentication actor mutation, item profile mutation, and transaction-owned domains remain skipped with explicit reasons. Held carts now have a dedicated isolated packaged-frontend lifecycle verification. No new repository is migrated and no auto-sync is enabled.
 ## Backend Delete Policy Alignment
 
 Backend deletion now follows the existing frontend and IndexedDB model instead of applying soft delete uniformly:
@@ -191,3 +191,10 @@ Backend deletion now follows the existing frontend and IndexedDB model instead o
 The shared PHP CRUD handler exposes safe `deleteMode` response markers for verification. Lookup deletes require `deleteMode: hard`. Customer, supplier, and expense normal deletes require `deleteMode: soft`; deleted-record modal restore calls `PATCH ?id=<serverId>&restore=1`; deleted-record modal permanent delete calls `DELETE ?id=<serverId>&permanent=1` and removes the MySQL row. Offline fallbacks keep using the existing manual sync queue with explicit restore/permanent-delete action markers.
 
 The lookup tables still retain harmless `is_deleted` / `deleted_at` schema columns for compatibility with shared CRUD list/get/update helpers. Those columns are not used by lookup DELETE behavior. Removing them safely would require a broader helper/schema migration, so no risky cleanup migration was added. No soft-delete UI or IndexedDB fields were added to lookup tables.
+## Held Cart Save And Restore Verification
+
+Held carts are backend-aware bundles, not finalized transactions. The frontend `heldRepository` persists a held header and its `held_items` together as one logical payload through `held.php`. When online, the returned MySQL id is mirrored into the local IndexedDB held header as `serverId`. Offline fallback remains local-first and queues the same bundled held-cart payload; `held_items` are never replayed independently.
+
+The packaged Laragon verifier now uses local-only, clearly named `Rehearsal Held Cart ...` and `Rehearsal Held Item ...` fixtures. It adds the rehearsal item to the POS cart, clicks Hold Sale, confirms `held.php` receives a bundled POST with one item, opens Held Sales, resumes the record, confirms cart restoration, and confirms `held.php?id=<serverId>` receives DELETE. Backend held DELETE remains a soft delete so the resumed bundle disappears from normal lists without deleting finalized business history.
+
+The verification explicitly checks that backend item stock remains unchanged and that no finalized-sale, accounting, payment, batch, or cylinder API writes occur. It never clicks Complete or Postpone. Two held-cart bugs were fixed: PHP `{ success, data }` create responses are now unwrapped before local mirroring, and POS awaits the bundled hold save before refreshing held rows and clearing the active cart. No auto-sync or background behavior was added.
