@@ -280,7 +280,24 @@ export const customersRepository: CustomersRepository = {
       deletedAt: null,
     };
 
-    await customersRepository.update(restoredCustomer);
+    const syncableCustomer = restoredCustomer as SyncableCustomer;
+    const serverId = getServerId(syncableCustomer);
+
+    if (serverId != null && await canUseApi()) {
+      try {
+        await entityApi.restore("customers", serverId);
+        await updateCustomer(restoredCustomer);
+        return;
+      } catch {
+        // Fall through to local restore + queue when the API write fails.
+      }
+    }
+
+    await updateCustomer(restoredCustomer);
+    await queueEntityOperation("customers", "update", {
+      ...stripAccountingFields(syncableCustomer),
+      _syncAction: "restore",
+    } as any);
   },
 
   /** Permanent delete */
@@ -290,7 +307,7 @@ export const customersRepository: CustomersRepository = {
 
     if (serverId != null && await canUseApi()) {
       try {
-        await entityApi.remove("customers", serverId);
+        await entityApi.permanentRemove("customers", serverId);
         await deleteCustomer(id);
         return;
       } catch {
@@ -299,7 +316,10 @@ export const customersRepository: CustomersRepository = {
     }
 
     await deleteCustomer(id);
-    await queueCustomerDelete(customer ?? { id });
+    await queueEntityOperation("customers", "delete", {
+      ...(customer ?? { id }),
+      _syncAction: "permanentDelete",
+    } as any);
   },
 
   applyRemoteMirror: async (

@@ -29,4 +29,12 @@ export const entityApi = {
   remove<T>(entity: SyncEntityName, id: number | string) {
     return apiClient.delete<T>(entityItemPath(entity, id));
   },
+
+  restore<T>(entity: SyncEntityName, id: number | string) {
+    return apiClient.patch<T>(`${entityItemPath(entity, id)}&restore=1`);
+  },
+
+  permanentRemove<T>(entity: SyncEntityName, id: number | string) {
+    return apiClient.delete<T>(`${entityItemPath(entity, id)}&permanent=1`);
+  },
 };

@@ -49,3 +49,12 @@ function get_query_id(): ?string
 
     return $id === '' ? null : $id;
 }
+
+function get_query_flag(string $name): bool
+{
+    if (!isset($_GET[$name])) {
+        return false;
+    }
+
+    return in_array(strtolower(trim((string) $_GET[$name])), ['1', 'true', 'yes', 'on'], true);
+}

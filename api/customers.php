@@ -18,6 +18,8 @@ require_once __DIR__ . '/lib/entity_endpoint.php';
 handle_entity_crud_endpoint([
     'table' => 'customers',
     'deleteMode' => 'soft',
+    'supportsRestore' => true,
+    'supportsPermanentDelete' => true,
     'entityLabel' => 'Customer',
     'allowedFields' => [
         'client_id',

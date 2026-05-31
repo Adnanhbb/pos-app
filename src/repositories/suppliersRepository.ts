@@ -322,11 +322,29 @@ export const suppliersRepository: SuppliersRepository = {
     const supplier = await getSupplierById(id);
     if (!supplier) throw new Error("Supplier not found");
 
-    await suppliersRepository.update({
+    const restoredSupplier: Supplier = {
       ...supplier,
       isDeleted: false,
       deletedAt: null,
-    });
+    };
+    const syncableSupplier = restoredSupplier as SyncableSupplier;
+    const serverId = getServerId(syncableSupplier);
+
+    if (serverId != null && await canUseApi()) {
+      try {
+        await entityApi.restore("suppliers", serverId);
+        await updateSupplier(restoredSupplier);
+        return;
+      } catch {
+        // Fall through to local restore + queue when the API write fails.
+      }
+    }
+
+    await updateSupplier(restoredSupplier);
+    await queueEntityOperation("suppliers", "update", {
+      ...stripAccountingFields(syncableSupplier),
+      _syncAction: "restore",
+    } as any);
   },
 
   permanentDelete: async (id: number): Promise<void> => {
@@ -335,7 +353,7 @@ export const suppliersRepository: SuppliersRepository = {
 
     if (serverId != null && await canUseApi()) {
       try {
-        await entityApi.remove("suppliers", serverId);
+        await entityApi.permanentRemove("suppliers", serverId);
         await deleteSupplier(id);
 
         // Delete related supplier payments locally, preserving existing behavior.
@@ -357,7 +375,10 @@ export const suppliersRepository: SuppliersRepository = {
       await deleteSupplierPayment(p.id!);
     }
 
-    await queueSupplierDelete(supplier ?? { id });
+    await queueEntityOperation("suppliers", "delete", {
+      ...(supplier ?? { id }),
+      _syncAction: "permanentDelete",
+    } as any);
   },
 
   getDeleted: async (): Promise<Supplier[]> => {

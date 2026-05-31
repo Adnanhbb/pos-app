@@ -224,13 +224,19 @@ export const syncEngine = {
     }
 
     if (item.operation === "update") {
-      const response = await entityApi.update(item.entity, getRecordId(item), item.payload);
+      const response = item.payload?._syncAction === "restore"
+        ? await entityApi.restore(item.entity, getRecordId(item))
+        : await entityApi.update(item.entity, getRecordId(item), item.payload);
       await applyRemoteMirrorResult(item, response);
       return;
     }
 
     if (item.operation === "delete") {
-      await entityApi.remove(item.entity, getRecordId(item));
+      if (item.payload?._syncAction === "permanentDelete") {
+        await entityApi.permanentRemove(item.entity, getRecordId(item));
+      } else {
+        await entityApi.remove(item.entity, getRecordId(item));
+      }
       return;
     }
 

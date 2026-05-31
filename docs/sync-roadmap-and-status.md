@@ -1397,5 +1397,7 @@ Existing backend-aware CRUD deletion now matches the local frontend model:
 
 - `units`, `brands`, `categories`, `discounts`, and `taxes` hard-delete backend lookup rows.
 - `customers`, `suppliers`, and `expenses` keep soft-delete behavior because their local UI and IndexedDB flows already include deleted-row review, restore, and permanent-delete concepts.
-- Packaged Laragon verification asserts the endpoint-specific DELETE mode through safe response metadata and follow-up normal GET behavior.
+- Packaged Laragon verification asserts lookup hard deletion and exercises customer/supplier/expense deleted-record modal restore plus permanent deletion end to end.
+- Soft entities restore through `PATCH ?id=<serverId>&restore=1`; their permanent delete uses `DELETE ?id=<serverId>&permanent=1`.
+- Lookup schema `is_deleted` / `deleted_at` columns remain harmlessly for shared-helper compatibility; no risky cleanup migration was added.
 - No lookup-table restore UI, POS mutation behavior, replay behavior, or auto-sync behavior was added.

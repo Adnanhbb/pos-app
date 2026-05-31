@@ -15,6 +15,7 @@ import {
   getServerId,
   normalizeRemoteRecord,
   prepareRemoteRecordForLocalInsert,
+  queueEntityOperation,
   queueEntityCreate,
   queueEntityDelete,
   queueEntityUpdate,
@@ -191,11 +192,29 @@ export const expenseRepository = {
     const exp = all.find(e => e.id === id);
     if (!exp) throw new Error("Expense not found");
 
-    await expenseRepository.update({
+    const restoredExpense: Expense = {
       ...exp,
       isDeleted: false,
       deletedAt: null,
-    });
+    };
+    const syncableExpense = restoredExpense as SyncableExpense;
+    const serverId = getServerId(syncableExpense);
+
+    if (serverId != null && await canUseApi()) {
+      try {
+        await entityApi.restore("expenses", serverId);
+        await updateExpense(restoredExpense);
+        return;
+      } catch {
+        // Fall through to local restore + queue when the API write fails.
+      }
+    }
+
+    await updateExpense(restoredExpense);
+    await queueEntityOperation("expenses", "update", {
+      ...syncableExpense,
+      _syncAction: "restore",
+    } as any);
   },
 
   /** PERMANENT DELETE */
@@ -205,7 +224,7 @@ export const expenseRepository = {
 
     if (serverId != null && await canUseApi()) {
       try {
-        await entityApi.remove("expenses", serverId);
+        await entityApi.permanentRemove("expenses", serverId);
         await deleteExpense(id);
         return;
       } catch {
@@ -214,7 +233,10 @@ export const expenseRepository = {
     }
 
     await deleteExpense(id);
-    await queueExpenseDelete(expense ?? { id });
+    await queueEntityOperation("expenses", "delete", {
+      ...(expense ?? { id }),
+      _syncAction: "permanentDelete",
+    } as any);
   },
 
 

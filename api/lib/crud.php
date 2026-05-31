@@ -91,6 +91,18 @@ function crud_update(PDO $pdo, string $table, string $id, array $data, array $al
     return crud_get_by_id($pdo, $table, $id);
 }
 
+function crud_restore(PDO $pdo, string $table, string $id): ?array
+{
+    $sql = 'UPDATE ' . crud_identifier($table)
+        . ' SET is_deleted = 0, deleted_at = NULL'
+        . ' WHERE id = :id AND is_deleted = 1';
+
+    $statement = $pdo->prepare($sql);
+    $statement->execute(['id' => $id]);
+
+    return crud_get_by_id($pdo, $table, $id);
+}
+
 function crud_hard_delete(PDO $pdo, string $table, string $id): ?array
 {
     $row = crud_get_by_id($pdo, $table, $id, ['*'], true);

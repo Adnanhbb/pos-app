@@ -12,6 +12,8 @@ function handle_entity_crud_endpoint(array $config): void
     $entityLabel = $config['entityLabel'] ?? ucfirst($table);
     $method = get_request_method();
     $id = get_query_id();
+    $permanentDelete = get_query_flag('permanent');
+    $restore = get_query_flag('restore');
 
     try {
         $pdo = get_pdo();
@@ -44,6 +46,26 @@ function handle_entity_crud_endpoint(array $config): void
 
             $row = crud_create($pdo, $table, $body, $allowedFields);
             success_response(normalize_entity_response($row, $config), 201);
+        }
+
+        if ($method === 'PATCH' && $restore) {
+            if ($id === null) {
+                error_response($entityLabel . ' id is required.', 400);
+            }
+
+            if (!(bool) ($config['supportsRestore'] ?? false)) {
+                error_response($entityLabel . ' restore is not supported.', 400);
+            }
+
+            $row = crud_restore($pdo, $table, $id);
+
+            if ($row === null) {
+                error_response($entityLabel . ' not found.', 404);
+            }
+
+            $response = normalize_entity_response($row, $config);
+            $response['deleteMode'] = 'restored';
+            success_response($response);
         }
 
         if ($method === 'PUT' || $method === 'PATCH') {
@@ -83,7 +105,7 @@ function handle_entity_crud_endpoint(array $config): void
                 error_response($entityLabel . ' id is required.', 400);
             }
 
-            $existing = crud_get_by_id($pdo, $table, $id);
+            $existing = crud_get_by_id($pdo, $table, $id, ['*'], $permanentDelete);
 
             if ($existing === null) {
                 error_response($entityLabel . ' not found.', 404);
@@ -91,7 +113,14 @@ function handle_entity_crud_endpoint(array $config): void
 
             $deleteMode = (string) ($config['deleteMode'] ?? 'soft');
 
-            if ($deleteMode === 'hard') {
+            if ($permanentDelete) {
+                if (!(bool) ($config['supportsPermanentDelete'] ?? false)) {
+                    error_response($entityLabel . ' permanent delete is not supported.', 400);
+                }
+
+                $deleteMode = 'permanent';
+                $row = crud_hard_delete($pdo, $table, $id);
+            } elseif ($deleteMode === 'hard') {
                 $row = crud_hard_delete($pdo, $table, $id);
             } else {
                 $deleteMode = 'soft';

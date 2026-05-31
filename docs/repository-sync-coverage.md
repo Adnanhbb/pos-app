@@ -168,7 +168,7 @@ The verifier intentionally does not migrate any new repository, does not trigger
 - customers profile fields only
 - suppliers profile fields only
 
-For each repository fixture, the verifier creates a clearly named `Rehearsal Verify ...` backend row, confirms the returned `serverId`, reads the row back, updates it through `PUT ?id=<serverId>`, confirms the updated backend values, soft-deletes it through `DELETE ?id=<serverId>`, confirms `is_deleted` and `deleted_at`, confirms normal `GET` returns `404`, and confirms the row is absent from normal list results.
+For each repository fixture, the verifier creates a clearly named `Rehearsal Verify ...` backend row, confirms the returned `serverId`, reads the row back, and updates it through `PUT ?id=<serverId>`. Lookup-table fixtures then require a hard delete and verify that the backend row is gone. Customer, supplier, and expense fixtures require soft delete, hidden normal reads, explicit restore through `PATCH ?id=<serverId>&restore=1`, a second soft delete, and final hard removal through `DELETE ?id=<serverId>&permanent=1`.
 
 The verifier also inspects UI source paths so customer and supplier pages cannot silently regress to IndexedDB-only compatibility repositories. Customer and supplier create/update test payloads exclude `invoices`, `payable`, `paid`, and `balance`, and backend checks confirm those accounting summaries remain unchanged. Backend-returned summary values are normalized to local numbers for display only. Customer edits preserve mirrored `serverId`, and expense IndexedDB normalization preserves mirrored `serverId`, so subsequent UI updates and soft deletes target MySQL correctly.
 
@@ -188,4 +188,6 @@ Backend deletion now follows the existing frontend and IndexedDB model instead o
 | `suppliers` | soft delete | UI and IndexedDB already support deleted rows, restore, and permanent delete. |
 | `expenses` | soft delete | UI and IndexedDB already support deleted rows, restore, and permanent delete. |
 
-The shared PHP CRUD handler exposes a safe `deleteMode` response marker for DELETE verification. The packaged Laragon Playwright verifier now exercises lookup-table UI deletes and requires `deleteMode: hard`; customer, supplier, and expense UI deletes require `deleteMode: soft`. No soft-delete UI or IndexedDB fields were added to lookup tables.
+The shared PHP CRUD handler exposes safe `deleteMode` response markers for verification. Lookup deletes require `deleteMode: hard`. Customer, supplier, and expense normal deletes require `deleteMode: soft`; deleted-record modal restore calls `PATCH ?id=<serverId>&restore=1`; deleted-record modal permanent delete calls `DELETE ?id=<serverId>&permanent=1` and removes the MySQL row. Offline fallbacks keep using the existing manual sync queue with explicit restore/permanent-delete action markers.
+
+The lookup tables still retain harmless `is_deleted` / `deleted_at` schema columns for compatibility with shared CRUD list/get/update helpers. Those columns are not used by lookup DELETE behavior. Removing them safely would require a broader helper/schema migration, so no risky cleanup migration was added. No soft-delete UI or IndexedDB fields were added to lookup tables.
