@@ -2,18 +2,12 @@
 import { useEffect, useState } from "react";
 import { salesRepository } from "./repositories/salesRepository";
 import type { DBSale, DBSaleItem } from "./types/entities";
-import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight, FaTrash,FaPrint, FaEye } from "react-icons/fa";
-import { customersRepository } from "./repositories/customerRepository";
-import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
-import { indexedDbSupplierRepository as suppliersRepository } from "./repositories/indexedDbSupplierRepository";
-import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
+import { FaAngleDoubleLeft, FaAngleLeft, FaAngleRight, FaAngleDoubleRight, FaPrint, FaEye } from "react-icons/fa";
 import { printInvoice } from "./services/printing/printService";
 import { useLang } from "./i18n/LanguageContext";
-import { batchRepository } from "./repositories/batchRepository";
 
 const PAGE_SIZE = 10;
 const TRANSACTION_TYPES = ["All", "Sale", "Purchase", "Return", "Quotation"] as const;
-
 export const resolvePartyName = (inv: DBSale) => {
 
   if (inv.transactionType === "Purchase") {
@@ -143,214 +137,6 @@ export default function Invoices() {
     if (page < 1 || page > totalPages) return;
     setCurrentPage(page);
   };
-
-const handleDeleteInvoice = async (invoice: DBSale) => {
-  if (!invoice.id) return;
-
-  const confirmDelete = window.confirm(
-  `${t("areyousuredeleteinvoice")} ${invoice.invoiceNo}`
-);
-  if (!confirmDelete) return;
-
-  try {
-   /* --------------------------------------------------
-   1️⃣ STOCK REVERSAL + DELETE
--------------------------------------------------- */
-if (invoice.transactionType === "Sale") {
-  // Sale originally reduced stock → restore it
-  await salesRepository.deleteSaleAndRestoreStock(invoice.id);
-}
-else if (invoice.transactionType === "Purchase") {
-  // Purchase originally increased stock → reduce it
-  await salesRepository.deletePurchaseAndReduceStock(invoice.id);
-}
-else if (invoice.transactionType === "Return") {
-
-  const isSupplierReturn = invoice.invoiceNo?.startsWith("RET-S");
-
-  if (isSupplierReturn) {
-    await salesRepository.deleteSupplierReturnAndRestoreStock(invoice.id);
-  } else {
-    await salesRepository.deleteCustomerReturnAndReduceStock(invoice.id);
-  }
-}
-else if (invoice.transactionType === "Quotation") {
-  await salesRepository.deleteQuotation(invoice.id);
-}
-
-    /* --------------------------------------------------
-       2️⃣ CUSTOMER ACCOUNT REVERSAL
-    -------------------------------------------------- */
-    if (
-      (invoice.transactionType === "Sale" ||
-       invoice.transactionType === "Return") &&
-      invoice.customerId
-    ) {
-      const customer = await customersRepository.getById(invoice.customerId);
-      if (customer) {
-
-        const invoiceBase =
-          (invoice.subtotal ?? 0) -
-          (invoice.discount ?? 0) +
-          (invoice.tax ?? 0);
-
-        let newPayable = customer.payable ?? 0;
-        let newPaid = customer.paid ?? 0;
-
-        if (invoice.transactionType === "Sale") {
-          newPayable -= invoiceBase;
-          newPaid -= invoice.paid ?? 0;
-        }
-
-        if (invoice.transactionType === "Return") {
-          newPayable += invoiceBase;
-          newPaid -= invoice.paid ?? 0; // invoice.paid is NEGATIVE
-        }
-
-        const newBalance = newPayable - newPaid;
-        const newInvoices = Math.max(0, (customer.invoices ?? 1) - 1);
-
-        await customersRepository.update({
-          ...customer,
-          payable: newPayable,
-          paid: newPaid,
-          balance: newBalance,
-          invoices: newInvoices,
-        });
-
-        // Remove payment entry (both Sale & Return)
-        if (invoice.paid && invoice.paid !== 0) {
-          await customerPaymentRepository.deleteByInvoiceNo(invoice.invoiceNo);
-        }
-      }
-    }
-
-   /* --------------------------------------------------
-   3️⃣ SUPPLIER ACCOUNT REVERSAL (PURCHASE & RETURN)
--------------------------------------------------- */
-if (
-  (invoice.transactionType === "Purchase" ||
-   invoice.transactionType === "Return") &&
-  invoice.supplierId
-) {
-  const supplier = await suppliersRepository.getById(invoice.supplierId);
-  if (supplier) {
-
-    const invoiceBase =
-      (invoice.subtotal ?? 0) -
-      (invoice.discount ?? 0) +
-      (invoice.tax ?? 0);
-
-    let newPayable = supplier.payable ?? 0;
-    let newPaid = supplier.paid ?? 0;
-
-    // 🔹 Reverse Purchase
-    if (invoice.transactionType === "Purchase") {
-      newPayable -= invoiceBase;
-      newPaid -= invoice.paid ?? 0;
-    }
-
-    // 🔹 Reverse Supplier Return
-    if (invoice.transactionType === "Return") {
-      newPayable += invoiceBase;
-      newPaid -= invoice.paid ?? 0; 
-      // invoice.paid is NEGATIVE in return
-    }
-
-    const newBalance = newPayable - newPaid;
-    const newInvoices = Math.max(0, (supplier.invoices ?? 1) - 1);
-
-    await suppliersRepository.update({
-      ...supplier,
-      payable: newPayable,
-      paid: newPaid,
-      balance: newBalance,
-      invoices: newInvoices,
-    });
-
-    // 🔁 Remove supplier payment entry (Purchase & Return)
-    if (invoice.paid && invoice.paid !== 0) {
-      await supplierPaymentRepository.deleteByInvoiceNo(
-        String(invoice.invoiceNo)
-      );
-    }
-  }
-}
-
-/* --------------------------------------------------
-   🧠 BATCH REVERSAL (CRITICAL)
--------------------------------------------------- */
-const items = await salesRepository.getSaleItems(invoice.id);
-
-for (const ci of items) {
-
-  /* ---------- SALE DELETE ---------- */
-  if (invoice.transactionType === "Sale") {
-
-    if (ci.id) {
-      const batch = await batchRepository.getBatchById(ci.id);
-      if (!batch) continue;
-
-      batch.qtySold -= ci.qty;
-      batch.balance += ci.qty;
-
-      // safety
-      batch.qtySold = Math.max(0, batch.qtySold);
-
-      await batchRepository.updateBatch(batch);
-    }
-  }
-
-  /* ---------- PURCHASE DELETE ---------- */
-  if (invoice.transactionType === "Purchase") {
-
-    // delete batch created by purchase
-    await batchRepository.deleteByInvoiceNo(invoice.invoiceNo);
-  }
-
-  /* ---------- RETURN ---------- */
-  if (invoice.transactionType === "Return") {
-
-    const isSupplierReturn = invoice.invoiceNo?.startsWith("RET-S");
-
-    /* 🔹 SUPPLIER RETURN DELETE */
-    if (isSupplierReturn) {
-
-      if (ci.id) {
-        const batch = await batchRepository.getBatchById(ci.id);
-        if (!batch) continue;
-
-        // reverse supplier return
-        batch.qtyPurchased += ci.qty;
-        batch.balance += ci.qty;
-
-        await batchRepository.updateBatch(batch);
-      }
-    }
-
-    /* 🔹 CUSTOMER RETURN DELETE */
-    else {
-
-      // delete return batch
-      await batchRepository.deleteByInvoiceNo(invoice.invoiceNo);
-    }
-  }
-}
-
-    /* --------------------------------------------------
-       4️⃣ UI CLEANUP
-    -------------------------------------------------- */
-    setSales(prev => prev.filter(s => s.id !== invoice.id));
-    setSelectedInvoice(prev =>
-      prev?.id === invoice.id ? null : prev
-    );
-
-    alert(`Invoice #${invoice.invoiceNo} deleted successfully.`);
-  } catch (err) {
-    console.error("Delete invoice failed:", err);
-    alert("Failed to delete invoice. Check console for details.");
-  }
-};
 
 const handlePrintInvoice = async (invoice: DBSale) => {
 
@@ -572,16 +358,6 @@ async function handleRemovePostponed(inv: DBSale) {
                   >
                     🖨
                   </button>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation();
-                      handleDeleteInvoice(inv);
-                    }}
-                    title={t("delete")}
-                    className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
-                  >
-                    <FaTrash />
-                  </button>
                 </div>
               </div>
             ))}
@@ -626,18 +402,6 @@ async function handleRemovePostponed(inv: DBSale) {
                         className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
                       >
                         🖨
-                      </button>
-
-                      {/* DELETE */}
-                      <button
-                        onClick={e => {
-                          e.stopPropagation();
-                          handleDeleteInvoice(inv);
-                        }}
-                        title={t("delete")}
-                        className="px-2 py-1 text-xs bg-red-500 text-white rounded hover:bg-red-600"
-                      >
-                        <FaTrash />
                       </button>
 
                     </td>

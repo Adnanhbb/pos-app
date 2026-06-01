@@ -172,6 +172,29 @@ async function manualReplayLifecycle(browser, runId) {
     await context.close();
   }
 }async function openPosTransactions(page) { const sales = page.locator("aside > ul > li").nth(6); if (await sales.locator("ul").count() === 0) await sales.locator("button").first().click(); await sales.locator("ul li button").first().click(); await page.waitForTimeout(500); }
+async function verifyInvoicesReadOnly(page) {
+  const sales = page.locator("aside > ul > li").nth(6);
+  if (await sales.locator("ul").count() === 0) await sales.locator("button").first().click();
+  page.once("dialog", (dialog) => dialog.accept());
+  await sales.locator("ul li button").nth(1).click();
+  await page.waitForTimeout(500);
+  const main = page.locator("main");
+  const heading = main.locator("h1").first();
+  await heading.waitFor({ state: "visible", timeout: 10000 });
+  const headingText = (await heading.textContent())?.trim() ?? "";
+  const destructiveButtons = await main.locator("button.bg-red-500").count();
+  const searchInputs = await main.locator('input[type="text"]').count();
+  const filterInputs = await main.locator('input[type="radio"]').count();
+  const printButtons = await main.locator("button.bg-blue-500").count();
+  const invoiceDataCells = await main.locator("tbody tr td:not([colspan])").count();
+  const checks = [
+    { name: "packaged invoice viewer opens", ok: /invoice/i.test(headingText), headingText },
+    { name: "invoice search and filters remain accessible", ok: searchInputs > 0 && filterInputs > 0, searchInputs, filterInputs },
+    { name: "invoice destructive delete/cancel action is unavailable", ok: destructiveButtons === 0, destructiveButtons },
+    { name: "invoice print action remains available when invoice rows exist", ok: invoiceDataCells === 0 || printButtons > 0, invoiceDataCells, printButtons },
+  ];
+  return { ok: checks.every((check) => check.ok), checks, destructiveActionsAvailable: false };
+}
 async function readCartCount(page) { return page.locator("main").evaluate((main) => { const match = main.textContent?.match(/Total Items:\s*(\d+)/i); return match ? Number(match[1]) : null; }); }
 function stockSnapshot(rows) { return Object.fromEntries((Array.isArray(rows) ? rows : []).map((row) => [String(getServerId(row)), Number(row.availableStock ?? 0)])); }
 async function heldCartLifecycle(page, runId) {
@@ -258,5 +281,5 @@ async function verifyDeveloperControlPanelVisibility(browser) {
 }
 
 export async function verifyPackagedUiSync(runId) {
-  const browser = await chromium.launch({ headless: true }); try { const developerControlPanel = await verifyDeveloperControlPanelVisibility(browser); const manualReplay = await manualReplayLifecycle(browser, runId); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); }); const page = await context.newPage(); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); await context.close(); return { appUrl: APP_URL, ok: developerControlPanel.ok && manualReplay.ok && lifecycles.every((item) => item.ok), developerControlPanel, manualReplay, lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
+  const browser = await chromium.launch({ headless: true }); try { const developerControlPanel = await verifyDeveloperControlPanelVisibility(browser); const manualReplay = await manualReplayLifecycle(browser, runId); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); }); const page = await context.newPage(); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); const invoicesReadOnly = await verifyInvoicesReadOnly(page); await context.close(); return { appUrl: APP_URL, ok: developerControlPanel.ok && manualReplay.ok && invoicesReadOnly.ok && lifecycles.every((item) => item.ok), developerControlPanel, manualReplay, invoicesReadOnly, lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
 }

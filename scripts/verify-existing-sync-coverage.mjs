@@ -30,6 +30,7 @@ const sourceChecks = [
   ["items", "src/repositories/itemsRepository.ts", ["entityApi.update", "pickSafeItemProfilePayload", "hasUnsafeItemFieldChange", "Item create is intentionally local-only"]],
   ["developer control panel dashboard visibility", "src/Dashboard.tsx", ["...(user?.role === \"Dev\" ? [", "if (key === \"developer_control_panel\" && user.role !== \"Dev\") return;"]],
   ["developer control panel self guard", "src/DeveloperControlPanel.tsx", ["const canAccess = user.role === \"Dev\";", "restricted to developer support users"]],
+  ["invoice read-only view and print", "src/Invoices.tsx", ["handlePrintInvoice", "printInvoice({"]],
   ["manual replay failed-row handling", "src/services/syncEngine.ts", ["await syncQueueRepository.incrementRetry(item.id, message);", "await syncQueueRepository.markFailed(item.id, message);"]],
 ];
 
@@ -162,6 +163,10 @@ function md(report) {
   out.push("", "## Developer Control Panel Packaged Visibility Verification");
   for (const check of report.packagedUi.developerControlPanel?.checks ?? []) {
     out.push(`- ${check.ok ? "PASS" : "FAIL"}: ${check.name}${check.role ? ` role=${check.role}` : ""}`);
+  }
+  out.push("", "## Packaged Invoice Read-Only Verification");
+  for (const check of report.packagedUi.invoicesReadOnly?.checks ?? []) {
+    out.push(`- ${check.ok ? "PASS" : "FAIL"}: ${check.name}`);
   }
   out.push("", "## Packaged Settings Manual Replay Verification");
   for (const check of report.packagedUi.manualReplay?.checks ?? []) {

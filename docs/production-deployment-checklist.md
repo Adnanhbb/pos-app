@@ -313,3 +313,10 @@ Remove-Item Env:SUPPORT_USER_PASSWORD
 - a sentinel bearer token is never rendered in the panel.
 
 The browser check does not use the disabled frontend backdoor and does not create real sessions. Run backup tooling separately through explicit CLI commands. Export writes backup files under `backups/`; validation reads backup JSON and computes SHA-256 checksums. Restore/import remains unimplemented.
+
+## Invoice Cancellation Handover Safety
+
+- Confirm invoice viewing, search, filtering, and printing remain available.
+- Confirm invoice delete/cancel buttons are not exposed in the client UI.
+- Treat invoice cancellation as temporarily disabled until a complete atomic reversal is implemented and verified for stock, batches, cylinders, customer/supplier balances, payments, and accounting.
+- Do not perform manual IndexedDB or MySQL deletion as a workaround.

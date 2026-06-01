@@ -1423,3 +1423,9 @@ Verified lifecycle:
 The failure-state handling was tightened so a rejected CRUD replay row no longer remains stranded in `processing`: `syncEngine.processPending()` records retry metadata and then marks that queue row `failed`.
 
 This verification does not use transactions, sales, sale items, payments, stock, accounting, batches, or cylinders. Replay remains explicitly triggered only. No startup replay, replay interval, replay worker, polling loop, or event-listener replay was added.
+
+## Invoice Cancellation Temporarily Disabled
+
+Invoice deletion/cancellation is intentionally unavailable from the client UI during handover. The previous local reversal path could not safely guarantee coordinated reversal of sale items, stock, batches, cylinders, customer/supplier balances, payments, and accounting.
+
+Invoice viewing, search, filtering, and printing remain available. Existing repository reversal helpers are retained only as unexposed implementation history until a complete atomic reversal flow is designed and verified. No POS finalization, replay, or auto-sync behavior changed.
