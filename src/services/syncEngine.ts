@@ -199,6 +199,7 @@ export const syncEngine = {
 
         if (item.id != null) {
           await syncQueueRepository.incrementRetry(item.id, message);
+          await syncQueueRepository.markFailed(item.id, message);
         }
 
         result.failed += 1;

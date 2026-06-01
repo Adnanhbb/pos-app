@@ -174,6 +174,10 @@ After deployment:
 - Create a low-risk CRUD row while backend is online and verify MySQL.
 - Create a low-risk CRUD row while backend is unavailable in staging only and verify queue behavior.
 - Run manual replay only when safe and explicitly intended.
+- In Laragon/staging rehearsal, use only a clearly named low-risk lookup fixture for manual replay verification.
+- Confirm the fixture remains pending before the explicit replay click, becomes done afterward, mirrors `serverId`, and is not duplicated by a second explicit replay click.
+- Confirm a safely rejected low-risk fixture is reported through a safe summary and transitions to failed rather than remaining stranded in processing.
+- Never use sales, sale items, payments, stock, accounting, batches, or cylinders as manual replay rehearsal fixtures.
 - Confirm Developer Control Panel shows read-only status.
 - Run backup validation for any generated deployment backup.
 - Re-run read-only sync reports.

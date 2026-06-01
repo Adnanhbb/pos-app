@@ -1406,3 +1406,20 @@ Existing backend-aware CRUD deletion now matches the local frontend model:
 `sync:verify-existing` now includes copied-Laragon frontend checks for the read-only Developer Control Panel. Isolated browser contexts prove that exact role `Dev` can open the panel while `admin`, `saleboy`, staff, cashier, and manager roles cannot see it. The test does not use the disabled frontend backdoor. The panel exposes informational Backup Status only, no destructive or replay actions, and no sentinel token/password/payload rendering.
 
 Backup creation and checksum validation remain explicit CLI-only operations. IndexedDB and MySQL exports redact or omit sensitive fields; restore/import remains unimplemented. No POS mutation, replay, hydration, background sync, polling, listeners, workers, or auto-sync behavior was added.
+## Laragon Packaged Manual Replay Verification
+
+The packaged Laragon sync coverage verifier now exercises the real Settings manual replay workflow with isolated low-risk `brands` fixtures only.
+
+Verified lifecycle:
+
+- a clearly named rehearsal brand and matching `sync_queue` create row are inserted locally;
+- the queue row remains `pending` and MySQL remains unchanged before the explicit `Run Manual Replay` click;
+- the Settings auth gate is evaluated before `syncEngine.processPending()` runs;
+- the explicit click creates exactly one backend brand row, marks the queue row `done`, and mirrors `serverId` into IndexedDB;
+- a second explicit replay click does not submit the completed queue row again and does not duplicate the backend row;
+- a separate invalid low-risk brand fixture receives a safe validation failure, increments retry metadata, transitions to `failed`, and renders only the safe error summary;
+- all isolated rehearsal fixture rows are removed afterward.
+
+The failure-state handling was tightened so a rejected CRUD replay row no longer remains stranded in `processing`: `syncEngine.processPending()` records retry metadata and then marks that queue row `failed`.
+
+This verification does not use transactions, sales, sale items, payments, stock, accounting, batches, or cylinders. Replay remains explicitly triggered only. No startup replay, replay interval, replay worker, polling loop, or event-listener replay was added.

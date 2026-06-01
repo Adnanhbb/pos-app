@@ -57,7 +57,121 @@ async function mutateLocalStore(page, storeName, mode, value) {
     }
   }, { storeName, mode, value });
 }
-async function openPosTransactions(page) { const sales = page.locator("aside > ul > li").nth(6); if (await sales.locator("ul").count() === 0) await sales.locator("button").first().click(); await sales.locator("ul li button").first().click(); await page.waitForTimeout(500); }
+async function readLocalStore(page, storeName, mode = "all", value = null) {
+  return page.evaluate(async ({ storeName, mode, value }) => {
+    const database = await new Promise((resolve, reject) => {
+      const request = indexedDB.open("POSDatabase", 20);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+    try {
+      return await new Promise((resolve, reject) => {
+        const transaction = database.transaction(storeName, "readonly");
+        const store = transaction.objectStore(storeName);
+        const request = mode === "get" ? store.get(value) : store.getAll();
+        request.onsuccess = () => resolve(request.result ?? null);
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      database.close();
+    }
+  }, { storeName, mode, value });
+}
+async function backendRows(entity) {
+  const response = await fetchJson(`${entity}.php`);
+  return Array.isArray(unwrap(response.body)) ? unwrap(response.body) : [];
+}
+async function manualReplayLifecycle(browser, runId) {
+  const marker = `Rehearsal Manual Replay Brand ${runId}`;
+  const failedMarker = `Rehearsal Manual Replay Invalid Brand ${runId}`;
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  await context.addInitScript(() => {
+    localStorage.setItem("loggedInUserId", "DEV");
+    localStorage.setItem("loggedInUserName", "Developer");
+    localStorage.setItem("loggedInUserRole", "Dev");
+  });
+  let localId = null;
+  let queueId = null;
+  let failedLocalId = null;
+  let failedQueueId = null;
+  let backendId = null;
+  const brandPostRequests = [];
+  const checks = [];
+  const page = await context.newPage();
+  const observeBrandPosts = (request) => {
+    const url = new URL(request.url());
+    if (request.method() === "POST" && url.pathname.endsWith("/api/brands.php")) {
+      brandPostRequests.push({ method: request.method(), endpoint: url.pathname });
+    }
+  };
+  page.on("request", observeBrandPosts);
+  try {
+    await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 });
+    await page.locator("aside").waitFor({ state: "visible", timeout: 10000 });
+    const fixtureLocalId = Date.now();
+    localId = await mutateLocalStore(page, "brands", "add", { id: fixtureLocalId, name: marker, itemCount: 0 });
+    const now = Date.now();
+    queueId = await mutateLocalStore(page, "sync_queue", "add", {
+      entity: "brands", operation: "create", localId, serverId: null,
+      payload: { id: localId, localId, name: marker, itemCount: 0 },
+      createdAt: now, updatedAt: now, retryCount: 0, status: "pending",
+    });
+    await page.waitForTimeout(500);
+    const pendingBefore = await readLocalStore(page, "sync_queue", "get", queueId);
+    const backendBefore = await backendRows("brands");
+    checks.push({ name: "offline rehearsal brand remains pending before explicit replay click", ok: pendingBefore?.status === "pending" && !backendBefore.some((row) => row.name === marker), queueStatus: pendingBefore?.status ?? null });
+
+    await clickMenu(page, 11);
+    const main = page.locator("main");
+    const replayButton = main.getByRole("button", { name: "Run Manual Replay", exact: true });
+    await replayButton.waitFor({ state: "visible", timeout: 10000 });
+    const firstReplay = await waitForApi(page, "brands", "POST", () => replayButton.click());
+    await page.waitForTimeout(500);
+    const queueAfterFirst = await readLocalStore(page, "sync_queue", "get", queueId);
+    const localAfterFirst = await readLocalStore(page, "brands", "get", localId);
+    const backendAfterFirst = await backendRows("brands");
+    const createdRows = backendAfterFirst.filter((row) => row.name === marker);
+    backendId = createdRows[0] ? getServerId(createdRows[0]) : null;
+    checks.push({ name: "explicit Settings replay sends queued brand create", ok: firstReplay.status === 201, ...firstReplay });
+    checks.push({ name: "successful manual replay marks queue row done", ok: queueAfterFirst?.status === "done", queueStatus: queueAfterFirst?.status ?? null });
+    checks.push({ name: "successful manual replay mirrors backend serverId locally", ok: backendId != null && String(localAfterFirst?.serverId) === String(backendId), serverId: backendId ?? null });
+    checks.push({ name: "backend receives exactly one rehearsal brand", ok: createdRows.length === 1, backendRows: createdRows.length });
+    const firstDiagnostics = await main.innerText();
+    checks.push({ name: "auth gate permits explicit replay in audit-only mode", ok: firstDiagnostics.includes("enforcementDisabled") && firstDiagnostics.includes("Allowed") });
+
+    const postsBeforeSecondClick = brandPostRequests.length;
+    await replayButton.click();
+    await page.waitForTimeout(700);
+    const backendAfterSecond = await backendRows("brands");
+    checks.push({ name: "repeated manual replay does not POST completed queue row again", ok: brandPostRequests.length === postsBeforeSecondClick, postCountBefore: postsBeforeSecondClick, postCountAfter: brandPostRequests.length });
+    checks.push({ name: "repeated manual replay does not duplicate backend brand", ok: backendAfterSecond.filter((row) => row.name === marker).length === 1 });
+
+    failedLocalId = await mutateLocalStore(page, "brands", "add", { id: fixtureLocalId + 1, name: failedMarker, itemCount: 0 });
+    const failedNow = Date.now();
+    failedQueueId = await mutateLocalStore(page, "sync_queue", "add", {
+      entity: "brands", operation: "create", localId: failedLocalId, serverId: null,
+      payload: { id: failedLocalId, localId: failedLocalId, itemCount: 0 },
+      createdAt: failedNow, updatedAt: failedNow, retryCount: 0, status: "pending",
+    });
+    const failedReplay = await waitForApi(page, "brands", "POST", () => replayButton.click());
+    await page.waitForTimeout(500);
+    const failedQueue = await readLocalStore(page, "sync_queue", "get", failedQueueId);
+    const safeDiagnostics = await main.innerText();
+    checks.push({ name: "invalid low-risk fixture fails safely", ok: failedReplay.status === 422, status: failedReplay.status });
+    checks.push({ name: "failed manual replay row transitions to failed with retry metadata", ok: failedQueue?.status === "failed" && failedQueue?.retryCount === 1 && typeof failedQueue?.lastError === "string", queueStatus: failedQueue?.status ?? null, retryCount: failedQueue?.retryCount ?? null });
+    checks.push({ name: "failed replay is summarized safely without payload bodies", ok: safeDiagnostics.includes("Safe Error Summary") && safeDiagnostics.includes("Entity: brands") && safeDiagnostics.includes("Operation: create") && !safeDiagnostics.includes("payload_json") && !safeDiagnostics.includes("response_json") && !safeDiagnostics.includes("password_hash") });
+
+    return { entity: "manual replay", fixtureEntity: "brands", backendId, ok: checks.every((check) => check.ok), checks, explicitButtonClickOnly: true, repeatedReplayDuplicateCount: backendAfterSecond.filter((row) => row.name === marker).length, posTransactionalEntitiesTouched: false };
+  } finally {
+    page.off("request", observeBrandPosts);
+    if (backendId != null) await fetchJson(`brands.php?id=${encodeURIComponent(String(backendId))}`, { method: "DELETE" });
+    if (queueId != null) await mutateLocalStore(page, "sync_queue", "delete", queueId);
+    if (failedQueueId != null) await mutateLocalStore(page, "sync_queue", "delete", failedQueueId);
+    if (localId != null) await mutateLocalStore(page, "brands", "delete", localId);
+    if (failedLocalId != null) await mutateLocalStore(page, "brands", "delete", failedLocalId);
+    await context.close();
+  }
+}async function openPosTransactions(page) { const sales = page.locator("aside > ul > li").nth(6); if (await sales.locator("ul").count() === 0) await sales.locator("button").first().click(); await sales.locator("ul li button").first().click(); await page.waitForTimeout(500); }
 async function readCartCount(page) { return page.locator("main").evaluate((main) => { const match = main.textContent?.match(/Total Items:\s*(\d+)/i); return match ? Number(match[1]) : null; }); }
 function stockSnapshot(rows) { return Object.fromEntries((Array.isArray(rows) ? rows : []).map((row) => [String(getServerId(row)), Number(row.availableStock ?? 0)])); }
 async function heldCartLifecycle(page, runId) {
@@ -144,5 +258,5 @@ async function verifyDeveloperControlPanelVisibility(browser) {
 }
 
 export async function verifyPackagedUiSync(runId) {
-  const browser = await chromium.launch({ headless: true }); try { const developerControlPanel = await verifyDeveloperControlPanelVisibility(browser); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); }); const page = await context.newPage(); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); await context.close(); return { appUrl: APP_URL, ok: developerControlPanel.ok && lifecycles.every((item) => item.ok), developerControlPanel, lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
+  const browser = await chromium.launch({ headless: true }); try { const developerControlPanel = await verifyDeveloperControlPanelVisibility(browser); const manualReplay = await manualReplayLifecycle(browser, runId); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); }); const page = await context.newPage(); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); await context.close(); return { appUrl: APP_URL, ok: developerControlPanel.ok && manualReplay.ok && lifecycles.every((item) => item.ok), developerControlPanel, manualReplay, lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
 }
