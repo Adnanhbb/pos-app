@@ -1315,16 +1315,16 @@ Key boundary: operators should not directly mutate stock, balances, finalized sa
 This is documentation/design only. No dashboards/tools, runtime behavior changes, polling, listeners, startup replay, background workers, or auto-sync were added.
 ## Developer Control Panel Architecture
 
-The future protected admin/developer UI is designed in [developer-control-panel-architecture.md](./developer-control-panel-architecture.md).
+The future protected developer-support-only UI is designed in [developer-control-panel-architecture.md](./developer-control-panel-architecture.md).
 
-The panel is intended for authorized admin/developer users only and should not expose advanced sync internals to normal staff. Proposed sections include System Health, Sync Queue, Manual Replay, Replay Audit, Hydration/Reconciliation, Backup/Restore, Auth/Session, Deployment/Environment, Auto-sync Eligibility, POS Activity Safety, and Logs/Diagnostics.
+The panel is intended for authenticated DB-backed users with exact role `Dev` only and should not expose advanced sync internals to admin or normal staff. Proposed sections include System Health, Sync Queue, Manual Replay, Replay Audit, Hydration/Reconciliation, Backup/Restore, Auth/Session, Deployment/Environment, Auto-sync Eligibility, POS Activity Safety, and Logs/Diagnostics.
 
 Client-facing status should remain simplified: Online/Offline, Sync healthy/Needs attention, last successful sync, last backup, and support contact/action. The control panel is read-only-first, with explicit confirmation required for any future dangerous action. No UI/runtime behavior exists yet.
 ## Developer Control Panel Foundation UI
 
 A first read-only Developer Control Panel foundation now exists in `src/DeveloperControlPanel.tsx`.
 
-It is available from the dashboard for `admin` and `Dev` roles only and remains hidden from normal staff/saleboy navigation. Current sections include System Health, Sync Status, Replay Status, Auth Status, Backup Status, Auto-sync Eligibility, and POS Activity Status.
+It is available from the dashboard only for exact role `Dev` and remains hidden from `admin`, `saleboy`, staff, cashier, and manager navigation. Current sections include System Health, Sync Status, Replay Status, Auth Status, Backup Status, Auto-sync Eligibility, and POS Activity Status.
 
 This is visibility only. It uses manual refresh, does not add dangerous mutation tools, does not trigger replay automatically, does not expose payloads/tokens/passwords, and does not add auto-sync, startup replay, polling, listeners, workers, or background behavior.
 Checkpoint reference: [release-checkpoint-developer-control-panel-foundation.md](./release-checkpoint-developer-control-panel-foundation.md)
@@ -1401,3 +1401,8 @@ Existing backend-aware CRUD deletion now matches the local frontend model:
 - Soft entities restore through `PATCH ?id=<serverId>&restore=1`; their permanent delete uses `DELETE ?id=<serverId>&permanent=1`.
 - Lookup schema `is_deleted` / `deleted_at` columns remain harmlessly for shared-helper compatibility; no risky cleanup migration was added.
 - No lookup-table restore UI, POS mutation behavior, replay behavior, or auto-sync behavior was added.
+## Packaged Developer Control Panel And Backup Verification
+
+`sync:verify-existing` now includes copied-Laragon frontend checks for the read-only Developer Control Panel. Isolated browser contexts prove that exact role `Dev` can open the panel while `admin`, `saleboy`, staff, cashier, and manager roles cannot see it. The test does not use the disabled frontend backdoor. The panel exposes informational Backup Status only, no destructive or replay actions, and no sentinel token/password/payload rendering.
+
+Backup creation and checksum validation remain explicit CLI-only operations. IndexedDB and MySQL exports redact or omit sensitive fields; restore/import remains unimplemented. No POS mutation, replay, hydration, background sync, polling, listeners, workers, or auto-sync behavior was added.

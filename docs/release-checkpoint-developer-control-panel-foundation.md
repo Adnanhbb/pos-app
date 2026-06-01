@@ -6,7 +6,7 @@ This checkpoint records the implemented read-only Developer Control Panel founda
 
 ## Milestone Summary
 
-`src/DeveloperControlPanel.tsx` now exists as the initial protected developer/admin operational visibility surface.
+`src/DeveloperControlPanel.tsx` now exists as the initial protected developer-support-only operational visibility surface.
 
 The panel is read-only and focused on safe diagnostics. It does not trigger replay, hydrate data, repair data, mutate database rows, restore/import backups, or start any automatic/background sync behavior.
 
@@ -14,7 +14,7 @@ The panel is read-only and focused on safe diagnostics. It does not trigger repl
 
 Current access approach:
 
-- Dashboard entry is visible only to `admin` and `Dev` roles.
+- Dashboard entry is visible only to exact role `Dev`.
 - The component self-guards unauthorized roles if rendered directly.
 - The panel is hidden from `saleboy` and normal staff navigation.
 - Current protection is UI-level foundation and should be backed by role-enforced backend endpoints before future sensitive server-side diagnostics are exposed.

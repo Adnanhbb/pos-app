@@ -28,6 +28,8 @@ const sourceChecks = [
   ["customers", "src/repositories/customerRepository.ts", ["entityApi.create", "entityApi.update", "entityApi.remove", "stripAccountingFields(cust)", "stripAccountingFields(syncableCustomer)", "hasAccountingFieldChange"]],
   ["suppliers", "src/repositories/suppliersRepository.ts", ["entityApi.create", "entityApi.update", "entityApi.remove", "stripAccountingFields(sup)", "stripAccountingFields(syncableSupplier)", "hasAccountingFieldChange"]],
   ["items", "src/repositories/itemsRepository.ts", ["entityApi.update", "pickSafeItemProfilePayload", "hasUnsafeItemFieldChange", "Item create is intentionally local-only"]],
+  ["developer control panel dashboard visibility", "src/Dashboard.tsx", ["...(user?.role === \"Dev\" ? [", "if (key === \"developer_control_panel\" && user.role !== \"Dev\") return;"]],
+  ["developer control panel self guard", "src/DeveloperControlPanel.tsx", ["const canAccess = user.role === \"Dev\";", "restricted to developer support users"]],
 ];
 
 const backendChecks = [
@@ -156,6 +158,11 @@ function md(report) {
     out.push(`- ${r.ok ? "PASS" : "FAIL"}: ${r.entity} packaged UI lifecycle serverId=${r.serverId ?? "none"}`);
     for (const check of r.checks) out.push(`  - ${check.ok ? "PASS" : "FAIL"}: ${check.name}${check.method ? ` ${check.method}` : ""}${check.endpoint ? ` ${check.endpoint}` : ""}${check.status != null ? ` status=${check.status}` : ""}`);
   }
+  out.push("", "## Developer Control Panel Packaged Visibility Verification");
+  for (const check of report.packagedUi.developerControlPanel?.checks ?? []) {
+    out.push(`- ${check.ok ? "PASS" : "FAIL"}: ${check.name}${check.role ? ` role=${check.role}` : ""}`);
+  }
+  out.push("", "The browser verification injects isolated role state only to exercise packaged UI guards. It does not use the disabled frontend backdoor, create auth tokens, trigger replay, or expose backup export actions in the panel. There is no direct URL route for the panel; the component self-guard also requires role exactly `Dev`.");
   out.push("", "## Skipped Unsafe Areas");
   for (const item of report.skipped) out.push(`- ${item.entity}: ${item.reason}`);
   out.push("", "No new repositories were migrated. No POS stock/accounting/transaction behavior, replay behavior, or auto-sync behavior was changed.", "");

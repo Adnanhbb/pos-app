@@ -1,12 +1,12 @@
 # Developer Control Panel Architecture
 
-This document defines a protected developer/admin-only control panel for sync, backup, auth, replay, hydration, and deployment diagnostics before any UI is implemented.
+This document defines a protected developer-support-only control panel for sync, backup, auth, replay, hydration, and deployment diagnostics before any UI is implemented.
 
 It is documentation/design only. It does not implement UI, expose tools to normal client/staff users, add auto-sync/background behavior, or change runtime behavior.
 
 ## Purpose Of Developer Control Panel
 
-The Developer Control Panel is the future protected workspace for operational visibility and carefully controlled admin actions.
+The Developer Control Panel is the protected workspace for developer-support operational visibility and carefully controlled future support actions.
 
 Its purpose is to:
 
@@ -29,14 +29,14 @@ Separation matters because normal users should not need to understand `sync_queu
 
 ## Role And Permission Requirements
 
-Access should require an authenticated user with an admin/developer role.
+Access requires an authenticated DB-backed user with exact role `Dev`. The normal `admin` role must not receive Developer Control Panel access.
 
 Recommended future roles:
 
 - `staff`: normal POS/client workflow access only
 - `manager`: limited operational status, no advanced internals by default
-- `admin`: business owner/admin diagnostics and selected safe actions
-- `developer`: full diagnostics and dev/test maintenance tools
+- `admin`: normal business owner/admin workflows only; no Developer Control Panel access
+- `Dev`: database-backed developer support identity for full diagnostics and future dev/test maintenance tools
 - `replay_worker`: non-UI service identity for backend replay only
 
 The panel should be hidden from users without appropriate role claims. A route guard alone is not enough; backend diagnostics endpoints must also enforce role checks when implemented.
@@ -54,7 +54,7 @@ Normal staff must not see:
 - deployment/environment internals
 - auto-sync gate internals
 
-Admin/developer users may see safe diagnostics when authenticated and authorized.
+Only authenticated DB-backed users with exact role `Dev` may see safe diagnostics. Admin and normal client roles remain excluded.
 
 ## Sensitive Data Redaction Rules
 
@@ -372,8 +372,8 @@ The initial read-only Developer Control Panel foundation now exists in `src/Deve
 
 Access approach:
 
-- reachable from the existing dashboard navigation only for `admin` and `Dev` roles
-- hidden from `saleboy` / normal staff role navigation
+- reachable from the existing dashboard navigation only for exact role `Dev`
+- hidden from `admin`, `saleboy`, staff, cashier, manager, and other normal client-role navigation
 - component also contains an access guard that shows a restricted message if rendered for an unauthorized role
 
 Initial read-only sections implemented:
@@ -411,4 +411,4 @@ Some deeper operational views remain CLI-only in this first foundation, includin
 
 The read-only foundation checkpoint is documented in [release-checkpoint-developer-control-panel-foundation.md](./release-checkpoint-developer-control-panel-foundation.md).
 
-It records that `DeveloperControlPanel.tsx` exists, is available only to `admin` and `Dev` roles through the Dashboard, self-guards unauthorized roles, remains hidden from normal staff, and currently provides read-only operational visibility only. Dangerous actions, replay triggers, mutation tools, backend runtime endpoints, and background behavior remain deferred.
+It records that `DeveloperControlPanel.tsx` exists, is available only to exact role `Dev` through the Dashboard, self-guards unauthorized roles, remains hidden from normal staff, and currently provides read-only operational visibility only. Dangerous actions, replay triggers, mutation tools, backend runtime endpoints, and background behavior remain deferred.

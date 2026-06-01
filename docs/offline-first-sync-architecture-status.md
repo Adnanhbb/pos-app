@@ -489,12 +489,12 @@ Current boundary: this is design-only. No dashboards, admin tools, runtime behav
 
 A protected Developer Control Panel architecture is now designed: [developer-control-panel-architecture.md](./developer-control-panel-architecture.md).
 
-It defines the future admin/developer-only UI for System Health, Sync Queue, Manual Replay, Replay Audit, Hydration/Reconciliation, Backup/Restore, Auth/Session, Deployment/Environment, Auto-sync Eligibility, POS Activity Safety, and Logs/Diagnostics.
+It defines the future developer-support-only UI for System Health, Sync Queue, Manual Replay, Replay Audit, Hydration/Reconciliation, Backup/Restore, Auth/Session, Deployment/Environment, Auto-sync Eligibility, POS Activity Safety, and Logs/Diagnostics.
 
-The design keeps normal staff on a simplified client-facing status surface and reserves advanced diagnostics for authorized admin/developer roles. It is read-only-first and prohibits payload/token/password display, direct stock/accounting edits, direct transactional table edits, and accidental auto-sync/background behavior.
+The design keeps normal staff on a simplified client-facing status surface and reserves advanced diagnostics for authenticated DB-backed users with exact role `Dev`. It is read-only-first and prohibits payload/token/password display, direct stock/accounting edits, direct transactional table edits, and accidental auto-sync/background behavior.
 ## Developer Control Panel Foundation UI
 
-The initial Developer Control Panel UI foundation is implemented as `src/DeveloperControlPanel.tsx` and is linked from the dashboard for `admin` and `Dev` roles only.
+The initial Developer Control Panel UI foundation is implemented as `src/DeveloperControlPanel.tsx` and is linked from the dashboard for exact role `Dev` only.
 
 Current sections are read-only: System Health, Sync Status, Replay Status, Auth Status, Backup Status, Auto-sync Eligibility, and POS Activity Status. The panel uses manual refresh only and does not add automatic replay, auto-sync, polling, listeners, background workers, hydration apply, restore/import, direct DB edits, or mutation tools.
 Checkpoint reference: [release-checkpoint-developer-control-panel-foundation.md](./release-checkpoint-developer-control-panel-foundation.md)

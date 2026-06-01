@@ -265,6 +265,14 @@ function main() {
   const backgroundSyncMatches = scanSourceForBackgroundSync();
   const autoSyncSignals = scanAutoSyncSignals();
   const dangerousTooling = scanDangerousRestoreImportTooling();
+  const packagedEnvTemplate = existsRepo("deployment-package/.env.production.example")
+    ? readFileSync(join(root, "deployment-package/.env.production.example"), "utf8")
+    : "";
+  const packagedDevBackdoorEnabled =
+    manifest?.build?.VITE_ENABLE_DEV_BACKDOOR === true ||
+    manifest?.build?.VITE_ENABLE_DEV_BACKDOOR === "true" ||
+    manifest?.safety?.devBackdoorEnabled === true ||
+    /^VITE_ENABLE_DEV_BACKDOOR\s*=\s*true\s*$/mi.test(packagedEnvTemplate);
 
   checks.push(check("deployment-package folder exists", existsRepo("deployment-package")));
   checks.push(check("deployment manifest exists and parses", Boolean(manifest && !manifest.parseError), { manifestSummary: manifest ? { autoSyncEnabled: manifest.autoSyncEnabled, deploymentPerformed: manifest.deploymentPerformed, uploadPerformed: manifest.uploadPerformed } : null }));
@@ -282,6 +290,7 @@ function main() {
   checks.push(check("no obvious background sync startup code enabled", backgroundSyncMatches.length === 0, { backgroundSyncMatches }));
   checks.push(check("dangerous restore/import tooling absent", dangerousTooling.dangerousNames.length === 0, { dangerousNames: dangerousTooling.dangerousNames }));
   checks.push(check("known apply tools remain explicit/gated", dangerousTooling.gatedApplyScripts.every((file) => /--apply/.test(readSmallText(file) || "")), { gatedApplyScripts: dangerousTooling.gatedApplyScripts }));
+  checks.push(check("developer backdoor disabled in deployment package", !packagedDevBackdoorEnabled, { packagedDevBackdoorEnabled }));
 
   if (allowLocalRuntimeUrls && localhostLeakage.runtimeMatches.length > 0) {
     warnings.push(`[ACCEPTABLE LOCAL REHEARSAL] Runtime package contains the Laragon API URL: ${localhostLeakage.runtimeMatches.length} match(es). This is allowed only because LARAGON_REHEARSAL_ALLOW_LOCAL_RUNTIME_URLS=1 was set by the local Laragon runner; regenerate without this allowance before real hosting upload.`);

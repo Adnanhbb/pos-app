@@ -14,6 +14,7 @@ const docsTarget = join(packageRoot, "docs");
 
 const buildApiBaseUrl = process.env.VITE_API_BASE_URL || "https://api.example.com";
 const buildBasePath = process.env.VITE_BASE_PATH || "/pos-app/";
+const buildDevBackdoorEnabled = process.env.VITE_ENABLE_DEV_BACKDOOR === "true";
 const buildCommand = process.platform === "win32" ? "cmd.exe" : "npm";
 const buildArgs = process.platform === "win32" ? ["/c", "npm.cmd", "run", "build"] : ["run", "build"];
 const buildCommandLabel = process.platform === "win32" ? "npm.cmd run build" : "npm run build";
@@ -139,11 +140,16 @@ function scanForbiddenPackagePaths() {
 }
 
 function main() {
+  if (buildDevBackdoorEnabled) {
+    throw new Error("Refusing to create a client deployment package while VITE_ENABLE_DEV_BACKDOOR=true. Use a database-backed support user.");
+  }
+
   const build = run(buildCommand, buildArgs, {
     env: {
       ...process.env,
       VITE_API_BASE_URL: buildApiBaseUrl,
       VITE_BASE_PATH: buildBasePath,
+      VITE_ENABLE_DEV_BACKDOOR: "false",
     },
   });
 
@@ -191,6 +197,7 @@ function main() {
       status: build.status,
       VITE_API_BASE_URL: buildApiBaseUrl,
       VITE_BASE_PATH: buildBasePath,
+      VITE_ENABLE_DEV_BACKDOOR: "false",
     },
     git: {
       commit: getGitValue(["rev-parse", "HEAD"]),
@@ -213,6 +220,7 @@ function main() {
       logsIncluded: false,
       localEnvIncluded: false,
       tsbuildInfoIncluded: false,
+      devBackdoorEnabled: false,
       forbiddenPackagePaths,
     },
     counts: {

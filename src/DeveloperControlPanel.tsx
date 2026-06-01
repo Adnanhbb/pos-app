@@ -149,7 +149,7 @@ function Section({ title, children, action }: { title: string; children: React.R
 }
 
 export default function DeveloperControlPanel({ user }: DeveloperControlPanelProps) {
-  const canAccess = user.role === "admin" || user.role === "Dev";
+  const canAccess = user.role === "Dev";
   const [refreshing, setRefreshing] = useState(false);
   const [state, setState] = useState<PanelState>({
     backendReachable: null,
@@ -214,7 +214,7 @@ export default function DeveloperControlPanel({ user }: DeveloperControlPanelPro
     return (
       <div className="mx-auto max-w-3xl rounded border border-amber-200 bg-amber-50 p-6 text-amber-900">
         <h2 className="text-lg font-semibold">Developer Control Panel</h2>
-        <p className="mt-2 text-sm">This read-only diagnostics area is restricted to admin/developer users.</p>
+        <p className="mt-2 text-sm">This read-only diagnostics area is restricted to developer support users.</p>
       </div>
     );
   }

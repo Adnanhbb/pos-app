@@ -212,7 +212,7 @@ Auto-sync must remain disabled. Do not add polling, listeners, workers, startup 
 
 Verify:
 
-- admin/Dev roles can access the Developer Control Panel
+- only a DB-backed exact `Dev` role can access the Developer Control Panel
 - normal staff/saleboy cannot see advanced diagnostics
 - sections render read-only status: System Health, Sync Status, Replay Status, Auth Status, Backup Status, Auto-sync Eligibility, POS Activity Status
 - manual refresh works
@@ -446,7 +446,7 @@ Test in this order:
 4. create one low-risk CRUD record, such as a brand or unit
 5. confirm the MySQL row exists
 6. use Settings Developer Sync Replay only for queued/offline rows
-7. open Developer Control Panel as admin/Dev and confirm read-only status
+7. open Developer Control Panel as a DB-backed exact `Dev` user and confirm read-only status; confirm admin and staff roles cannot see it
 
 ### 6. Before And After Checks
 
@@ -466,7 +466,7 @@ After copying into Laragon, manually verify:
 - login/session works
 - low-risk CRUD sync works while backend is reachable
 - manual replay remains click-only
-- Developer Control Panel remains admin/Dev-only and read-only
+- Developer Control Panel remains exact-`Dev`-only and read-only
 - auto-sync remains disabled
 
 ### 7. Current Package Readiness Note
@@ -516,3 +516,19 @@ Still manual:
 - manual replay approval
 - accounting/business validation review
 - rollback approval
+
+## Rehearse Database-Backed Developer Support Access
+
+Laragon rehearsal should exercise the real database-backed login path. Keep `VITE_ENABLE_DEV_BACKDOOR=false`.
+
+Create a missing rehearsal support user with environment-injected credentials:
+
+```powershell
+$env:SUPPORT_USER_USERNAME="<rehearsal-support-username>"
+$env:SUPPORT_USER_PASSWORD="<enter-secret-privately>"
+$env:SUPPORT_USER_ROLE="Dev"
+npm.cmd run support:user:create
+Remove-Item Env:SUPPORT_USER_PASSWORD
+```
+
+Confirm the command never prints a password, password hash, or bearer token. Then login through the normal UI, confirm the signed-in user is shown, and confirm the read-only Developer Control Panel is visible for the DB-backed `Dev` account. The legacy frontend shortcut is local-development-only and must not be enabled for this rehearsal.

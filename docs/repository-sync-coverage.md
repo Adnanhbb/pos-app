@@ -198,3 +198,18 @@ Held carts are backend-aware bundles, not finalized transactions. The frontend `
 The packaged Laragon verifier now uses local-only, clearly named `Rehearsal Held Cart ...` and `Rehearsal Held Item ...` fixtures. It adds the rehearsal item to the POS cart, clicks Hold Sale, confirms `held.php` receives a bundled POST with one item, opens Held Sales, resumes the record, confirms cart restoration, and confirms `held.php?id=<serverId>` receives DELETE. Backend held DELETE remains a soft delete so the resumed bundle disappears from normal lists without deleting finalized business history.
 
 The verification explicitly checks that backend item stock remains unchanged and that no finalized-sale, accounting, payment, batch, or cylinder API writes occur. It never clicks Complete or Postpone. Two held-cart bugs were fixed: PHP `{ success, data }` create responses are now unwrapped before local mirroring, and POS awaits the bundled hold save before refreshing held rows and clearing the active cart. No auto-sync or background behavior was added.
+## Developer Control Panel And Backup Verification Boundary
+
+The packaged Laragon verifier now checks the read-only Developer Control Panel role boundary in isolated browser contexts. Only exact role `Dev` can see and open the panel; `admin`, `saleboy`, staff, cashier, and manager roles cannot see its navigation entry. The test injects local role state only to exercise packaged UI authorization guards. It does not use the disabled frontend backdoor, create a support account, create bearer tokens, or trigger replay.
+
+The panel Backup Status section is informational only. It confirms that export and validation tooling exists and that restore/import is not implemented. It exposes no restore, import, delete, apply, replay, or export action buttons and does not render a sentinel bearer token, password hash, or sync payload field.
+
+Backup export and validation remain explicit CLI operations:
+
+```powershell
+npm.cmd run backup:indexeddb:export
+npm.cmd run backup:mysql:export
+npm.cmd run backup:validate -- backups/<backup-file>.json
+```
+
+The IndexedDB exporter recursively redacts secret-like fields. The MySQL exporter omits password, token/hash, session-secret, payload JSON, and response JSON columns. The validator checks structure, collection counts, sensitive-field leakage, and SHA-256 identity. Restore/import and destructive backup actions remain absent.

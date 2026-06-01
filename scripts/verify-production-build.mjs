@@ -18,10 +18,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolve(__dirname, "..");
 const DIST_DIR = resolve(PROJECT_ROOT, "dist");
 const SAFE_BUILD_API_BASE_URL = process.env.VITE_API_BASE_URL || "https://api.example.com";
+const REQUESTED_DEV_BACKDOOR = process.env.VITE_ENABLE_DEV_BACKDOOR === "true";
 const MAX_SCAN_FILE_BYTES = 2 * 1024 * 1024;
 
 const requiredEnvVars = [
   "VITE_API_BASE_URL",
+  "VITE_ENABLE_DEV_BACKDOOR",
   "CRUD_AUTH_ENFORCEMENT",
   "REPLAY_WORKER_TOKEN",
   "DB_HOST",
@@ -82,6 +84,7 @@ function runBuild() {
     env: {
       ...process.env,
       VITE_API_BASE_URL: SAFE_BUILD_API_BASE_URL,
+      VITE_ENABLE_DEV_BACKDOOR: "false",
     },
   });
 
@@ -176,6 +179,10 @@ function checkEnvTemplate(errors, warnings) {
     addIssue(warnings, "env_db_pass_blank", "DB_PASS placeholder is blank; production must use a real secret in hosting config.");
   }
 
+  if (/^VITE_ENABLE_DEV_BACKDOOR\s*=\s*true\s*$/mi.test(content)) {
+    addIssue(errors, "env_dev_backdoor_enabled", ".env.production.example must keep VITE_ENABLE_DEV_BACKDOOR=false for client builds.");
+  }
+
   return { exists: true, documentedVariables, missingVariables };
 }
 
@@ -191,6 +198,22 @@ function main() {
   const errors = [];
   const warnings = [];
   const packageJson = readPackageJson();
+
+  if (REQUESTED_DEV_BACKDOOR) {
+    console.error(JSON.stringify({
+      ok: false,
+      verificationOnly: true,
+      deployed: false,
+      autoSyncEnabled: false,
+      runtimeSyncBehaviorChanged: false,
+      errors: [{
+        code: "dev_backdoor_enabled",
+        message: "Refusing production verification while VITE_ENABLE_DEV_BACKDOOR=true. Client builds must use database-backed support users.",
+      }],
+    }, null, 2));
+    process.exitCode = 1;
+    return;
+  }
 
   const build = runBuild();
   if (!build.ok) addIssue(errors, "build_failed", "npm.cmd run build failed.", { status: build.status, stdoutPreview: build.stdoutPreview, stderrPreview: build.stderrPreview });
@@ -215,6 +238,7 @@ function main() {
     runtimeSyncBehaviorChanged: false,
     builtWith: {
       VITE_API_BASE_URL: SAFE_BUILD_API_BASE_URL,
+      VITE_ENABLE_DEV_BACKDOOR: "false",
     },
     app: {
       name: packageJson.name ?? null,

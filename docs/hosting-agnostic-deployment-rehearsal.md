@@ -228,7 +228,7 @@ Do not enable automatic replay, background polling, online/offline listeners, wo
 
 Verify Developer Control Panel visibility:
 
-- admin/Dev can access the read-only panel
+- only DB-backed exact role `Dev` can access the read-only panel; admin and staff roles cannot see it
 - normal staff/saleboy cannot see advanced sync internals
 - System Health, Sync Status, Replay Status, Auth Status, Backup Status, Auto-sync Eligibility, and POS Activity Status are visible
 - manual refresh only

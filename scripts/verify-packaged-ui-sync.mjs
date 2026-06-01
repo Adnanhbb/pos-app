@@ -77,6 +77,72 @@ async function heldCartLifecycle(page, runId) {
     page.off("request", observeWrite); if (customerLocalId != null) await mutateLocalStore(page, "customers", "delete", customerLocalId); if (itemLocalId != null) await mutateLocalStore(page, "items", "delete", itemLocalId); if (heldId != null && (await backendRow("held", heldId)).status !== 404) await fetchJson(`held.php?id=${encodeURIComponent(String(heldId))}`, { method: "DELETE" });
   }
 }
+async function verifyDeveloperControlPanelVisibility(browser) {
+  const secretSentinel = "PACKAGED_PANEL_SECRET_SENTINEL_DO_NOT_RENDER";
+  const roles = [
+    { role: "Dev", shouldSeePanel: true },
+    { role: "admin", shouldSeePanel: false },
+    { role: "saleboy", shouldSeePanel: false },
+    { role: "staff", shouldSeePanel: false },
+    { role: "cashier", shouldSeePanel: false },
+    { role: "manager", shouldSeePanel: false },
+  ];
+  const checks = [];
+
+  for (const { role, shouldSeePanel } of roles) {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    await context.addInitScript(({ role, secretSentinel }) => {
+      localStorage.setItem("loggedInUserId", `packaged-panel-${role}`);
+      localStorage.setItem("loggedInUserName", `Packaged Panel ${role}`);
+      localStorage.setItem("loggedInUserRole", role);
+      localStorage.setItem("jawadBro.authToken", secretSentinel);
+    }, { role, secretSentinel });
+
+    try {
+      const page = await context.newPage();
+      await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 });
+      await page.waitForTimeout(500);
+      const aside = page.locator("aside");
+      const dashboardVisible = await aside.count() > 0 && await aside.first().isVisible();
+      const panelEntry = aside.getByText("developer_control_panel", { exact: true });
+      const panelEntryVisible = dashboardVisible && await panelEntry.count() > 0 && await panelEntry.first().isVisible();
+      checks.push({ name: `${role} dashboard panel entry visibility`, ok: panelEntryVisible === shouldSeePanel, role, expectedVisible: shouldSeePanel, visible: panelEntryVisible, dashboardVisible });
+
+      if (!shouldSeePanel) {
+        checks.push({ name: `${role} cannot open panel from dashboard navigation`, ok: !panelEntryVisible, role, panelEntryVisible, directUrlRouteExists: false });
+        continue;
+      }
+
+      await panelEntry.first().click();
+      await page.getByRole("heading", { name: "Developer Control Panel", exact: true }).waitFor({ state: "visible", timeout: 10000 });
+      const mainText = await page.locator("main").innerText();
+      const buttonLabels = (await page.locator("main button").allTextContents()).map((label) => label.trim()).filter(Boolean);
+      const forbiddenRenderedValues = [secretSentinel, "payload_json", "response_json", "password_hash"];
+      const renderedForbiddenValues = forbiddenRenderedValues.filter((value) => mainText.includes(value));
+      const dangerousButtons = buttonLabels.filter((label) => /restore|import|delete|apply|replay|export/i.test(label));
+
+      checks.push({ name: `${role} opens read-only Developer Control Panel`, ok: mainText.includes("Read-only operational visibility") && mainText.includes("Auto-sync") && mainText.includes("Disabled"), role });
+      checks.push({ name: `${role} sees informational Backup Status`, ok: mainText.includes("Backup Status") && mainText.includes("Export and validation tools exist. Restore/import is not implemented."), role });
+      checks.push({ name: `${role} panel exposes no dangerous action buttons`, ok: dangerousButtons.length === 0, role, buttonLabels, dangerousButtons });
+      checks.push({ name: `${role} panel does not render token/password/payload sentinel data`, ok: renderedForbiddenValues.length === 0, role, renderedForbiddenValues });
+    } finally {
+      await context.close();
+    }
+  }
+
+  return {
+    ok: checks.every((check) => check.ok),
+    checks,
+    roleStateInjectedForUiGuardOnly: true,
+    frontendBackdoorUsed: false,
+    backupStatusReadOnly: true,
+    restoreImportActionsExposed: false,
+    secretSentinelRendered: false,
+    directUrlRouteExists: false,
+    directAccessGuard: "DeveloperControlPanel self-guard requires role exactly Dev",
+  };
+}
+
 export async function verifyPackagedUiSync(runId) {
-  const browser = await chromium.launch({ headless: true }); try { const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); }); const page = await context.newPage(); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); await context.close(); return { appUrl: APP_URL, ok: lifecycles.every((item) => item.ok), lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
+  const browser = await chromium.launch({ headless: true }); try { const developerControlPanel = await verifyDeveloperControlPanelVisibility(browser); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); }); const page = await context.newPage(); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); await context.close(); return { appUrl: APP_URL, ok: developerControlPanel.ok && lifecycles.every((item) => item.ok), developerControlPanel, lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
 }

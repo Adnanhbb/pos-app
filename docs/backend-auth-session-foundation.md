@@ -290,3 +290,21 @@ Settings Developer Sync Replay now uses the existing token/session foundation as
 The UI shows only safe gate state, result, message, and session validation timestamp. It does not display raw bearer tokens, passwords, sensitive session bodies, payload bodies, or full auth/session records.
 
 This does not add auto-sync, background replay, polling, listeners, startup replay, or automatic retry loops.
+
+## Database-Backed Developer Support Access
+
+Client handover support access uses a normal `users` database row with role `Dev` or the existing lowercase `admin` role. The same `login.php` endpoint verifies `users.password_hash` with `password_verify(...)`, and the same token/session lifecycle applies. Only users with exact role `Dev` can access the protected read-only Developer Control Panel. Lowercase `admin` and normal staff roles remain excluded.
+
+Create a missing support account during controlled client setup with environment-injected credentials:
+
+```powershell
+$env:SUPPORT_USER_USERNAME="<client-specific-support-username>"
+$env:SUPPORT_USER_PASSWORD="<enter-secret-privately>"
+$env:SUPPORT_USER_ROLE="Dev"
+npm.cmd run support:user:create
+Remove-Item Env:SUPPORT_USER_PASSWORD
+```
+
+The setup helper creates the account only when missing, uses `password_hash(..., PASSWORD_DEFAULT)`, and never prints the password, hash, or token. Existing inactive or deleted accounts require manual review instead of automatic replacement.
+
+The legacy frontend shortcut is retained only for explicitly opted-in local development with `VITE_ENABLE_DEV_BACKDOOR=true`. Its default is `false`, and deployment packaging/rehearsal verification reject an enabled client package. Rehearsal, staging, and production builds must use database-backed login.

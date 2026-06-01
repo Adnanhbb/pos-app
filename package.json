@@ -71,7 +71,8 @@
                     "deployment:package":  "node scripts/create-deployment-package.mjs",
                     "rehearsal:local-production":  "node scripts/rehearse-local-production.mjs",
                     "rehearsal:laragon":  "node scripts/run-laragon-rehearsal.mjs",
-                    "sync:verify-existing":  "node scripts/verify-existing-sync-coverage.mjs"
+                    "sync:verify-existing":  "node scripts/verify-existing-sync-coverage.mjs",
+                    "support:user:create":  "php scripts/create-developer-support-user.php"
                 },
     "dependencies":  {
                          "dexie":  "^4.2.1",

@@ -149,7 +149,7 @@ export default function Dashboard({ user, onLogout }: Props) {
   { key: "expenses", label: "expenses", icon: <FaDollarSign className="text-blue-400" />, disabled: user?.role === "saleboy" },
   { key: "reports", label: "reports", icon: <FaChartBar className="text-yellow-400" />, disabled: user?.role === "saleboy" },
   { key: "settings", label: "settings", icon: <FaCog className="text-red-400" />, disabled: user?.role === "saleboy" },
-  ...(user?.role === "admin" || user?.role === "Dev" ? [
+  ...(user?.role === "Dev" ? [
     { key: "developer_control_panel", label: "developer_control_panel", icon: <FaDatabase className="text-slate-600" />, disabled: false },
   ] : []),
 ], [t, user?.role]);
@@ -340,6 +340,7 @@ setSalesChartData(salesByMonth);
 };
 
 const handleMenuClick = (key: string) => {
+  if (key === "developer_control_panel" && user.role !== "Dev") return;
   if (key === activeItem) return;
 
   if (activeItem === "transactions" && key !== "transactions") {

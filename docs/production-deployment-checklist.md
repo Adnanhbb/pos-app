@@ -9,7 +9,7 @@ This checklist prepares a client production hosting rollout. It is operational p
 - Run `npm.cmd run build` in staging before production upload.
 - Confirm `dist/` assets are generated from the intended commit/tag.
 - Confirm no production secrets are embedded in frontend build output.
-- Confirm Developer Control Panel remains admin/Dev-only.
+- Confirm Developer Control Panel remains `Dev`-only. Normal `admin`, `saleboy`, staff, cashier, and manager roles must not see it.
 
 ## Backend PHP Verification
 
@@ -124,9 +124,9 @@ npm.cmd run sync:evaluate-auto-sync
 
 ## Operational/Admin Access Verification
 
-- Confirm admin/developer user exists.
+- Confirm a DB-backed `Dev` support user exists for Developer Control Panel access.
 - Confirm normal staff cannot see Developer Control Panel.
-- Confirm admin/Dev role can see Developer Control Panel.
+- Confirm only the exact DB-backed `Dev` role can see Developer Control Panel.
 - Confirm panel does not show payloads, tokens, passwords, cart contents, or full sensitive records.
 - Confirm dangerous tools are not exposed in the panel.
 - Confirm manual replay remains gated and explicit.
@@ -169,7 +169,7 @@ After deployment:
 
 - Open frontend over HTTPS.
 - Confirm API health endpoint works.
-- Login with admin/developer account.
+- Login with the intended DB-backed account. Use exact role `Dev` only when verifying Developer Control Panel access.
 - Confirm session restoration works after refresh.
 - Create a low-risk CRUD row while backend is online and verify MySQL.
 - Create a low-risk CRUD row while backend is unavailable in staging only and verify queue behavior.
@@ -280,3 +280,32 @@ The automated rehearsal report separates warnings from blockers:
 - Blocking failures are failed checks, not warnings.
 
 Local CORS origins such as `localhost`, `127.0.0.1`, or Laragon paths are allowed only during Laragon rehearsal. Before real hosting deployment, CORS must be reviewed and updated to the production HTTPS frontend origin/API domain. Passing the local rehearsal does not mean the package is ready for real hosting upload.
+
+## Database-Backed Developer Support Access
+
+- Keep `VITE_ENABLE_DEV_BACKDOOR=false` for rehearsal, package, staging, and production builds.
+- Use a client-specific database-backed support user with exact role `Dev` for Developer Control Panel access. Lowercase `admin` remains a normal client role and must not receive panel access.
+- Create the support user only when missing during controlled client setup:
+
+```powershell
+$env:SUPPORT_USER_USERNAME="<client-specific-support-username>"
+$env:SUPPORT_USER_PASSWORD="<enter-secret-privately>"
+$env:SUPPORT_USER_ROLE="Dev"
+npm.cmd run support:user:create
+Remove-Item Env:SUPPORT_USER_PASSWORD
+```
+
+- Confirm the setup command reports only whether the account exists or was created. It must never print the password, password hash, or bearer token.
+- Confirm the database-backed support user can login and access the protected Developer Control Panel.
+- Treat `VITE_ENABLE_DEV_BACKDOOR=true` in any client package as a no-go condition.
+## Packaged Developer Control Panel And Backup Tool Verification
+
+`npm.cmd run sync:verify-existing` now verifies the copied Laragon frontend role boundary with isolated browser role state:
+
+- only exact role `Dev` can see and open the read-only Developer Control Panel.
+- `admin`, `saleboy`, staff, cashier, and manager roles cannot see the Developer Control Panel navigation entry.
+- Backup Status is informational only.
+- no restore/import/delete/apply/replay/export action buttons are exposed by the panel.
+- a sentinel bearer token is never rendered in the panel.
+
+The browser check does not use the disabled frontend backdoor and does not create real sessions. Run backup tooling separately through explicit CLI commands. Export writes backup files under `backups/`; validation reads backup JSON and computes SHA-256 checksums. Restore/import remains unimplemented.

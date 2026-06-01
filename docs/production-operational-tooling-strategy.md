@@ -448,14 +448,14 @@ Phase 6: Controlled background sync operations
 - alerting and audit trail
 ## Developer Control Panel Reference
 
-The future protected admin/developer UI is designed in [developer-control-panel-architecture.md](./developer-control-panel-architecture.md).
+The future protected developer-support-only UI is designed in [developer-control-panel-architecture.md](./developer-control-panel-architecture.md).
 
-The control panel should separate client-facing status from developer diagnostics. Normal staff should see only simplified health such as Online/Offline, Sync healthy/Needs attention, last successful sync, last backup, and support action. Admin/developer users may see advanced sync, replay, backup, auth, hydration, deployment, and auto-sync eligibility diagnostics when authorized.
+The control panel should separate client-facing status from developer diagnostics. Normal staff should see only simplified health such as Online/Offline, Sync healthy/Needs attention, last successful sync, last backup, and support action. Only authenticated DB-backed users with exact role `Dev` may see advanced sync, replay, backup, auth, hydration, deployment, and auto-sync eligibility diagnostics.
 
 Initial implementation should be read-only-first. Dangerous actions must follow the report -> dry-run plan -> explicit apply -> audit/checkpoint pattern and must never expose payloads, tokens, passwords, direct stock edits, direct accounting edits, or direct transactional table edits.
 ## Developer Control Panel Foundation Status
 
-The first Developer Control Panel UI foundation is implemented as a read-only admin/developer dashboard area.
+The first Developer Control Panel UI foundation is implemented as a read-only developer-support-only dashboard area.
 
 Implemented sections:
 
