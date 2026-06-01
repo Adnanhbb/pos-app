@@ -12,6 +12,8 @@ interface LoginProps {
   onLogin: (name: string, role: Role) => void;
 }
 
+const DEV_BACKDOOR_ENABLED = import.meta.env.VITE_ENABLE_DEV_BACKDOOR === "true";
+
 export default function Login({ onLogin }: LoginProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -53,7 +55,7 @@ export default function Login({ onLogin }: LoginProps) {
       /* ======================================================
          🔥 DEV BACKDOOR LOGIN (NO DATABASE CHECK)
       ====================================================== */
-      if (uname === "adn" && password === "adnanhbb") {
+      if (DEV_BACKDOOR_ENABLED && uname === "adn" && password === "adnanhbb") {
         localStorage.setItem("loggedInUserId", "DEV");
         localStorage.setItem("loggedInUserName", "Developer");
         localStorage.setItem("loggedInUserRole", "Dev");
@@ -70,7 +72,7 @@ export default function Login({ onLogin }: LoginProps) {
 
       if (user) {
         // Verify role
-        if (user.Role !== role) {
+        if (user.Role !== "Dev" && user.Role !== role) {
           setError(`Incorrect role selected for this user.`);
           return;
         }
@@ -133,7 +135,7 @@ export default function Login({ onLogin }: LoginProps) {
             </label>
             <select
               value={role}
-              onChange={(e) => setRole(e.target.value as "admin" | "saleboy")}
+              onChange={(e) => setRole(e.target.value as Role)}
               className="w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-400"
             >
               <option value="admin">{t("admin")}</option>
