@@ -59,6 +59,10 @@ export async function syncCylinderInventoryForSale(cart: any[]) {
 
     /* ---------------- CUSTOMER RETURN ---------------- */
     if (ci.isCustomerReturn) {
+      if (cylinder.withCustomers < qty) {
+        throw new Error("Customer does not hold enough cylinders for this return.");
+      }
+
       cylinder.withCustomers -= qty;
       cylinder.emptyCylinders += qty;
     }

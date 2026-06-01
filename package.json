@@ -72,6 +72,7 @@
                     "rehearsal:local-production":  "node scripts/rehearse-local-production.mjs",
                     "rehearsal:laragon":  "node scripts/run-laragon-rehearsal.mjs",
                     "sync:verify-existing":  "node scripts/verify-existing-sync-coverage.mjs",
+                    "test:local:cylinder-customer-return":  "node scripts/verify-local-cylinder-customer-return.mjs",
                     "support:user:create":  "php scripts/create-developer-support-user.php"
                 },
     "dependencies":  {

@@ -20,7 +20,7 @@ import { useLang } from "./i18n/LanguageContext";
 import { heldRepository } from "./repositories/heldRepository";
 import { batchRepository } from "./repositories/batchRepository";
 import { syncCylinderInventoryForSale,cylinderRepo_getByItemId,cylinderRepo_update } from "./repositories/cylinderRepository";
-import {cylinderCustomerRepo_addOrUpdate} from "./repositories/cylinderCustomerRepository";
+import {cylinderCustomerRepo_addOrUpdate, cylinderCustomerRepository} from "./repositories/cylinderCustomerRepository";
 import {
   buildReturnTransactionPayload,
   buildSaleTransactionPayload,
@@ -765,6 +765,68 @@ if (isSale || isCustomerReturn) {
   /* --------------------------------------------------
      7️⃣ SAVE TRANSACTION
   -------------------------------------------------- */
+  if (isCustomerReturn) {
+    const plannedReturns = new Map<
+      number,
+      {
+        cylinder: NonNullable<Awaited<ReturnType<typeof cylinderRepo_getByItemId>>>;
+        qty: number;
+        itemName: string;
+      }
+    >();
+
+    for (const ci of cart) {
+      const item = preMutationItems.get(ci.originalItemId);
+      if (!item) continue;
+
+      const isCylinderItem =
+        (item.category || "").toLowerCase().includes("gas") ||
+        (item.category || "").toLowerCase().includes("cylinder");
+
+      if (!isCylinderItem) continue;
+
+      const convQty = Number(item.ConvQty ?? 1);
+      if (!Number.isFinite(convQty) || convQty <= 0) {
+        alert(`Cannot return ${item.name}: invalid cylinder unit conversion.`);
+        return;
+      }
+
+      const maxQty = Math.floor(ci.qty / convQty);
+      if (maxQty <= 0) continue;
+
+      const cylinder = preMutationCylinders.get(ci.originalItemId);
+      if (!cylinder || cylinder.isDeleted || cylinder.id == null) {
+        alert(`Cannot return ${item.name}: cylinder mapping is missing.`);
+        return;
+      }
+
+      const existing = plannedReturns.get(cylinder.id);
+      plannedReturns.set(cylinder.id, {
+        cylinder,
+        qty: (existing?.qty ?? 0) + maxQty,
+        itemName: item.name,
+      });
+    }
+
+    for (const { cylinder, qty, itemName } of plannedReturns.values()) {
+      const holdings = await cylinderCustomerRepository.getByCylinder(cylinder.id!);
+      const holding = holdings.find(
+        (entry) => entry.customerName === customerName && !entry.isDeleted
+      );
+
+      if (
+        Number(cylinder.withCustomers || 0) < qty ||
+        !holding ||
+        Number(holding.qtyHeld || 0) < qty
+      ) {
+        alert(
+          `Cannot return ${itemName}: customer does not hold enough cylinders.`
+        );
+        return;
+      }
+    }
+  }
+
   const saleId = await salesRepository.addTransaction({
     ...saleHeader,
     items: transactionItems,
@@ -822,8 +884,12 @@ if (maxQty <= 0) continue;
 }
 
   if (isCustomerReturn) {
-  updatedCylinder.filledCylinders += maxQty;
+  if (updatedCylinder.withCustomers < maxQty) {
+    throw new Error("Customer does not hold enough cylinders for this return.");
+  }
+
   updatedCylinder.withCustomers -= maxQty;
+  updatedCylinder.emptyCylinders += maxQty;
 
   await cylinderCustomerRepo_addOrUpdate({
     cylinderId: cylinder.id!,

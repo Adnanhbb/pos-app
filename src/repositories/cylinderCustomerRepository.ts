@@ -58,17 +58,25 @@ export const cylinderCustomerRepository = {
     if (existing) {
       const newQty = safeNumber(existing.qtyHeld) + safeNumber(qtyChange);
 
+      if (newQty < 0) {
+        throw new Error("Customer does not hold enough cylinders for this return.");
+      }
+
       await updateCylinderCustomer({
         ...existing,
-        qtyHeld: Math.max(0, newQty),
+        qtyHeld: newQty,
       });
 
     } else {
+      if (safeNumber(qtyChange) < 0) {
+        throw new Error("Customer does not hold enough cylinders for this return.");
+      }
+
       await addCylinderCustomer({
         cylinderId,
         cylinderType,
         customerName,
-        qtyHeld: Math.max(0, qtyChange),
+        qtyHeld: safeNumber(qtyChange),
         isDeleted: false,
         deletedAt: null,
       });
