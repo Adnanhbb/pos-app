@@ -1443,3 +1443,21 @@ Single-client production auth now has an explicit offline boundary:
 - `VITE_ENABLE_DEV_BACKDOOR` remains default-off and blocked by package/release checks.
 
 The local IndexedDB `Password` field remains a documented legacy credential risk for explicitly enabled offline login. Replacing it with a local salted verifier is deferred to a focused migration. No POS, replay, queue, background sync, or auto-sync behavior changed.
+
+## Finalized Sale Backend Replay Design Audit
+
+The first production transaction-replay slice has been audited in
+[finalized-sale-backend-replay-design-audit.md](./finalized-sale-backend-replay-design-audit.md).
+
+The backend already has broad internal replay primitives, but the production
+HTTP bridge remains intentionally unimplemented. Current finalized POS queue
+payloads still contain local IndexedDB identifiers where MySQL replay needs
+server identifiers. Additional blockers include exact batch-target parity,
+cylinder Sale parity, canonical customer-payment schema coverage, payment
+snapshot semantics, and storage-to-replay orchestration.
+
+Recommended next step: harden and version the finalized-Sale payload contract,
+then add a narrow authenticated Sale-only replay endpoint. Do not expose the
+broad helper directly. Purchase, Returns, standalone payments, invoice
+cancellation, auto-sync, polling, listeners, workers, startup replay, and
+background replay remain deferred.

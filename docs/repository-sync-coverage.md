@@ -213,3 +213,19 @@ npm.cmd run backup:validate -- backups/<backup-file>.json
 ```
 
 The IndexedDB exporter recursively redacts secret-like fields. The MySQL exporter omits password, token/hash, session-secret, payload JSON, and response JSON columns. The validator checks structure, collection counts, sensitive-field leakage, and SHA-256 identity. Restore/import and destructive backup actions remain absent.
+
+## Finalized Sale Replay Design Boundary
+
+The finalized `Sale` backend replay audit is documented in
+[finalized-sale-backend-replay-design-audit.md](./finalized-sale-backend-replay-design-audit.md).
+
+Current transaction queue processing still sends finalized POS payloads to
+`transactions.php` for storage-only ingestion. The existing internal backend
+replay processor is not exposed as a production HTTP bridge. A Sale-only
+endpoint must wait for server-id payload mapping, exact resolved-batch
+targeting, cylinder Sale parity, customer-payment schema parity, and safe
+storage-to-replay orchestration.
+
+This audit does not migrate sales, sale items, stock, batches, cylinders,
+customer balances, or payments into direct CRUD sync. Those domains remain
+transaction/replay-owned.
