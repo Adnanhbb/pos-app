@@ -498,6 +498,16 @@ To copy the package into the default Laragon rehearsal folder after verification
 npm.cmd run rehearsal:laragon -- --copy
 ```
 
+The default rehearsal package keeps offline login disabled. To rehearse the explicitly approved device-local offline-login policy, opt in for that build only:
+
+```powershell
+$env:LARAGON_REHEARSAL_ALLOW_OFFLINE_LOGIN="true"
+npm.cmd run rehearsal:laragon -- --copy
+Remove-Item Env:LARAGON_REHEARSAL_ALLOW_OFFLINE_LOGIN
+```
+
+When enabled, IndexedDB fallback is allowed only if the API network request cannot be reached. A reachable backend rejecting credentials remains a hard login failure. Startup also validates `session.php` while reachable and clears stale login markers after an invalid online session.
+
 To override the API URL, base path, or target folder:
 
 ```powershell

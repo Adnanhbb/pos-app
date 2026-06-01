@@ -33,6 +33,11 @@ This checklist prepares a client production hosting rollout. It is operational p
 
 - Confirm `CRUD_AUTH_ENFORCEMENT` intended state.
 - Initial production recommendation: keep enforcement off/audit-only unless staging hard-enforcement passed.
+- Confirm `VITE_ALLOW_OFFLINE_LOGIN` intended state. It defaults to `false`.
+- Enable `VITE_ALLOW_OFFLINE_LOGIN=true` only after explicitly approving device-local offline access for this single-client deployment.
+- Confirm an online backend credential rejection never falls back to local IndexedDB login.
+- Confirm stale localStorage login markers do not restore authenticated UI when a reachable backend rejects the session.
+- Record the current legacy risk: local offline fallback still compares the IndexedDB `Password` field. Keep offline access limited to approved client devices until a local salted-verifier migration exists.
 - Confirm valid login returns bearer token once.
 - Confirm `api_auth_tokens` stores token hashes only.
 - Confirm invalid/missing auth is safe and does not leak sensitive details.
@@ -98,6 +103,7 @@ npm.cmd run sync:evaluate-auto-sync
 - Confirm `.env.production.example` has been copied into the hosting provider's secure config system with real values.
 - Confirm real secrets are not committed to source control.
 - Confirm `VITE_API_BASE_URL` points to production API, not Laragon/local/staging.
+- Confirm `VITE_ALLOW_OFFLINE_LOGIN` matches the approved client-device policy; do not inherit it accidentally from a rehearsal shell.
 - Confirm `DB_HOST`, `DB_NAME`, `DB_USER`, and `DB_PASS` are correct.
 - Confirm `REPLAY_WORKER_TOKEN` is strong and unique.
 - Confirm CORS/frontend origin settings match production frontend URL.

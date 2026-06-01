@@ -3,7 +3,7 @@
 /* Dev-only backend login/session lifecycle tests. */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,6 +12,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(scriptDir, "..");
 const runId = `auth-session-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const username = `login_${runId}`;
+const devUsername = `dev_${runId}`;
 const password = `Pass-${runId}-123`;
 let passed = 0;
 let failed = 0;
@@ -95,11 +96,15 @@ require_once getcwd() . '/api/config/database.php';
 $pdo = get_pdo();
 $runId = getenv('AUTH_SESSION_RUN_ID');
 $username = getenv('AUTH_SESSION_USERNAME');
+$devUsername = getenv('AUTH_SESSION_DEV_USERNAME');
 $password = getenv('AUTH_SESSION_PASSWORD');
 $pdo->exec("CREATE TABLE IF NOT EXISTS users (id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, client_id VARCHAR(100) NULL UNIQUE, username VARCHAR(100) NOT NULL UNIQUE, name VARCHAR(180) NOT NULL, mobile VARCHAR(50) NULL, role VARCHAR(80) NOT NULL, password_hash VARCHAR(255) NOT NULL, is_active TINYINT(1) NOT NULL DEFAULT 1, is_deleted TINYINT(1) NOT NULL DEFAULT 0, deleted_at DATETIME NULL, created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
 $statement = $pdo->prepare("INSERT INTO users (client_id, username, name, mobile, role, password_hash, is_active, is_deleted) VALUES (:client_id, :username, :name, '03000000000', 'admin', :password_hash, 1, 0)");
 $statement->execute(['client_id' => $runId, 'username' => $username, 'name' => 'Login Test User', 'password_hash' => password_hash($password, PASSWORD_DEFAULT)]);
-echo json_encode(['ok' => true, 'userId' => (int) $pdo->lastInsertId()], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+$userId = (int) $pdo->lastInsertId();
+$devStatement = $pdo->prepare("INSERT INTO users (client_id, username, name, mobile, role, password_hash, is_active, is_deleted) VALUES (:client_id, :username, 'Login Test Developer', '03000000001', 'Dev', :password_hash, 1, 0)");
+$devStatement->execute(['client_id' => $runId . '-dev', 'username' => $devUsername, 'password_hash' => password_hash($password, PASSWORD_DEFAULT)]);
+echo json_encode(['ok' => true, 'userId' => $userId, 'devUserId' => (int) $pdo->lastInsertId()], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 `;
 }
 
@@ -107,7 +112,7 @@ function createTestUser() {
   const result = spawnSync(findPhpBinary(), ["-r", phpSetupCode()], {
     cwd: projectRoot,
     encoding: "utf8",
-    env: { ...process.env, AUTH_SESSION_RUN_ID: runId, AUTH_SESSION_USERNAME: username, AUTH_SESSION_PASSWORD: password },
+    env: { ...process.env, AUTH_SESSION_RUN_ID: runId, AUTH_SESSION_USERNAME: username, AUTH_SESSION_DEV_USERNAME: devUsername, AUTH_SESSION_PASSWORD: password },
     windowsHide: true,
   });
   if (result.error) throw result.error;
@@ -132,7 +137,7 @@ async function main() {
   check("backend health reachable", health, (value) => value.status === 200 && value.body?.success === true, "health.php did not return success");
 
   const setup = createTestUser();
-  check("test user prepared with hashed password", { ok: setup.ok, userId: setup.userId }, (value) => value.ok === true && Number.isInteger(value.userId), "could not prepare user");
+  check("test users prepared with hashed passwords", { ok: setup.ok, userId: setup.userId, devUserId: setup.devUserId }, (value) => value.ok === true && Number.isInteger(value.userId) && Number.isInteger(value.devUserId), "could not prepare users");
   if (setup.ok !== true) {
     console.log(`Summary: ${passed} passed, ${failed} failed`);
     process.exitCode = 1;
@@ -165,6 +170,20 @@ async function main() {
   const sessionAfterLogout = await request("session", { token });
   check("session token rejected after logout", sessionAfterLogout, (value) => value.status === 401 && value.body?.success === false, "revoked token should not authenticate");
   check("logout/session responses do not leak token", { logout, sessionAfterLogout }, (value) => !JSON.stringify(redact(value)).includes(token), "token leaked after redaction guard");
+
+  const devLogin = await request("login", { method: "POST", body: { username: devUsername, password } });
+  const devToken = devLogin.body?.data?.token;
+  check("DB-backed Dev support user can login normally", { status: devLogin.status, tokenPresent: Boolean(devToken), actor: devLogin.body?.data?.actor }, (value) => value.status === 200 && value.tokenPresent === true && value.actor?.Role === "Dev", "Dev login did not return the expected role");
+  await request("logout", { method: "POST", token: devToken, body: {} });
+
+  const authRepository = readFileSync(resolve(projectRoot, "src/repositories/authRepository.ts"), "utf8");
+  const app = readFileSync(resolve(projectRoot, "src/App.tsx"), "utf8");
+  const loginSource = readFileSync(resolve(projectRoot, "src/Login.tsx"), "utf8");
+  const envTemplate = readFileSync(resolve(projectRoot, ".env.production.example"), "utf8");
+  check("online backend rejection cannot fall back to local login", authRepository, (value) => value.includes("if (!isBackendUnavailable(error))") && value.includes("Remote login rejected; local fallback was not attempted.") && value.includes("clearLocalLoginState();") && value.includes("return null;"), "remote rejection guard is missing");
+  check("offline local fallback requires explicit build opt-in", authRepository, (value) => value.includes('VITE_ALLOW_OFFLINE_LOGIN === "true"') && value.includes("Remote login unavailable; explicit offline login is disabled."), "offline login opt-in guard is missing");
+  check("startup restore validates backend session before trusting local markers", { app, authRepository }, (value) => value.app.includes("restoreStartupSession") && !value.app.includes("if (id && username && role") && value.authRepository.includes("clearLocalLoginState()"), "startup still trusts marker-only login");
+  check("frontend backdoor and offline login both default disabled", { loginSource, envTemplate }, (value) => value.loginSource.includes('VITE_ENABLE_DEV_BACKDOOR === "true"') && /^VITE_ENABLE_DEV_BACKDOOR=false$/m.test(value.envTemplate) && /^VITE_ALLOW_OFFLINE_LOGIN=false$/m.test(value.envTemplate), "production auth defaults are not safe");
 
   console.log(`Summary: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

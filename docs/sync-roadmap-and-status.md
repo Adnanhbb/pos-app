@@ -1429,3 +1429,17 @@ This verification does not use transactions, sales, sale items, payments, stock,
 Invoice deletion/cancellation is intentionally unavailable from the client UI during handover. The previous local reversal path could not safely guarantee coordinated reversal of sale items, stock, batches, cylinders, customer/supplier balances, payments, and accounting.
 
 Invoice viewing, search, filtering, and printing remain available. Existing repository reversal helpers are retained only as unexposed implementation history until a complete atomic reversal flow is designed and verified. No POS finalization, replay, or auto-sync behavior changed.
+
+## Client Handover Auth Policy Tightening
+
+Single-client production auth now has an explicit offline boundary:
+
+- online login always validates backend credentials first;
+- a reachable backend rejection never falls back to IndexedDB login;
+- local IndexedDB login fallback requires `VITE_ALLOW_OFFLINE_LOGIN=true` and is used only when the API network request cannot be reached;
+- startup validates `session.php` while reachable instead of trusting stale localStorage markers;
+- invalid online sessions clear stale bearer/local login state;
+- DB-backed exact-role `Dev` support login remains the supported handover path;
+- `VITE_ENABLE_DEV_BACKDOOR` remains default-off and blocked by package/release checks.
+
+The local IndexedDB `Password` field remains a documented legacy credential risk for explicitly enabled offline login. Replacing it with a local salted verifier is deferred to a focused migration. No POS, replay, queue, background sync, or auto-sync behavior changed.

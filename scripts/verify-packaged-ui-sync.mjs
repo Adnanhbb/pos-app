@@ -12,6 +12,32 @@ async function waitForApi(page, entity, method, action) { const responsePromise 
 async function backendRow(entity, id) { return fetchJson(`${entity}.php?id=${encodeURIComponent(String(id))}`); }
 async function findCreatedId(entity, labelField, label) { const response = await fetchJson(`${entity}.php`); const rows = unwrap(response.body); if (!response.ok || !Array.isArray(rows)) return null; const row = rows.find((candidate) => String(candidate?.[labelField]) === String(label)); return row ? getServerId(row) : null; }
 async function clickMenu(page, index) { await page.locator("aside > ul > li").nth(index).click(); await page.waitForTimeout(150); }
+async function installValidatedSessionFixture(page, role = "Dev") {
+  await page.route("**/api/session.php", async (route) => {
+    if (route.request().method() !== "GET") return route.continue();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        success: true,
+        data: {
+          authenticated: true,
+          actor: {
+            id: 900001,
+            serverId: 900001,
+            Username: `packaged-${role}`,
+            Name: `Packaged ${role}`,
+            Role: role,
+            actorType: "user",
+            actorId: "900001",
+            actorRole: role,
+            sessionId: "packaged-ui-session-fixture",
+          },
+        },
+      }),
+    });
+  });
+}
 async function clickEntrySubmenu(page, index) { const entries = page.locator("aside > ul > li").nth(4); if (await entries.locator("ul").count() === 0) await entries.locator("button").first().click(); await entries.locator("ul li button").nth(index).click(); await page.waitForTimeout(150); }
 async function lookupDeleteLifecycle(page, entity, submenuIndex, label, formStyle = "simple") {
   await clickEntrySubmenu(page, submenuIndex); const main = page.locator("main");
@@ -89,6 +115,7 @@ async function manualReplayLifecycle(browser, runId) {
     localStorage.setItem("loggedInUserId", "DEV");
     localStorage.setItem("loggedInUserName", "Developer");
     localStorage.setItem("loggedInUserRole", "Dev");
+    localStorage.setItem("jawadBro.authToken", "PACKAGED_UI_VALIDATED_SESSION_FIXTURE");
   });
   let localId = null;
   let queueId = null;
@@ -98,6 +125,7 @@ async function manualReplayLifecycle(browser, runId) {
   const brandPostRequests = [];
   const checks = [];
   const page = await context.newPage();
+  await installValidatedSessionFixture(page);
   const observeBrandPosts = (request) => {
     const url = new URL(request.url());
     if (request.method() === "POST" && url.pathname.endsWith("/api/brands.php")) {
@@ -237,6 +265,7 @@ async function verifyDeveloperControlPanelVisibility(browser) {
 
     try {
       const page = await context.newPage();
+      await installValidatedSessionFixture(page, role);
       await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 });
       await page.waitForTimeout(500);
       const aside = page.locator("aside");
@@ -281,5 +310,5 @@ async function verifyDeveloperControlPanelVisibility(browser) {
 }
 
 export async function verifyPackagedUiSync(runId) {
-  const browser = await chromium.launch({ headless: true }); try { const developerControlPanel = await verifyDeveloperControlPanelVisibility(browser); const manualReplay = await manualReplayLifecycle(browser, runId); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); }); const page = await context.newPage(); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); const invoicesReadOnly = await verifyInvoicesReadOnly(page); await context.close(); return { appUrl: APP_URL, ok: developerControlPanel.ok && manualReplay.ok && invoicesReadOnly.ok && lifecycles.every((item) => item.ok), developerControlPanel, manualReplay, invoicesReadOnly, lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
+  const browser = await chromium.launch({ headless: true }); try { const developerControlPanel = await verifyDeveloperControlPanelVisibility(browser); const manualReplay = await manualReplayLifecycle(browser, runId); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); localStorage.setItem("jawadBro.authToken", "PACKAGED_UI_VALIDATED_SESSION_FIXTURE"); }); const page = await context.newPage(); await installValidatedSessionFixture(page); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); const invoicesReadOnly = await verifyInvoicesReadOnly(page); await context.close(); return { appUrl: APP_URL, ok: developerControlPanel.ok && manualReplay.ok && invoicesReadOnly.ok && lifecycles.every((item) => item.ok), developerControlPanel, manualReplay, invoicesReadOnly, lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
 }

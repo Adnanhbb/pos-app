@@ -79,21 +79,9 @@ export default function App() {
   /* AUTO LOGIN CHECK */
   useEffect(() => {
     let cancelled = false;
-    const id = localStorage.getItem("loggedInUserId");
-    const role = localStorage.getItem("loggedInUserRole");
-    const username = localStorage.getItem("loggedInUserName");
-
     const validRoles: Role[] = ["admin", "saleboy", "Dev"];
 
-    if (id && username && role && validRoles.includes(role as Role)) {
-      setUser({
-        username,
-        role: role as Role,
-      });
-      return;
-    }
-
-    authRepository.getCurrentSession().then((sessionUser) => {
+    authRepository.restoreStartupSession().then((sessionUser) => {
       if (cancelled || !sessionUser || !validRoles.includes(sessionUser.Role as Role)) return;
       localStorage.setItem("loggedInUserId", String(sessionUser.id ?? sessionUser.Username));
       localStorage.setItem("loggedInUserName", sessionUser.Name);

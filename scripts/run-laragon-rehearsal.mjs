@@ -15,6 +15,7 @@ const basePathArg = args.find((arg) => arg.startsWith("--base-path="));
 const apiUrl = (apiUrlArg ? apiUrlArg.slice("--api-url=".length) : process.env.LARAGON_REHEARSAL_API_URL || "http://localhost/jawad-bro-rehearsal/api").replace(/\/+$/, "");
 const targetRoot = resolve(targetArg ? targetArg.slice("--target=".length) : process.env.LARAGON_REHEARSAL_TARGET || "C:/laragon/www/jawad-bro-rehearsal");
 const basePath = basePathArg ? basePathArg.slice("--base-path=".length) : process.env.LARAGON_REHEARSAL_BASE_PATH || "/jawad-bro-rehearsal/";
+const offlineLoginEnabled = process.env.LARAGON_REHEARSAL_ALLOW_OFFLINE_LOGIN === "true";
 const packageRoot = join(root, "deployment-package");
 const frontendSource = join(packageRoot, "frontend");
 const apiSource = join(packageRoot, "api");
@@ -106,6 +107,7 @@ function makeMarkdown(report) {
   lines.push(`- copyEnabled: ${report.copyEnabled}`);
   lines.push(`- apiUrl: ${report.apiUrl}`);
   lines.push(`- basePath: ${report.basePath}`);
+  lines.push(`- offlineLoginExplicitlyEnabled: ${report.offlineLoginExplicitlyEnabled}`);
   lines.push(`- targetRoot: ${report.targetRoot}`);
   lines.push(`- deploymentPerformed: ${report.deploymentPerformed}`);
   lines.push(`- uploadPerformed: ${report.uploadPerformed}`);
@@ -148,7 +150,11 @@ async function main() {
     "Approve rollback steps manually; this runner does not restore/import/delete data.",
   ];
 
-  const packageRun = npmRun("deployment:package", { VITE_API_BASE_URL: apiUrl, VITE_BASE_PATH: basePath });
+  const packageRun = npmRun("deployment:package", {
+    VITE_API_BASE_URL: apiUrl,
+    VITE_BASE_PATH: basePath,
+    VITE_ALLOW_OFFLINE_LOGIN: offlineLoginEnabled ? "true" : "false",
+  });
   addStep(steps, "regenerate deployment package with local rehearsal API URL", packageRun.ok, { status: packageRun.status, error: packageRun.error });
 
   const verifierRun = npmRun("rehearsal:local-production", { LARAGON_REHEARSAL_ALLOW_LOCAL_RUNTIME_URLS: "1" });
@@ -222,6 +228,7 @@ async function main() {
     destructiveActionRun: false,
     apiUrl,
     basePath,
+    offlineLoginExplicitlyEnabled: offlineLoginEnabled,
     targetRoot,
     copyEnabled,
     copySummary,
@@ -248,6 +255,7 @@ async function main() {
     runtimeBehaviorChanged: report.runtimeBehaviorChanged,
     apiUrl: report.apiUrl,
     basePath: report.basePath,
+    offlineLoginExplicitlyEnabled: report.offlineLoginExplicitlyEnabled,
     targetRoot: report.targetRoot,
     steps: {
       total: report.steps.length,

@@ -15,6 +15,7 @@ const docsTarget = join(packageRoot, "docs");
 const buildApiBaseUrl = process.env.VITE_API_BASE_URL || "https://api.example.com";
 const buildBasePath = process.env.VITE_BASE_PATH || "/pos-app/";
 const buildDevBackdoorEnabled = process.env.VITE_ENABLE_DEV_BACKDOOR === "true";
+const buildOfflineLoginEnabled = process.env.VITE_ALLOW_OFFLINE_LOGIN === "true";
 const buildCommand = process.platform === "win32" ? "cmd.exe" : "npm";
 const buildArgs = process.platform === "win32" ? ["/c", "npm.cmd", "run", "build"] : ["run", "build"];
 const buildCommandLabel = process.platform === "win32" ? "npm.cmd run build" : "npm run build";
@@ -150,6 +151,7 @@ function main() {
       VITE_API_BASE_URL: buildApiBaseUrl,
       VITE_BASE_PATH: buildBasePath,
       VITE_ENABLE_DEV_BACKDOOR: "false",
+      VITE_ALLOW_OFFLINE_LOGIN: buildOfflineLoginEnabled ? "true" : "false",
     },
   });
 
@@ -198,6 +200,7 @@ function main() {
       VITE_API_BASE_URL: buildApiBaseUrl,
       VITE_BASE_PATH: buildBasePath,
       VITE_ENABLE_DEV_BACKDOOR: "false",
+      VITE_ALLOW_OFFLINE_LOGIN: buildOfflineLoginEnabled ? "true" : "false",
     },
     git: {
       commit: getGitValue(["rev-parse", "HEAD"]),
@@ -221,6 +224,7 @@ function main() {
       localEnvIncluded: false,
       tsbuildInfoIncluded: false,
       devBackdoorEnabled: false,
+      offlineLoginExplicitlyEnabled: buildOfflineLoginEnabled,
       forbiddenPackagePaths,
     },
     counts: {

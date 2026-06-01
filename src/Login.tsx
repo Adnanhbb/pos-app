@@ -73,6 +73,7 @@ export default function Login({ onLogin }: LoginProps) {
       if (user) {
         // Verify role
         if (user.Role !== "Dev" && user.Role !== role) {
+          authRepository.logout();
           setError(`Incorrect role selected for this user.`);
           return;
         }

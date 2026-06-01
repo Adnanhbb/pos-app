@@ -1,9 +1,22 @@
 import { getAllUsers, getUserByUsername, validateUser } from "../db";
 import { clearAuthToken } from "../api/authToken";
 import { fetchCurrentSession, loginWithPassword, logoutSession, type AuthActor } from "../api/authSession";
+import { ApiError } from "../api/client";
 import type { Role, User } from "../types/entities";
 
 type SyncableUser = User & { serverId?: number | string | null };
+const OFFLINE_LOGIN_ENABLED = import.meta.env.VITE_ALLOW_OFFLINE_LOGIN === "true";
+
+function isBackendUnavailable(error: unknown): boolean {
+  return error instanceof ApiError && error.status === undefined;
+}
+
+function clearLocalLoginState(): void {
+  clearAuthToken();
+  localStorage.removeItem("loggedInUserId");
+  localStorage.removeItem("loggedInUserName");
+  localStorage.removeItem("loggedInUserRole");
+}
 
 function getActorServerId(actor: AuthActor): number | string | null {
   return actor.serverId ?? actor.id ?? null;
@@ -66,9 +79,18 @@ export const authRepository = {
         return remoteUser;
       }
     } catch (error) {
-      // Preserve offline-first local login behavior when the backend is absent,
-      // not migrated yet, or rejects a user that still exists only locally.
-      console.warn("Remote login unavailable; falling back to local login.", error);
+      if (!isBackendUnavailable(error)) {
+        console.warn("Remote login rejected; local fallback was not attempted.");
+        clearLocalLoginState();
+        return null;
+      }
+
+      if (!OFFLINE_LOGIN_ENABLED) {
+        console.warn("Remote login unavailable; explicit offline login is disabled.");
+        return null;
+      }
+
+      console.warn("Remote login unavailable; using explicitly enabled local login fallback.");
     }
 
     return await validateUser(username, password, role);
@@ -83,6 +105,23 @@ export const authRepository = {
       const actor = await fetchCurrentSession();
       return actor ? await resolveActorToLocalUser(actor) : null;
     } catch {
+      return null;
+    }
+  },
+
+  async restoreStartupSession(): Promise<User | null> {
+    try {
+      const actor = await fetchCurrentSession();
+      return actor ? await resolveActorToLocalUser(actor) : null;
+    } catch (error) {
+      if (isBackendUnavailable(error) && OFFLINE_LOGIN_ENABLED) {
+        return await authRepository.getCurrentUser();
+      }
+
+      if (!isBackendUnavailable(error)) {
+        clearLocalLoginState();
+      }
+
       return null;
     }
   },
@@ -111,10 +150,7 @@ export const authRepository = {
   },
 
   logout() {
-    void logoutSession();
-    clearAuthToken();
-    localStorage.removeItem("loggedInUserId");
-    localStorage.removeItem("loggedInUserName");
-    localStorage.removeItem("loggedInUserRole");
+    void logoutSession().catch(() => undefined);
+    clearLocalLoginState();
   },
 };

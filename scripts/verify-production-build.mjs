@@ -19,11 +19,13 @@ const PROJECT_ROOT = resolve(__dirname, "..");
 const DIST_DIR = resolve(PROJECT_ROOT, "dist");
 const SAFE_BUILD_API_BASE_URL = process.env.VITE_API_BASE_URL || "https://api.example.com";
 const REQUESTED_DEV_BACKDOOR = process.env.VITE_ENABLE_DEV_BACKDOOR === "true";
+const REQUESTED_OFFLINE_LOGIN = process.env.VITE_ALLOW_OFFLINE_LOGIN === "true";
 const MAX_SCAN_FILE_BYTES = 2 * 1024 * 1024;
 
 const requiredEnvVars = [
   "VITE_API_BASE_URL",
   "VITE_ENABLE_DEV_BACKDOOR",
+  "VITE_ALLOW_OFFLINE_LOGIN",
   "CRUD_AUTH_ENFORCEMENT",
   "REPLAY_WORKER_TOKEN",
   "DB_HOST",
@@ -85,6 +87,7 @@ function runBuild() {
       ...process.env,
       VITE_API_BASE_URL: SAFE_BUILD_API_BASE_URL,
       VITE_ENABLE_DEV_BACKDOOR: "false",
+      VITE_ALLOW_OFFLINE_LOGIN: REQUESTED_OFFLINE_LOGIN ? "true" : "false",
     },
   });
 
@@ -183,6 +186,10 @@ function checkEnvTemplate(errors, warnings) {
     addIssue(errors, "env_dev_backdoor_enabled", ".env.production.example must keep VITE_ENABLE_DEV_BACKDOOR=false for client builds.");
   }
 
+  if (!/^VITE_ALLOW_OFFLINE_LOGIN\s*=\s*false\s*$/mi.test(content)) {
+    addIssue(errors, "env_offline_login_default", ".env.production.example must keep VITE_ALLOW_OFFLINE_LOGIN=false so offline access requires an explicit client build decision.");
+  }
+
   return { exists: true, documentedVariables, missingVariables };
 }
 
@@ -229,6 +236,9 @@ function main() {
   if (!SAFE_BUILD_API_BASE_URL.startsWith("https://")) {
     addIssue(warnings, "api_base_not_https", "VITE_API_BASE_URL used for verification is not HTTPS.", { VITE_API_BASE_URL: SAFE_BUILD_API_BASE_URL });
   }
+  if (REQUESTED_OFFLINE_LOGIN) {
+    addIssue(warnings, "offline_login_explicitly_enabled", "VITE_ALLOW_OFFLINE_LOGIN=true was explicitly requested. Confirm the single-client device offline-access policy and legacy local credential risk before release.");
+  }
 
   const result = {
     ok: errors.length === 0,
@@ -239,6 +249,7 @@ function main() {
     builtWith: {
       VITE_API_BASE_URL: SAFE_BUILD_API_BASE_URL,
       VITE_ENABLE_DEV_BACKDOOR: "false",
+      VITE_ALLOW_OFFLINE_LOGIN: REQUESTED_OFFLINE_LOGIN ? "true" : "false",
     },
     app: {
       name: packageJson.name ?? null,

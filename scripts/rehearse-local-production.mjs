@@ -273,6 +273,10 @@ function main() {
     manifest?.build?.VITE_ENABLE_DEV_BACKDOOR === "true" ||
     manifest?.safety?.devBackdoorEnabled === true ||
     /^VITE_ENABLE_DEV_BACKDOOR\s*=\s*true\s*$/mi.test(packagedEnvTemplate);
+  const packagedOfflineLoginEnabled =
+    manifest?.build?.VITE_ALLOW_OFFLINE_LOGIN === true ||
+    manifest?.build?.VITE_ALLOW_OFFLINE_LOGIN === "true" ||
+    manifest?.safety?.offlineLoginExplicitlyEnabled === true;
 
   checks.push(check("deployment-package folder exists", existsRepo("deployment-package")));
   checks.push(check("deployment manifest exists and parses", Boolean(manifest && !manifest.parseError), { manifestSummary: manifest ? { autoSyncEnabled: manifest.autoSyncEnabled, deploymentPerformed: manifest.deploymentPerformed, uploadPerformed: manifest.uploadPerformed } : null }));
@@ -291,6 +295,7 @@ function main() {
   checks.push(check("dangerous restore/import tooling absent", dangerousTooling.dangerousNames.length === 0, { dangerousNames: dangerousTooling.dangerousNames }));
   checks.push(check("known apply tools remain explicit/gated", dangerousTooling.gatedApplyScripts.every((file) => /--apply/.test(readSmallText(file) || "")), { gatedApplyScripts: dangerousTooling.gatedApplyScripts }));
   checks.push(check("developer backdoor disabled in deployment package", !packagedDevBackdoorEnabled, { packagedDevBackdoorEnabled }));
+  checks.push(check("offline login policy is recorded explicitly", typeof manifest?.build?.VITE_ALLOW_OFFLINE_LOGIN === "string", { packagedOfflineLoginEnabled }));
 
   if (allowLocalRuntimeUrls && localhostLeakage.runtimeMatches.length > 0) {
     warnings.push(`[ACCEPTABLE LOCAL REHEARSAL] Runtime package contains the Laragon API URL: ${localhostLeakage.runtimeMatches.length} match(es). This is allowed only because LARAGON_REHEARSAL_ALLOW_LOCAL_RUNTIME_URLS=1 was set by the local Laragon runner; regenerate without this allowance before real hosting upload.`);
@@ -303,6 +308,7 @@ function main() {
   }
   if (manifest?.dirty) warnings.push("[REAL HOSTING REVIEW REQUIRED] Deployment package manifest reports dirty git state. Acceptable for local rehearsal, but commit/tag intentionally before real release packaging.");
   if (dangerousTooling.gatedApplyScripts.length > 0) warnings.push(`[REAL HOSTING REVIEW REQUIRED] Explicit --apply maintenance tools exist and must remain manual/operator gated: ${dangerousTooling.gatedApplyScripts.length} script(s).`);
+  if (packagedOfflineLoginEnabled) warnings.push("[REAL HOSTING REVIEW REQUIRED] Device-local offline login fallback is explicitly enabled in this package. Confirm the single-client offline-access decision and legacy local IndexedDB credential risk before upload.");
 
   const failed = checks.filter((result) => !result.pass);
   const report = {

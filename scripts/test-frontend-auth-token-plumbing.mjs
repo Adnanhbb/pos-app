@@ -28,6 +28,7 @@ const authSession = readFileSync("src/api/authSession.ts", "utf8");
 const authRepository = readFileSync("src/repositories/authRepository.ts", "utf8");
 const app = readFileSync("src/App.tsx", "utf8");
 const dashboard = readFileSync("src/Dashboard.tsx", "utf8");
+const login = readFileSync("src/Login.tsx", "utf8");
 
 check("auth token helper exports getAuthToken", authToken.includes("export function getAuthToken"));
 check("auth token helper exports setAuthToken", authToken.includes("export function setAuthToken"));
@@ -43,10 +44,13 @@ check("settings displays dev-only auth diagnostics", settings.includes("Auth Dia
 check("auth session helper posts login credentials to login.php", authSession.includes("/login.php") && authSession.includes("setAuthToken(token)"));
 check("auth session helper clears token on logout", authSession.includes("/logout.php") && authSession.includes("clearAuthToken()"));
 check("auth session helper can fetch session safely", authSession.includes("/session.php") && authSession.includes("fetchCurrentSession"));
-check("authRepository uses remote login while preserving local fallback", authRepository.includes("loginWithPassword") && authRepository.includes("falling back to local login") && authRepository.includes("validateUser(username, password, role)"));
+check("authRepository allows local fallback only after network failure and explicit opt-in", authRepository.includes("loginWithPassword") && authRepository.includes('VITE_ALLOW_OFFLINE_LOGIN === "true"') && authRepository.includes("if (!isBackendUnavailable(error))") && authRepository.includes("return null;") && authRepository.includes("validateUser(username, password, role)"));
 check("authRepository logout clears token and local login state", authRepository.includes("logoutSession") && authRepository.includes("clearAuthToken()") && authRepository.includes("loggedInUserId"));
 check("Dashboard logout uses shared App logout instead of reload-only local cleanup", dashboard.includes("onLogout();") && dashboard.includes("setCurrentUser(null)") && !dashboard.includes("window.location.reload()"));
-check("App restores token-backed session without sync replay", app.includes("getCurrentSession") && !app.includes("processPending"));
+check("App restores startup session through validated repository policy without sync replay", app.includes("restoreStartupSession") && !app.includes("processPending") && !app.includes("if (id && username && role"));
+check("startup restore clears stale online markers after invalid backend session", authRepository.includes("restoreStartupSession") && authRepository.includes("clearLocalLoginState()"));
+check("frontend backdoor remains explicitly gated", login.includes('VITE_ENABLE_DEV_BACKDOOR === "true"'));
+check("role mismatch revokes the newly issued login token", login.includes('if (user.Role !== "Dev" && user.Role !== role)') && login.includes("authRepository.logout();"));
 check("syncEngine marks auth failures with safe status metadata", syncEngine.includes("authError") && syncEngine.includes("getErrorStatus(error)") && syncEngine.includes("isAuthError(error)"));
 check("syncEngine does not auto-logout on auth failure", !syncEngine.includes("clearAuthToken") && !syncEngine.includes("logout()"));
 const manualReplayBody = settings.slice(settings.indexOf("const runManualSyncReplay"), settings.indexOf("useEffect", settings.indexOf("const runManualSyncReplay")));

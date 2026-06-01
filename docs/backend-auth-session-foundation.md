@@ -229,9 +229,17 @@ Frontend lifecycle:
 
 - `src/api/authSession.ts` calls `login.php`, `logout.php`, and `session.php`.
 - `authRepository.validateUser(...)` attempts backend login first and stores the returned token through `setAuthToken(...)`.
-- if backend login is unavailable, the existing local IndexedDB login fallback remains available.
+- online credential rejection is final: a reachable backend `401`, validation error, parse error, or server error never falls back to IndexedDB login.
+- device-local IndexedDB login fallback is available only when the API network request cannot be reached and the client build explicitly sets `VITE_ALLOW_OFFLINE_LOGIN=true`.
+- `VITE_ALLOW_OFFLINE_LOGIN` defaults to `false`; enabling it is a deliberate single-client device policy decision.
 - `authRepository.logout()` calls backend logout best-effort, clears the bearer token, and clears local login state.
-- app startup may restore the UI session from an existing token via `session.php`, but it does not invoke sync replay.
+- app startup validates the current session through `session.php` before restoring authenticated UI while the API is reachable.
+- stale localStorage markers are cleared when the reachable backend rejects the session.
+- a successful credential check followed by a client role-selection mismatch revokes the newly issued token before returning to the login form.
+- marker-only startup restore is permitted only while the API cannot be reached and explicit offline login is enabled.
+- startup restoration does not invoke sync replay.
+
+Local IndexedDB users still use the legacy plaintext `Password` field for offline credential comparison. This is a constrained legacy risk, not a production auth ideal. It is why offline login is explicit and default-off. A future credential migration should replace that field with a local salted password verifier without sending or displaying local verifier material.
 
 This is not hard CRUD enforcement. It does not add auto-sync, intervals, online/offline listeners, startup replay, or background replay.
 
