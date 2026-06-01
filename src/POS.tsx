@@ -765,6 +765,95 @@ if (isSale || isCustomerReturn) {
   /* --------------------------------------------------
      7️⃣ SAVE TRANSACTION
   -------------------------------------------------- */
+  const resolvedSaleBatches = new Map<number, ItemBatch>();
+  const resolvedSupplierReturnBatches = new Map<number, ItemBatch>();
+
+  if (isSale || isSupplierReturn) {
+    const plannedBatchQuantities = new Map<
+      number,
+      {
+        batch: ItemBatch;
+        qty: number;
+        itemName: string;
+      }
+    >();
+
+    for (const ci of cart) {
+      const item = preMutationItems.get(ci.originalItemId);
+      if (!item) continue;
+
+      const trackedBatches = (preMutationBatches.get(ci.originalItemId) ?? [])
+        .filter((batch) => !batch.isDeleted);
+      const availableBatches = [...trackedBatches]
+        .filter((batch) => Number(batch.balance) > 0)
+        .sort(
+          (a, b) =>
+            new Date(a.purchaseDate).getTime() -
+              new Date(b.purchaseDate).getTime() ||
+            Number(a.id ?? 0) - Number(b.id ?? 0)
+        );
+
+      let batch: ItemBatch | undefined;
+
+      if (isSale) {
+        if (ci.batchId != null) {
+          batch = trackedBatches.find((candidate) => candidate.id === ci.batchId);
+          if (!batch) {
+            alert(`Cannot sell ${item.name}: selected purchase batch is missing.`);
+            return;
+          }
+        } else if (trackedBatches.length > 0) {
+          batch = availableBatches[0];
+          if (!batch) {
+            alert(`Cannot sell ${item.name}: insufficient purchase batch balance.`);
+            return;
+          }
+        }
+
+        if (batch) {
+          resolvedSaleBatches.set(ci.id, batch);
+        }
+      }
+
+      if (isSupplierReturn) {
+        if (ci.batchId == null) {
+          if (trackedBatches.length === 0) continue;
+
+          alert(
+            `Cannot return ${item.name}: select the purchase batch being returned.`
+          );
+          return;
+        }
+
+        batch = trackedBatches.find((candidate) => candidate.id === ci.batchId);
+        if (!batch) {
+          alert(`Cannot return ${item.name}: selected purchase batch is missing.`);
+          return;
+        }
+
+        resolvedSupplierReturnBatches.set(ci.id, batch);
+      }
+
+      if (batch?.id != null) {
+        const existing = plannedBatchQuantities.get(batch.id);
+        plannedBatchQuantities.set(batch.id, {
+          batch,
+          qty: (existing?.qty ?? 0) + ci.qty,
+          itemName: item.name,
+        });
+      }
+    }
+
+    for (const { batch, qty, itemName } of plannedBatchQuantities.values()) {
+      if (qty > Number(batch.balance)) {
+        alert(
+          `Cannot ${isSupplierReturn ? "return" : "sell"} ${itemName}: insufficient purchase batch balance. Available: ${batch.balance}`
+        );
+        return;
+      }
+    }
+  }
+
   if (isCustomerReturn) {
     const plannedReturns = new Map<
       number,
@@ -1018,22 +1107,15 @@ for (const ci of cart) {
   if (isSale) {
   newStock -= ci.qty;
 
-  const batches = await batchRepository.getAllBatchesByItem(ci.originalItemId);
-
-  let batch = null;
-
-  if (ci.batchId) {
-    batch = batches.find(b => b.id === ci.batchId);
-  } else if (batches.length === 1) {
-    batch = batches[0];
-  }
+  const batch = resolvedSaleBatches.get(ci.id);
 
   if (batch) {
+    if (ci.qty > Number(batch.balance)) {
+      throw new Error("Insufficient purchase batch balance for sale.");
+    }
+
     batch.qtySold += ci.qty;
     batch.balance -= ci.qty;
-
-    // safety
-    batch.balance = Math.max(0, batch.balance);
 
     await batchRepository.updateBatch(batch);
   }
@@ -1091,19 +1173,11 @@ for (const ci of cart) {
 if (isSupplierReturn) {
   newStock -= ci.qty;
 
-  if (!ci.batchId) continue;
+  const batch = resolvedSupplierReturnBatches.get(ci.id);
+  if (!batch) continue;
 
-  const batches = await batchRepository.getAllBatchesByItem(ci.originalItemId);
-  const batch = batches.find(b => b.id === ci.batchId);
-
-  if (!batch) {
-    console.warn("Batch not found:", ci.batchId);
-    continue;
-  }
-
-  if (ci.qty > batch.balance) {
-    alert("Cannot return more than available batch balance");
-    continue;
+  if (ci.qty > Number(batch.balance)) {
+    throw new Error("Insufficient purchase batch balance for supplier return.");
   }
 
   batch.qtyPurchased -= ci.qty;
