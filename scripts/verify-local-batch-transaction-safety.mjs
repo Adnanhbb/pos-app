@@ -106,7 +106,7 @@ const preflightStart = posSource.indexOf(
   "const resolvedSaleBatches = new Map<number, ItemBatch>();"
 );
 const persistStart = posSource.indexOf(
-  "const saleId = await salesRepository.addTransaction"
+  "const saleId = await finalizeLocalPOSTransaction"
 );
 
 assert(
@@ -141,7 +141,7 @@ assert(
   "supplier return requires and defensively validates its approved batch"
 );
 assert(
-  posSource.includes("await batchRepository.addBatch({") &&
+  posSource.includes("batchCreates.push({") &&
     posSource.includes("qtyPurchased: ci.qty,") &&
     posSource.includes("balance: ci.qty,"),
   "purchase and customer-return batch creation behavior remains present"

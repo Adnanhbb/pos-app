@@ -8,10 +8,8 @@ import { customersRepository } from "./repositories/customerRepository";
 import { suppliersRepository as supplierRepo } from "./repositories/suppliersRepository";
 import { categoriesRepository } from "./repositories/categoriesRepository";
 import { brandsRepository } from "./repositories/brandsRepository";
-import type { Brand, Category, DBHeld, DBHeldItem, Item, ItemBatch } from "./types/entities";
+import type { Brand, Category, CustomerPayment, Cylinder, CylinderCustomer, DBHeld, DBHeldItem, Item, ItemBatch, SupplierPayment } from "./types/entities";
 import { salesRepository } from "./repositories/salesRepository";
-import { customerPaymentRepository } from "./repositories/customerPaymentRepository";
-import { supplierPaymentRepository } from "./repositories/supplierPaymentRepository";
 import { discountRepository } from "./repositories/discountRepository";
 import { taxRepository } from "./repositories/taxRepository";
 import type { Discount, Tax } from "./types/entities";
@@ -19,8 +17,8 @@ import { printInvoice } from "./services/printing/printService";
 import { useLang } from "./i18n/LanguageContext";
 import { heldRepository } from "./repositories/heldRepository";
 import { batchRepository } from "./repositories/batchRepository";
-import { syncCylinderInventoryForSale,cylinderRepo_getByItemId,cylinderRepo_update } from "./repositories/cylinderRepository";
-import {cylinderCustomerRepo_addOrUpdate, cylinderCustomerRepository} from "./repositories/cylinderCustomerRepository";
+import { cylinderRepo_getByItemId } from "./repositories/cylinderRepository";
+import { cylinderCustomerRepository } from "./repositories/cylinderCustomerRepository";
 import {
   buildReturnTransactionPayload,
   buildSaleTransactionPayload,
@@ -28,6 +26,7 @@ import {
 } from "./services/posTransactionPayloadBuilder";
 import { queueOfflineTransaction } from "./services/transactionQueueService";
 import { markPOSActivityStarted, markPOSActivityStopped } from "./services/posActivityState";
+import { finalizeLocalPOSTransaction, type PendingItemBatch } from "./services/localPOSFinalizationService";
 
 // =====================
 // Types
@@ -916,10 +915,13 @@ if (isSale || isCustomerReturn) {
     }
   }
 
-  const saleId = await salesRepository.addTransaction({
-    ...saleHeader,
-    items: transactionItems,
-  });
+  const itemUpdates: Item[] = [];
+  const batchUpdates: ItemBatch[] = [];
+  const batchCreates: PendingItemBatch[] = [];
+  const cylinderUpdates: Cylinder[] = [];
+  const cylinderCustomerUpdates: Array<
+    CylinderCustomer | Omit<CylinderCustomer, "id">
+  > = [];
 
 
 /* --------------------------------------------------
@@ -931,7 +933,7 @@ if (isSale || isCustomerReturn) {
 if (isSale || isPurchase || isCustomerReturn || isSupplierReturn) {
 
  for (const ci of cart) {
-  const item = await itemsRepository.getById(ci.originalItemId);
+  const item = preMutationItems.get(ci.originalItemId);
   if (!item) continue;
 
   const isCylinderItem =
@@ -949,7 +951,7 @@ const maxQty = Math.floor(ci.qty / convQty);
 // if no full cylinder movement → skip cylinder update
 if (maxQty <= 0) continue;
 
-  const cylinder = await cylinderRepo_getByItemId(item.id!);
+  const cylinder = preMutationCylinders.get(ci.originalItemId);
   if (!cylinder || cylinder.isDeleted) continue;
 
   let updatedCylinder = { ...cylinder };
@@ -960,12 +962,14 @@ if (maxQty <= 0) continue;
   updatedCylinder.filledCylinders -= maxQty;
   updatedCylinder.withCustomers += maxQty;
 
-  await cylinderCustomerRepo_addOrUpdate({
-    cylinderId: cylinder.id!,
-    cylinderType: cylinder.title,
-    customerName,
-    qtyChange: maxQty,
-  });
+  cylinderCustomerUpdates.push(
+    await cylinderCustomerRepository.prepareHoldingUpdate(
+      cylinder.id!,
+      cylinder.title,
+      customerName,
+      maxQty
+    )
+  );
 }
 
   if (isPurchase) {
@@ -980,12 +984,14 @@ if (maxQty <= 0) continue;
   updatedCylinder.withCustomers -= maxQty;
   updatedCylinder.emptyCylinders += maxQty;
 
-  await cylinderCustomerRepo_addOrUpdate({
-    cylinderId: cylinder.id!,
-    cylinderType: cylinder.title,
-    customerName,
-    qtyChange: -maxQty,
-  });
+  cylinderCustomerUpdates.push(
+    await cylinderCustomerRepository.prepareHoldingUpdate(
+      cylinder.id!,
+      cylinder.title,
+      customerName,
+      -maxQty
+    )
+  );
 }
 
   if (isSupplierReturn) {
@@ -995,15 +1001,23 @@ if (maxQty <= 0) continue;
   updatedCylinder.filledCylinders = Math.max(0, updatedCylinder.filledCylinders);
   updatedCylinder.withCustomers = Math.max(0, updatedCylinder.withCustomers);
 
-  await cylinderRepo_update(updatedCylinder);
+  updatedCylinder.qtyInStock =
+    updatedCylinder.filledCylinders +
+    updatedCylinder.emptyCylinders +
+    updatedCylinder.withCustomers;
+
+  cylinderUpdates.push(updatedCylinder);
 }
 }
 
   /* --------------------------------------------------
    8️⃣ UPDATE CUSTOMER (SALE & RETURN)
 -------------------------------------------------- */
+let customerUpdate: Awaited<ReturnType<typeof customersRepository.getById>>;
+let customerPayment: Omit<CustomerPayment, "id"> | undefined;
+
 if ((isSale || isReturn) && customerId) {
-  const customer = await customersRepository.getById(customerId);
+  const customer = preMutationCustomer;
   if (customer) {
 
     const effectivePaid = isReturn
@@ -1018,17 +1032,17 @@ if ((isSale || isReturn) && customerId) {
     const newPaid = (customer.paid ?? 0) + effectivePaid;
     const newBalance = newPayable - newPaid;
 
-    await customersRepository.update({
+    customerUpdate = {
       ...customer,
       payable: newPayable,
       paid: newPaid,
       balance: newBalance,
       invoices: (customer.invoices ?? 0) + 1,
-    });
+    };
 
     // 🔁 Payment entry (negative for Return)
     if (effectivePaid !== 0) {
-      await customerPaymentRepository.add({
+      customerPayment = {
         customerId: customer.id!,
         customerName: customer.name,
         invoiceNo,
@@ -1041,7 +1055,7 @@ if ((isSale || isReturn) && customerId) {
         // ✅ FIXED
         payableSnapshot: invoicePayable,
         balanceSnapshot: newBalance,
-      });
+      };
 }
   }
 }
@@ -1049,8 +1063,11 @@ if ((isSale || isReturn) && customerId) {
   /* --------------------------------------------------
      9️⃣ UPDATE SUPPLIER (PURCHASE)
   -------------------------------------------------- */
+  let supplierUpdate: Awaited<ReturnType<typeof supplierRepo.getById>>;
+  let supplierPayment: Omit<SupplierPayment, "id"> | undefined;
+
   if ((isPurchase || isSupplierReturn) && supplierId) {
-  const supplier = await supplierRepo.getById(supplierId);
+  const supplier = preMutationSupplier;
   if (supplier) {
 
     const effectivePaid = isSupplierReturn
@@ -1066,17 +1083,17 @@ if ((isSale || isReturn) && customerId) {
 
     const newBalance = newPayable - newPaid;
 
-    await supplierRepo.update({
+    supplierUpdate = {
       ...supplier,
       payable: newPayable,
       paid: newPaid,
       balance: newBalance,
       invoices: (supplier.invoices ?? 0) + 1,
-    });
+    };
 
     // 🔁 Payment entry (negative for Supplier Return)
     if (effectivePaid !== 0) {
-      await supplierPaymentRepository.add({
+      supplierPayment = {
         supplierId: supplier.id!,
         supplierName: supplier.name,
         invoiceNo,
@@ -1088,7 +1105,7 @@ if ((isSale || isReturn) && customerId) {
 
         payableSnapshot: invoicePayable,
         balanceSnapshot: newBalance,
-      });
+      };
     }
   }
 }
@@ -1098,7 +1115,7 @@ if ((isSale || isReturn) && customerId) {
 -------------------------------------------------- */
 
 for (const ci of cart) {
-  const item = await itemsRepository.getById(ci.originalItemId);
+  const item = preMutationItems.get(ci.originalItemId);
   if (!item) continue;
 
   let newStock = item.availableStock;
@@ -1114,10 +1131,11 @@ for (const ci of cart) {
       throw new Error("Insufficient purchase batch balance for sale.");
     }
 
-    batch.qtySold += ci.qty;
-    batch.balance -= ci.qty;
-
-    await batchRepository.updateBatch(batch);
+    batchUpdates.push({
+      ...batch,
+      qtySold: batch.qtySold + ci.qty,
+      balance: batch.balance - ci.qty,
+    });
   }
 }
 
@@ -1125,7 +1143,7 @@ for (const ci of cart) {
   if (isPurchase) {
     newStock += ci.qty;
 
-    await batchRepository.addBatch({
+    batchCreates.push({
       itemId: ci.originalItemId,
       purchaseDate: selectedDate
         ? new Date(selectedDate).toISOString()
@@ -1137,7 +1155,6 @@ for (const ci of cart) {
 
       costPrice: ci.minUnitPrice,
 
-      sourceSaleId: saleId,
       invoiceNo,
 
       isDeleted: false,
@@ -1150,7 +1167,7 @@ for (const ci of cart) {
     newStock += ci.qty;
 
     // ✅ CREATE NEW RETURN BATCH (your chosen design)
-    await batchRepository.addBatch({
+    batchCreates.push({
       itemId: ci.originalItemId,
       purchaseDate: new Date().toISOString(),
 
@@ -1161,7 +1178,6 @@ for (const ci of cart) {
       // 🔥 CRITICAL: ORIGINAL COST
       costPrice: ci.costPrice,
 
-      sourceSaleId: saleId,
       invoiceNo,
 
       isDeleted: false,
@@ -1180,20 +1196,35 @@ if (isSupplierReturn) {
     throw new Error("Insufficient purchase batch balance for supplier return.");
   }
 
-  batch.qtyPurchased -= ci.qty;
-  batch.balance -= ci.qty;
-
-  await batchRepository.updateBatch(batch);
+  batchUpdates.push({
+    ...batch,
+    qtyPurchased: batch.qtyPurchased - ci.qty,
+    balance: batch.balance - ci.qty,
+  });
 }
 
   /* ---------------- SAVE STOCK ---------------- */
-  await itemsRepository.update({
+  itemUpdates.push({
     ...item,
     availableStock: newStock,
   });
 }
 
 // ✅ refresh customers so latest dues appear
+const saleId = await finalizeLocalPOSTransaction({
+  sale: saleHeader,
+  saleItems: transactionItems,
+  itemUpdates,
+  batchUpdates,
+  batchCreates,
+  cylinderUpdates,
+  cylinderCustomerUpdates,
+  customerUpdate,
+  supplierUpdate,
+  customerPayment,
+  supplierPayment,
+});
+
 const updatedCustomers = await customersRepository.getAll();
 
 setCustomers(

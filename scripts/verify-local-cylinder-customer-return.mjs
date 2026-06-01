@@ -70,7 +70,7 @@ const customerReturnBranch = posSource.slice(
 );
 const preflightStart = posSource.indexOf("const plannedReturns = new Map<");
 const persistStart = posSource.indexOf(
-  "const saleId = await salesRepository.addTransaction"
+  "const saleId = await finalizeLocalPOSTransaction"
 );
 
 assert(cylinderManagementStart >= 0, "live POS cylinder management block exists");

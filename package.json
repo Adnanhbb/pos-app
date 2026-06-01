@@ -74,6 +74,7 @@
                     "sync:verify-existing":  "node scripts/verify-existing-sync-coverage.mjs",
                     "test:local:cylinder-customer-return":  "node scripts/verify-local-cylinder-customer-return.mjs",
                     "test:local:batch-transaction-safety":  "node scripts/verify-local-batch-transaction-safety.mjs",
+                    "test:local:pos-finalization-safety":  "node scripts/verify-local-pos-finalization-safety.mjs",
                     "support:user:create":  "php scripts/create-developer-support-user.php"
                 },
     "dependencies":  {

@@ -38,15 +38,12 @@ export const cylinderCustomerRepository = {
     await updateCylinderCustomer(customer);
   },
 
-  /* ---------------- UPSERT (MAIN LOGIC) ---------------- */
-
-  async upsertHolding(
+  async prepareHoldingUpdate(
     cylinderId: number,
     cylinderType: string,
     customerName: string,
     qtyChange: number
-  ): Promise<void> {
-
+  ): Promise<CylinderCustomer | Omit<CylinderCustomer, "id">> {
     const all = await getCylinderCustomersByCylinder(cylinderId);
 
     const existing = all.find(
@@ -62,24 +59,45 @@ export const cylinderCustomerRepository = {
         throw new Error("Customer does not hold enough cylinders for this return.");
       }
 
-      await updateCylinderCustomer({
+      return {
         ...existing,
         qtyHeld: newQty,
-      });
+      };
+    }
 
+    if (safeNumber(qtyChange) < 0) {
+      throw new Error("Customer does not hold enough cylinders for this return.");
+    }
+
+    return {
+      cylinderId,
+      cylinderType,
+      customerName,
+      qtyHeld: safeNumber(qtyChange),
+      isDeleted: false,
+      deletedAt: null,
+    };
+  },
+
+  /* ---------------- UPSERT (MAIN LOGIC) ---------------- */
+
+  async upsertHolding(
+    cylinderId: number,
+    cylinderType: string,
+    customerName: string,
+    qtyChange: number
+  ): Promise<void> {
+    const holding = await cylinderCustomerRepository.prepareHoldingUpdate(
+      cylinderId,
+      cylinderType,
+      customerName,
+      qtyChange
+    );
+
+    if (!("id" in holding) || holding.id == null) {
+      await addCylinderCustomer(holding as Omit<CylinderCustomer, "id">);
     } else {
-      if (safeNumber(qtyChange) < 0) {
-        throw new Error("Customer does not hold enough cylinders for this return.");
-      }
-
-      await addCylinderCustomer({
-        cylinderId,
-        cylinderType,
-        customerName,
-        qtyHeld: safeNumber(qtyChange),
-        isDeleted: false,
-        deletedAt: null,
-      });
+      await updateCylinderCustomer(holding);
     }
   },
 
