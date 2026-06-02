@@ -1513,3 +1513,36 @@ npm.cmd run test:transactions:finalized-sale-manual-replay
 Purchase, Customer Return, Supplier Return, standalone payment replay,
 invoice cancellation, startup replay, polling, listeners, workers, background
 replay, and auto-sync remain deferred.
+
+## Finalized Purchase Backend Replay Design Audit
+
+The next transaction-replay slice has been audited in
+[finalized-purchase-backend-replay-design-audit.md](./finalized-purchase-backend-replay-design-audit.md).
+
+Local finalized Purchase behavior remains the IndexedDB reference:
+
+- one atomic local commit stores the Purchase header and line items;
+- item stock increases;
+- one local batch row is created per Purchase cart line;
+- an optional selected supplier summary and non-zero supplier payment row are
+  updated atomically;
+- mapped cylinder Purchase lines increase filled cylinders and total cylinder
+  stock;
+- direct Purchases remain valid without a selected supplier.
+
+Backend schema coverage and internal replay primitives already exist, but the
+queued Purchase remains a legacy storage-only envelope. It does not yet carry
+`finalizedPurchaseReplay` v1, Purchase-specific `replayReadiness`, explicit
+server-only item targets, safe batch-create correlation metadata, or optional
+supplier/cylinder server mappings.
+
+The recommended next task is Purchase payload hardening and fixture
+verification. Do not add `api/replay/purchase.php` until ready and unsafe
+Purchase payloads can be distinguished safely. The future endpoint should stay
+separate from Sale replay, reload stored payload by `clientTransactionId`, use
+one MySQL transaction, return backend-created batch mappings, and remain
+authenticated, explicit, manual-only, and idempotent.
+
+No Purchase endpoint, queue routing change, POS behavior change, background
+replay, startup replay, polling, listeners, workers, or auto-sync is added by
+this audit.
