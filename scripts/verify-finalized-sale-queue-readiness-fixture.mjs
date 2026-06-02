@@ -87,8 +87,8 @@ try {
     "fixture uses a uniquely named IndexedDB database instead of live POSDatabase"
   );
   assert(
-    !existsSync(backendSaleReplayPath),
-    "backend Sale replay HTTP endpoint remains unimplemented"
+    existsSync(backendSaleReplayPath),
+    "narrow backend Sale replay HTTP endpoint exists"
   );
 
   const localSale = await page.evaluate(
@@ -515,7 +515,7 @@ try {
         backendBusinessMutationRequests: observedApiRequests.filter(
           (request) => request.method !== "GET" && request.method !== "HEAD"
         ).length,
-        backendSaleReplayEndpointAdded: false,
+        backendSaleReplayEndpointAdded: true,
         replayTriggered: false,
         autoSyncChanged: false,
       },
@@ -545,4 +545,3 @@ try {
     )
   );
 }
-

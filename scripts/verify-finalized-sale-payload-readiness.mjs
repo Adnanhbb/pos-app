@@ -302,7 +302,7 @@ assert(
     finalizationSource.includes("await tx.done;"),
   "local IndexedDB finalization remains the existing atomic commit path"
 );
-assert(!existsSync(backendSaleReplayPath), "backend Sale replay HTTP endpoint remains unimplemented");
+assert(existsSync(backendSaleReplayPath), "narrow backend Sale replay HTTP endpoint exists");
 
 console.log(
   JSON.stringify(
@@ -318,7 +318,7 @@ console.log(
           ...unsafeCylinderContract.replayReadiness.reasons.map((reason) => reason.code),
         ]),
       ].sort(),
-      backendSaleReplayEndpointAdded: false,
+      backendSaleReplayEndpointAdded: true,
       localPOSBehaviorChanged: false,
       autoSyncChanged: false,
       sourceModule: pathToFileURL(builderPath).href,

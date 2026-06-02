@@ -1449,27 +1449,21 @@ The local IndexedDB `Password` field remains a documented legacy credential risk
 The first production transaction-replay slice has been audited in
 [finalized-sale-backend-replay-design-audit.md](./finalized-sale-backend-replay-design-audit.md).
 
-The backend already has broad internal replay primitives, but the production
-HTTP bridge remains intentionally unimplemented. Completed, non-postponed
-local Sales now queue an explicit `finalizedSaleReplay` v1 contract with
+The backend broad internal replay primitives remain unexposed. Completed,
+non-postponed local Sales queue an explicit `finalizedSaleReplay` v1 contract with
 separate local correlation ids and backend `serverId` mappings for items,
 selected customers, exact resolved batches, and cylinders. Queue rows also
 copy safe `replayReadiness` diagnostics with `ready` or `unsafe` status and
 mapping reason codes. The read-only `sync:report` command summarizes those
 codes without printing record bodies.
 
-The hardened queue contract does not execute replay and does not block a
-locally completed Sale when a backend mapping is unavailable. Additional
-blockers still include cylinder Sale parity decisions, canonical
-customer-payment schema coverage, payment snapshot semantics, and
-storage-to-replay orchestration.
-
-Recommended next step: resolve the remaining Sale-only prerequisites, then add
-a narrow authenticated Sale-only endpoint that consumes the v1 contract and
-rejects `unsafe` rows before MySQL mutation. Do not expose the broad helper
-directly. Purchase, Returns, standalone payments, invoice cancellation,
-auto-sync, polling, listeners, workers, startup replay, and background replay
-remain deferred.
+The hardened queue contract does not execute replay automatically and does not
+block a locally completed Sale when a backend mapping is unavailable. The
+narrow authenticated `api/replay/sale.php` endpoint is now implemented for
+explicit manual processing of ready v1 payloads only. It rejects unsafe rows
+before MySQL mutation and does not expose the broad helper directly. Purchase,
+Returns, standalone payments, invoice cancellation, auto-sync, polling,
+listeners, workers, startup replay, and background replay remain deferred.
 
 ## Item Profile Mapping Audit
 
@@ -1491,7 +1485,31 @@ CRUD path.
   registration/bootstrap contract with strict allowlisting and explicit local
   `serverId` mirroring.
 
-Reliable `serverItemId` mappings are required for future finalized Sale replay,
-but item mapping alone is not enough for batch-tracked or cylinder Sales. No
-item migration, Sale replay endpoint, POS behavior change, background sync, or
-auto-sync is added by this audit.
+Reliable `serverItemId` mappings are required for finalized Sale replay, but
+item mapping alone is not enough for batch-tracked or cylinder Sales. No item
+migration, POS behavior change, background sync, or auto-sync is added by this
+audit.
+
+## Manual Finalized Sale Replay V1
+
+The first narrow backend replay endpoint now exists at `api/replay/sale.php`.
+It is manual-only and authenticated. Explicit manual queue processing stores a
+ready finalized Sale, then calls the endpoint by `clientTransactionId`.
+
+The backend reloads the stored payload and accepts only `finalizedSaleReplay`
+v1 with `transactionType: "Sale"` and `replayReadiness: ready`. It builds a
+server-id-only mutation envelope and applies the Sale header/items, item stock
+decrease, exact mapped batch decrease, selected-customer accounting/payment
+effect, and mapped cylinder issue in one MySQL transaction. Unsafe contracts
+are rejected before mutation. Duplicate replay is terminal-state skipped
+without duplicate business writes.
+
+Run:
+
+```powershell
+npm.cmd run test:transactions:finalized-sale-manual-replay
+```
+
+Purchase, Customer Return, Supplier Return, standalone payment replay,
+invoice cancellation, startup replay, polling, listeners, workers, background
+replay, and auto-sync remain deferred.

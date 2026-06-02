@@ -153,6 +153,34 @@ function isOfflineTransactionPayload(
   );
 }
 
+function isFinalizedSalePayload(payload: OfflineTransactionPayload) {
+  const sale = payload.payload?.sale;
+
+  return (
+    payload.transactionType === "sale" &&
+    sale?.transactionType === "Sale" &&
+    sale?.isPostponed !== true
+  );
+}
+
+function assertReadyFinalizedSaleReplay(payload: OfflineTransactionPayload) {
+  const contract = payload.payload?.finalizedSaleReplay;
+
+  if (
+    payload.transactionType !== "sale" ||
+    payload.replayReadiness?.payloadVersion !== 1 ||
+    payload.replayReadiness.status !== "ready" ||
+    payload.replayReadiness.reasons.length !== 0 ||
+    contract?.payloadVersion !== 1 ||
+    contract?.transactionType !== "Sale" ||
+    contract?.replayReadiness?.status !== "ready"
+  ) {
+    throw new Error(
+      "Finalized Sale replay is blocked because its backend mappings are not replay-ready."
+    );
+  }
+}
+
 export const syncEngine = {
   async canSync(): Promise<boolean> {
     return await connectivityService.isFullyOnline();
@@ -247,6 +275,13 @@ export const syncEngine = {
       // customer/supplier balances, payments, and cylinders.
       if (!isOfflineTransactionPayload(item.payload)) {
         throw new Error("Invalid offline transaction payload.");
+      }
+
+      if (isFinalizedSalePayload(item.payload)) {
+        assertReadyFinalizedSaleReplay(item.payload);
+        await transactionApi.postTransaction(item.payload);
+        await transactionApi.replayFinalizedSale(item.payload.clientTransactionId);
+        return;
       }
 
       await transactionApi.postTransaction(item.payload);

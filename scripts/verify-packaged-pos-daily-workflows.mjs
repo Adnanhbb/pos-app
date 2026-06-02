@@ -45,7 +45,7 @@ function markdownReport(report) {
     "- Copied Laragon frontend origin only.",
     "- Unique temporary IndexedDB database only; live `POSDatabase` is not opened.",
     "- API requests are blocked.",
-    "- No backend Sale replay endpoint is added or called.",
+    "- The narrow backend Sale replay endpoint is not called.",
     "- No auto-sync, background sync, polling, listeners, or workers are added.",
     "",
     "## Checks",
@@ -152,8 +152,8 @@ function assertSourceContract() {
       invoicesSource.includes("salesRepository.getSaleItems")
   );
   check(
-    "backend Sale replay HTTP endpoint remains absent",
-    !existsSync(backendSaleReplayPath)
+    "narrow backend Sale replay HTTP endpoint exists",
+    existsSync(backendSaleReplayPath)
   );
 }
 
@@ -777,7 +777,8 @@ try {
       livePOSDatabaseTouched: false,
       mysqlBusinessDataMutated: false,
       replayTriggered: false,
-      backendSaleReplayEndpointAdded: false,
+      backendSaleReplayEndpointAdded: true,
+      backendSaleReplayCalled: false,
       itemCreateDeleteMigrationAdded: false,
       autoSyncEnabled: false,
       backgroundSyncAdded: false,

@@ -401,6 +401,52 @@ CREATE TABLE IF NOT EXISTS sale_items (
 
 INSERT IGNORE INTO schema_migrations (migration)
 VALUES ('phase_10_sales_persistence_replay');
+
+CREATE TABLE IF NOT EXISTS customer_payments (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    customerId BIGINT UNSIGNED NOT NULL,
+    customerName VARCHAR(180) NULL,
+    invoiceNo VARCHAR(120) NULL,
+    amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    paymentDate VARCHAR(50) NULL,
+    remarks TEXT NULL,
+    payableSnapshot DECIMAL(12,2) NOT NULL DEFAULT 0,
+    balanceSnapshot DECIMAL(12,2) NOT NULL DEFAULT 0,
+    sync_transaction_id BIGINT UNSIGNED NULL UNIQUE,
+    client_transaction_id VARCHAR(150) NULL,
+    sale_id BIGINT UNSIGNED NULL,
+    source VARCHAR(80) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_customer_payments_customerId (customerId),
+    INDEX idx_customer_payments_invoiceNo (invoiceNo),
+    INDEX idx_customer_payments_client_transaction_id (client_transaction_id),
+    INDEX idx_customer_payments_sale_id (sale_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS supplier_payments (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    supplierId BIGINT UNSIGNED NOT NULL,
+    supplierName VARCHAR(180) NULL,
+    invoiceNo VARCHAR(120) NULL,
+    amount DECIMAL(12,2) NOT NULL DEFAULT 0,
+    paymentDate VARCHAR(50) NULL,
+    remarks TEXT NULL,
+    payableSnapshot DECIMAL(12,2) NOT NULL DEFAULT 0,
+    balanceSnapshot DECIMAL(12,2) NOT NULL DEFAULT 0,
+    sync_transaction_id BIGINT UNSIGNED NULL UNIQUE,
+    client_transaction_id VARCHAR(150) NULL,
+    sale_id BIGINT UNSIGNED NULL,
+    source VARCHAR(80) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_supplier_payments_supplierId (supplierId),
+    INDEX idx_supplier_payments_invoiceNo (invoiceNo),
+    INDEX idx_supplier_payments_client_transaction_id (client_transaction_id),
+    INDEX idx_supplier_payments_sale_id (sale_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO schema_migrations (migration)
+VALUES ('phase_10_payment_ledgers_replay');
+
 CREATE TABLE IF NOT EXISTS item_batches (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     itemId BIGINT UNSIGNED NOT NULL,
