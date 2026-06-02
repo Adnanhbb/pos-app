@@ -8,10 +8,17 @@
  *
  * Windows PowerShell:
  *   $env:APP_URL="http://localhost:5173"
+ *   $env:SYNC_TOOLS_USER_DATA_DIR="<optional-shared-profile-path>"
  *   npm run sync:report
  */
 
+import { tmpdir } from "node:os";
+import { resolve } from "node:path";
+
 const APP_URL = process.env.APP_URL || "http://localhost:5173";
+const USER_DATA_DIR =
+  process.env.SYNC_TOOLS_USER_DATA_DIR ||
+  resolve(tmpdir(), "jawad-bro-sync-tools-profile");
 const DB_NAME = "POSDatabase";
 const DB_VERSION = 20;
 
@@ -62,6 +69,16 @@ function sanitizeQueueRow(row) {
         }
       : null,
   };
+}
+
+function isFinalizedSaleQueueRow(row) {
+  return (
+    row.entity === "transactions" &&
+    row.operation === "transaction" &&
+    row.payload?.transactionType === "sale" &&
+    row.payload?.payload?.sale?.transactionType === "Sale" &&
+    row.payload?.payload?.sale?.isPostponed !== true
+  );
 }
 
 async function loadPlaywright() {
@@ -115,12 +132,16 @@ async function readSyncQueue(page) {
 async function main() {
   console.log("Dev-only sync_queue diagnostics report. Read-only; no replay is performed.");
   console.log(`APP_URL: ${APP_URL}`);
+  console.log(`SYNC_TOOLS_USER_DATA_DIR: ${USER_DATA_DIR}`);
 
   const playwright = await loadPlaywright();
   if (!playwright) return;
 
-  const browser = await playwright.chromium.launch({ headless: true });
-  const page = await browser.newPage();
+  const browser = await playwright.chromium.launchPersistentContext(
+    USER_DATA_DIR,
+    { headless: true }
+  );
+  const page = browser.pages()[0] ?? await browser.newPage();
 
   try {
     const pageResponse = await page.goto(APP_URL, { waitUntil: "networkidle" });
@@ -138,6 +159,7 @@ async function main() {
     const rows = await readSyncQueue(page);
     const pendingRows = rows.filter((row) => row.status === "pending");
     const failedRows = rows.filter((row) => row.status === "failed");
+    const finalizedSaleRows = rows.filter(isFinalizedSaleQueueRow);
     const pendingCreatedAtValues = pendingRows
       .map((row) => Number(row.createdAt))
       .filter((value) => !Number.isNaN(value));
@@ -169,6 +191,24 @@ async function main() {
         ),
         unsafeReasons: countBy(
           rows.flatMap((row) => row.replayReadiness?.reasons ?? []),
+          (reason) => reason.code
+        ),
+      },
+      finalizedSaleReplayReadiness: {
+        totalRows: finalizedSaleRows.length,
+        ready: finalizedSaleRows.filter(
+          (row) => row.replayReadiness?.status === "ready"
+        ).length,
+        unsafe: finalizedSaleRows.filter(
+          (row) => row.replayReadiness?.status === "unsafe"
+        ).length,
+        missingContract: finalizedSaleRows.filter(
+          (row) => !row.payload?.payload?.finalizedSaleReplay
+        ).length,
+        unsafeReasons: countBy(
+          finalizedSaleRows.flatMap(
+            (row) => row.replayReadiness?.reasons ?? []
+          ),
           (reason) => reason.code
         ),
       },
