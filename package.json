@@ -78,6 +78,7 @@
                     "test:local:finalized-sale-payload-readiness":  "node scripts/verify-finalized-sale-payload-readiness.mjs",
                     "test:local:finalized-sale-queue-readiness-fixture":  "node scripts/verify-finalized-sale-queue-readiness-fixture.mjs",
                     "test:transactions:finalized-sale-manual-replay":  "node scripts/test-finalized-sale-manual-replay.mjs",
+                    "test:packaged:finalized-sale-manual-replay":  "node scripts/verify-packaged-finalized-sale-manual-replay.mjs",
                     "test:packaged:pos-daily-workflows":  "node scripts/verify-packaged-pos-daily-workflows.mjs",
                     "support:user:create":  "php scripts/create-developer-support-user.php"
                 },
