@@ -1470,3 +1470,28 @@ rejects `unsafe` rows before MySQL mutation. Do not expose the broad helper
 directly. Purchase, Returns, standalone payments, invoice cancellation,
 auto-sync, polling, listeners, workers, startup replay, and background replay
 remain deferred.
+
+## Item Profile Mapping Audit
+
+The safe item profile boundary has been audited without migrating any new item
+CRUD path.
+
+- Existing mapped item rows may send profile-only updates for `name`,
+  `barcode`, `description`, and purchase/retail/discount/wholesale prices.
+- `availableStock`, opening-stock batches, cylinder state, category/brand/unit
+  relationships, `ConvQty`, lookup usage counts, and delete lifecycle remain
+  local or transaction-owned.
+- Ordinary item creation remains local-only because the Items screen may create
+  an opening-stock batch, a cylinder row, and lookup-counter cascades alongside
+  the item row.
+- Existing unmapped local items require controlled registration or hydration
+  review. Local numeric ids, names, and barcodes must not be used as blind MySQL
+  mutation keys.
+- Future item mapping work should be a separately approved profile
+  registration/bootstrap contract with strict allowlisting and explicit local
+  `serverId` mirroring.
+
+Reliable `serverItemId` mappings are required for future finalized Sale replay,
+but item mapping alone is not enough for batch-tracked or cylinder Sales. No
+item migration, Sale replay endpoint, POS behavior change, background sync, or
+auto-sync is added by this audit.

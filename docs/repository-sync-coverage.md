@@ -1,6 +1,6 @@
 # Repository Sync Coverage Audit
 
-Last reviewed: 2026-05-26
+Last reviewed: 2026-06-02
 
 This document records which frontend repositories currently attempt backend CRUD writes during normal repository operations and which still write only to local IndexedDB. It is an audit snapshot only; it does not change runtime behavior, enable auto-sync, or migrate additional repositories.
 
@@ -46,6 +46,92 @@ Important detail: if a customer/supplier update changes accounting summary field
 | `itemsRepository.ts` | `items` | update only when the existing row has `serverId` and only safe profile fields changed: name, barcode, description, purchase/retail/discount/wholesale prices | create, delete, restore, permanent delete, stock changes, unit/category/brand conversion cascades, and unsafe updates remain local-only. |
 
 Item create/delete should not be broadly migrated yet. Item creation can involve opening stock, batches, cylinders, and count/cascade effects. Stock and inventory relationships require backend-authoritative atomic endpoints.
+
+## Item Profile Sync Audit
+
+The existing item repository boundary is intentionally narrow and should remain
+in place until a dedicated mapping/bootstrap contract is approved.
+
+### Safe Profile Fields
+
+The following fields may be sent by a profile-only item update when the local
+row already has a trusted backend `serverId`:
+
+- `name`
+- `barcode`
+- `description`
+- `purchasePrice`
+- `retailPrice`
+- `discountPrice`
+- `wholesalePrice`
+
+`itemsRepository.update()` already applies this allowlist through
+`pickSafeItemProfilePayload()`. If any stock or cascade field changes, it
+stores the update locally and does not send an isolated backend item update.
+
+### Transaction-Owned And Cascade-Sensitive Fields
+
+The following fields and relationships must not be synchronized as direct item
+profile CRUD:
+
+- transaction-owned stock: `availableStock`
+- batch balances and opening-stock batch creation
+- cylinder counts, cylinder-customer holdings, and cylinder row lifecycle
+- lookup/cascade fields: `category`, `brand`, `minunit`, `maxunit`, `ConvQty`
+- lookup usage counters for categories, brands, and units
+- item deletion state: `isDeleted`, `deletedAt`
+- the UI-only derived `openingStockMax` value
+
+The normal Items screen creation flow writes more than one local concept: it
+creates the item, may create an opening-stock batch, may create a cylinder row,
+and increments lookup usage counters. Edit, delete, restore, and permanent
+delete can also update related lookup, batch, cylinder, and cylinder-customer
+rows. A direct item POST or DELETE cannot safely represent those cascades.
+
+### Current Frontend And Backend Gap
+
+`api/items.php` exists, but its POST allowlist still accepts stock and cascade
+fields for a backend item row. It does not atomically create or reconcile the
+related batch, cylinder, or lookup-counter effects produced by the local Items
+screen. The frontend therefore deliberately keeps ordinary item creation
+local-only.
+
+Backend item updates are safer: `api/items.php` rejects stock and cascade
+fields during PUT/PATCH and accepts only the safe profile allowlist. This
+matches the existing mapped-row profile update path.
+
+### ServerId Mapping Rules
+
+- A future backend-aware item create or registration flow must persist the
+  returned backend id into the local row as `serverId`; the local IndexedDB id
+  remains a local correlation id only.
+- Existing local items without `serverId` require controlled reconciliation or
+  hydration review. They must not be blindly matched by local numeric id,
+  item name, or barcode.
+- Names and barcodes are indexed but not unique in the current MySQL schema.
+  Duplicate names or barcodes must become manual-review conflicts unless a
+  separate business uniqueness rule is approved.
+- MySQL `items.client_id` is unique, but a future multi-device registration
+  flow must define a device-safe namespace instead of assuming that a local
+  numeric id is globally unique.
+- The generic queue executor currently falls back from `serverId` to `localId`
+  for update targeting. An unmapped item profile update must not rely on that
+  fallback because a local id is not a safe MySQL item id.
+
+### Recommendation
+
+Do not migrate ordinary item create, delete, restore, or permanent delete yet.
+Keep the existing strict profile-only update behavior for rows that already
+have a trusted `serverId`.
+
+The smallest safe future implementation is a separately approved item
+profile-registration/bootstrap design with a strict profile allowlist,
+explicit handling for opening-stock/cascade effects, controlled matching for
+legacy local items, local `serverId` mirroring, and a queue rule that treats
+unmapped updates as registration-required or manual-review instead of backend
+updates. Reliable `serverItemId` mappings are necessary for finalized Sale
+replay readiness, but they are not sufficient by themselves: mapped batches
+and cylinders are still required when those mutations apply.
 
 ## IndexedDB-Only Repositories
 
