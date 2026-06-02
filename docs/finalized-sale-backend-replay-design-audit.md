@@ -11,9 +11,10 @@ one MySQL transaction when invoked by backend tests. However, the real POS
 queue payload still contains local IndexedDB identifiers in places where that
 processor expects MySQL primary keys.
 
-The next implementation should first harden the queued finalized-Sale payload
-contract, then add a narrow authenticated Sale-only replay endpoint. It should
-not expose the existing broad replay helper directly.
+The queued finalized-Sale payload contract is now hardened and versioned. The
+next backend implementation may add a narrow authenticated Sale-only replay
+endpoint after the remaining schema and parity prerequisites are resolved. It
+should not expose the existing broad replay helper directly.
 
 ## Current IndexedDB Sale Outcome
 
@@ -51,6 +52,22 @@ through `queueOfflineTransaction(...)`.
 The queue insertion is intentionally post-commit containment: if queueing
 fails, the finalized local Sale remains committed and a safe warning is
 reported.
+
+Completed, non-postponed `Sale` queue rows now also include
+`payload.finalizedSaleReplay` with `payloadVersion: 1`. This explicit contract
+keeps local ids as correlation metadata and carries backend `serverId`
+mappings separately for the customer, items, exact resolved batches, and
+cylinders. It includes safe name snapshots, min-unit conversion metadata,
+payment amount metadata, and totals without broad customer/item snapshots or
+sensitive fields.
+
+The queue row copies a safe `replayReadiness` summary beside the payload.
+`ready` means the currently required backend mappings are present. `unsafe`
+keeps the locally valid Sale queued while reporting safe reason codes such as
+`missing_server_item_id`, `missing_server_batch_id`,
+`missing_customer_server_id`, `missing_cylinder_mapping`, and
+`missing_server_cylinder_id`. Readiness never executes replay and never blocks
+the completed local Sale.
 
 When manually processed, `src/services/syncEngine.ts` sends transaction rows to
 `POST /api/transactions.php`. That endpoint currently:
@@ -106,7 +123,7 @@ require the customer payment table instead of silently skipping it.
 
 | Gap | Why it blocks a safe Sale endpoint |
 | --- | --- |
-| Local ids are sent as authoritative references | POS queues local `customerId`, item `originalItemId`, and optional local `batchId`. The replay processor interprets them as MySQL ids. Local and server ids are not guaranteed to match. |
+| Legacy storage envelope still exists | The queue keeps legacy `sale` and `saleItems` fields for storage compatibility. The new `finalizedSaleReplay` contract separates local correlation ids from backend ids, but the existing broad processor must not be exposed until it consumes and enforces the v1 contract. |
 | Item profile mapping is incomplete | Item create remains local-only. A locally sold item may not have a MySQL row or `serverId`. |
 | Batch identity and consumption rules drift | Local Sale resolves one selected or first-available FIFO batch per cart line and rejects if that one batch is insufficient. Backend replay can consume across multiple FIFO batches when `batchId` is absent. The queued line stores the cart `batchId`, not the resolved fallback batch id. |
 | Cylinder Sale rules are not yet identical | Local Sale detects category-based cylinder items and currently skips some missing mappings or invalid conversions and clamps negative filled counts. Backend replay is stricter and also treats an existing cylinder row as cylinder detection. The strict rule is safer, but parity must be decided before exposure. |
@@ -160,32 +177,44 @@ Do not return full payload snapshots, token data, or sensitive record bodies.
 Return sale-item mappings only if a later local mirror requirement proves they
 are needed.
 
-## Required Sale-Only Payload Version
+## Implemented Sale-Only Payload Version
 
-Introduce an explicit finalized-Sale replay payload version before the HTTP
-bridge is enabled. Server references must be separate from local correlation
-ids.
+The explicit finalized-Sale replay payload version now exists before the HTTP
+bridge is enabled. Server references are separate from local correlation ids.
 
 Minimum required concepts:
 
 ```json
 {
-  "saleReplayVersion": 1,
-  "sale": {
-    "transactionType": "Sale",
-    "isPostponed": false,
-    "customerServerId": 42
+  "payloadVersion": 1,
+  "transactionType": "Sale",
+  "localSaleId": 12,
+  "invoiceNo": "SAL-0001",
+  "clientTransactionId": "txn_...",
+  "customer": {
+    "localId": 7,
+    "serverId": 42,
+    "nameSnapshot": "Customer snapshot"
   },
-  "saleItems": [
+  "items": [
     {
-      "clientLineId": "line_...",
       "localItemId": 7,
-      "itemServerId": 81,
-      "resolvedBatchServerId": 15,
+      "serverItemId": 81,
       "qty": 2,
-      "price": 100
+      "price": 100,
+      "resolvedBatch": {
+        "localBatchId": 9,
+        "serverBatchId": 15,
+        "consumedQty": 2
+      }
     }
-  ]
+  ],
+  "replayReadiness": {
+    "scope": "finalized_sale",
+    "payloadVersion": 1,
+    "status": "ready",
+    "reasons": []
+  }
 }
 ```
 
@@ -197,7 +226,8 @@ Rules:
 - every sold item requires `itemServerId`
 - tracked batch Sale replay requires the exact resolved backend batch id
 - cylinder Sale replay must use the mapped backend item and locked cylinder row
-- unresolved mappings must fail safely before mutation
+- unresolved mappings are marked `unsafe` locally and must fail safely before
+  any future backend mutation
 
 ## Required Backend Sequence
 
@@ -258,23 +288,38 @@ This Sale-only design does not add or expose replay for:
 
 ## Recommended Next Task
 
-Implement payload-contract hardening and tests first:
+The queued payload contract and fixture-level verification are now in place.
+Continue with the remaining prerequisites before adding the endpoint:
 
-1. Add finalized-Sale replay payload versioning.
-2. Capture server ids separately from local ids.
-3. Capture the exact resolved batch mapping used by local Sale finalization.
-4. Align or explicitly gate cylinder Sale handling.
-5. Add canonical customer payment-ledger schema migration.
-6. Define the local payment snapshot field semantics.
-7. Return `syncTransactionId` from storage ingestion or locate stored rows by
+1. Align or explicitly gate cylinder Sale handling.
+2. Add canonical customer payment-ledger schema migration.
+3. Define the local payment snapshot field semantics.
+4. Return `syncTransactionId` from storage ingestion or locate stored rows by
    `clientTransactionId`.
-8. Add tests proving local ids are never used as MySQL mutation ids.
+5. Teach the narrow Sale-only endpoint to consume v1 backend ids and reject
+   `unsafe` payloads before mutation.
+6. Add backend tests proving local ids are never used as MySQL mutation ids.
 
 After those prerequisites pass, add the Sale-only authenticated replay endpoint
 as a separate task.
 
+## Payload Readiness Verification
+
+Run:
+
+```powershell
+npm.cmd run test:local:finalized-sale-payload-readiness
+```
+
+The verifier executes the real payload builder against safe fixtures. It
+checks a fully mapped `ready` payload, missing-mapping `unsafe` reasons, safe
+snapshot omission, queue-row readiness metadata, exact resolved-batch mapping,
+local/server id separation, unchanged local atomic finalization, and the
+absence of `api/replay/sale.php`.
+
 ## Safety Boundary
 
-This audit changes documentation only. It does not change POS finalization,
-IndexedDB writes, transaction ingestion, replay semantics, sync queue behavior,
-authentication behavior, or auto-sync behavior.
+Payload hardening adds post-commit Sale queue metadata only. It does not change
+successful local POS finalization outcomes, IndexedDB business mutations,
+transaction ingestion, backend replay semantics, authentication behavior, or
+auto-sync behavior. No Sale replay HTTP endpoint exists yet.

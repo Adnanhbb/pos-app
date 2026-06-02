@@ -1450,14 +1450,23 @@ The first production transaction-replay slice has been audited in
 [finalized-sale-backend-replay-design-audit.md](./finalized-sale-backend-replay-design-audit.md).
 
 The backend already has broad internal replay primitives, but the production
-HTTP bridge remains intentionally unimplemented. Current finalized POS queue
-payloads still contain local IndexedDB identifiers where MySQL replay needs
-server identifiers. Additional blockers include exact batch-target parity,
-cylinder Sale parity, canonical customer-payment schema coverage, payment
-snapshot semantics, and storage-to-replay orchestration.
+HTTP bridge remains intentionally unimplemented. Completed, non-postponed
+local Sales now queue an explicit `finalizedSaleReplay` v1 contract with
+separate local correlation ids and backend `serverId` mappings for items,
+selected customers, exact resolved batches, and cylinders. Queue rows also
+copy safe `replayReadiness` diagnostics with `ready` or `unsafe` status and
+mapping reason codes. The read-only `sync:report` command summarizes those
+codes without printing record bodies.
 
-Recommended next step: harden and version the finalized-Sale payload contract,
-then add a narrow authenticated Sale-only replay endpoint. Do not expose the
-broad helper directly. Purchase, Returns, standalone payments, invoice
-cancellation, auto-sync, polling, listeners, workers, startup replay, and
-background replay remain deferred.
+The hardened queue contract does not execute replay and does not block a
+locally completed Sale when a backend mapping is unavailable. Additional
+blockers still include cylinder Sale parity decisions, canonical
+customer-payment schema coverage, payment snapshot semantics, and
+storage-to-replay orchestration.
+
+Recommended next step: resolve the remaining Sale-only prerequisites, then add
+a narrow authenticated Sale-only endpoint that consumes the v1 contract and
+rejects `unsafe` rows before MySQL mutation. Do not expose the broad helper
+directly. Purchase, Returns, standalone payments, invoice cancellation,
+auto-sync, polling, listeners, workers, startup replay, and background replay
+remain deferred.

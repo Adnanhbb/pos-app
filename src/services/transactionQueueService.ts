@@ -14,5 +14,6 @@ export async function queueOfflineTransaction(
     operation: "transaction",
     localId: payload.clientTransactionId,
     payload,
+    replayReadiness: payload.replayReadiness,
   });
 }

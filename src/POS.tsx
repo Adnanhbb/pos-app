@@ -19,6 +19,7 @@ import { heldRepository } from "./repositories/heldRepository";
 import { batchRepository } from "./repositories/batchRepository";
 import { cylinderRepo_getByItemId } from "./repositories/cylinderRepository";
 import { cylinderCustomerRepository } from "./repositories/cylinderCustomerRepository";
+import { getServerId } from "./repositories/helpers/syncRepositoryHelpers";
 import {
   buildReturnTransactionPayload,
   buildSaleTransactionPayload,
@@ -1309,6 +1310,105 @@ for (const ci of cart) {
   }
 }
 
+const finalizedSaleReplay = isSale && !isPostponed
+  ? {
+      localSaleId: saleId,
+      invoiceNo,
+      customer: customerId
+        ? {
+            localId: customerId,
+            serverId: getServerId(preMutationCustomer ?? {}),
+            nameSnapshot: customerName,
+          }
+        : null,
+      items: cart.map((ci) => {
+        const item = preMutationItems.get(ci.originalItemId);
+        const resolvedBatch = resolvedSaleBatches.get(ci.id);
+        const category = (item?.category ?? "").toLowerCase();
+        const convQty = Number(item?.ConvQty ?? ci.convQty ?? 1);
+        const requiresCylinderMutation =
+          (category.includes("gas") || category.includes("cylinder")) &&
+          Number.isFinite(convQty) &&
+          convQty > 0 &&
+          Math.floor(ci.qty / convQty) > 0;
+
+        return {
+          localItemId: ci.originalItemId,
+          serverItemId: getServerId(item ?? {}),
+          originalItemId: ci.originalItemId,
+          nameSnapshot: ci.name,
+          qty: ci.qty,
+          price: ci.minUnitPrice,
+          quantityUnit: "min" as const,
+          selectedUnit: ci.unit,
+          conversion: {
+            minUnit: item?.minunit ?? ci.minunit,
+            maxUnit: item?.maxunit ?? ci.maxunit,
+            convQty,
+            quantityInMinUnit: ci.qty,
+          },
+          resolvedBatch: resolvedBatch
+            ? {
+                localBatchId: resolvedBatch.id ?? null,
+                serverBatchId: getServerId(resolvedBatch),
+                consumedQty: ci.qty,
+              }
+            : null,
+          requiresCylinderMutation,
+        };
+      }),
+      payments: {
+        paidAmount,
+        source: "pos-finalization" as const,
+        method: null,
+      },
+      cylinders: cart.flatMap((ci) => {
+        const item = preMutationItems.get(ci.originalItemId);
+        const category = (item?.category ?? "").toLowerCase();
+        const convQty = Number(item?.ConvQty ?? ci.convQty ?? 1);
+        const qtyMoved =
+          Number.isFinite(convQty) && convQty > 0
+            ? Math.floor(ci.qty / convQty)
+            : 0;
+        const isCylinderItem =
+          category.includes("gas") || category.includes("cylinder");
+        const cylinder = preMutationCylinders.get(ci.originalItemId);
+
+        if (!isCylinderItem || qtyMoved <= 0 || !cylinder) return [];
+
+        const holding = cylinderCustomerUpdates.find(
+          (candidate) =>
+            candidate.cylinderId === cylinder.id &&
+            candidate.customerName === customerName
+        );
+
+        return [{
+          localItemId: ci.originalItemId,
+          serverItemId: getServerId(item ?? {}),
+          localCylinderId: cylinder.id ?? null,
+          serverCylinderId: getServerId(cylinder),
+          customerHolding: holding
+            ? {
+                localHoldingId: "id" in holding ? holding.id ?? null : null,
+                serverHoldingId: getServerId(holding),
+                customerNameSnapshot: holding.customerName,
+              }
+            : null,
+          qtyMoved,
+        }];
+      }),
+      totals: {
+        subtotal: invoiceSubtotal,
+        discount: invoiceDiscount,
+        tax: invoiceTax,
+        dues,
+        grandTotal,
+        paid: paidAmount,
+        arrears,
+      },
+    }
+  : undefined;
+
 try {
   const transactionPayload = isReturn
     ? buildReturnTransactionPayload({
@@ -1357,6 +1457,7 @@ try {
         stockMovements,
         batchMutations,
         cylinderMutations,
+        finalizedSaleReplay,
       });
 
   await queueOfflineTransaction(transactionPayload);

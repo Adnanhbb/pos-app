@@ -55,7 +55,23 @@ export interface SyncQueueItem {
   retryCount: number;
   lastError?: string | null;
   status: "pending" | "processing" | "failed" | "done";
+  replayReadiness?: TransactionReplayReadiness;
 }
+
+export type TransactionReplayReadiness = {
+  scope: "finalized_sale";
+  payloadVersion: 1;
+  status: "ready" | "unsafe";
+  reasons: Array<{
+    code: string;
+    message: string;
+    localSaleId?: number | null;
+    localCustomerId?: number | null;
+    localItemId?: number | null;
+    localBatchId?: number | null;
+    localCylinderId?: number | null;
+  }>;
+};
 
 export interface OfflineTransactionPayload {
   transactionType:
@@ -68,6 +84,7 @@ export interface OfflineTransactionPayload {
   clientTransactionId: string;
   payload: any;
   createdAt: number;
+  replayReadiness?: TransactionReplayReadiness;
 }
 
 export type Syncable<T> = T & SyncMetadata;

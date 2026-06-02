@@ -43,6 +43,24 @@ function sanitizeQueueRow(row) {
     updatedAtIso: formatDate(row.updatedAt),
     retryCount: row.retryCount ?? row.retries ?? null,
     lastError: row.lastError ?? null,
+    replayReadiness: row.replayReadiness
+      ? {
+          scope: row.replayReadiness.scope ?? null,
+          payloadVersion: row.replayReadiness.payloadVersion ?? null,
+          status: row.replayReadiness.status ?? null,
+          reasons: Array.isArray(row.replayReadiness.reasons)
+            ? row.replayReadiness.reasons.map((reason) => ({
+                code: reason.code ?? null,
+                message: reason.message ?? null,
+                localSaleId: reason.localSaleId ?? null,
+                localCustomerId: reason.localCustomerId ?? null,
+                localItemId: reason.localItemId ?? null,
+                localBatchId: reason.localBatchId ?? null,
+                localCylinderId: reason.localCylinderId ?? null,
+              }))
+            : [],
+        }
+      : null,
   };
 }
 
@@ -144,6 +162,16 @@ async function main() {
         count: failedRows.length,
       },
       retryCountDistribution: countBy(rows, (row) => String(row.retryCount ?? row.retries ?? 0)),
+      replayReadiness: {
+        byStatus: countBy(
+          rows.filter((row) => row.replayReadiness),
+          (row) => row.replayReadiness?.status
+        ),
+        unsafeReasons: countBy(
+          rows.flatMap((row) => row.replayReadiness?.reasons ?? []),
+          (reason) => reason.code
+        ),
+      },
       pendingRows: pendingRows.map(sanitizeQueueRow),
       failedRows: failedRows.map(sanitizeQueueRow),
     };

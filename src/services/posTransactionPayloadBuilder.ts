@@ -10,7 +10,10 @@ import type {
   Supplier,
   SupplierPayment,
 } from "../types/entities";
-import type { OfflineTransactionPayload } from "../types/sync";
+import type {
+  OfflineTransactionPayload,
+  TransactionReplayReadiness,
+} from "../types/sync";
 
 type Snapshot<T> = {
   before?: Partial<T> | null;
@@ -48,6 +51,84 @@ export type CylinderMutationSnapshot = {
   };
 };
 
+type ReplayServerId = number | string | null;
+
+export type FinalizedSaleReplayBatchReference = {
+  localBatchId: number | null;
+  serverBatchId: ReplayServerId;
+  consumedQty: number;
+};
+
+export type FinalizedSaleReplayItemReference = {
+  localItemId: number;
+  serverItemId: ReplayServerId;
+  originalItemId: number;
+  nameSnapshot: string;
+  qty: number;
+  price: number;
+  quantityUnit: "min";
+  selectedUnit: "min" | "max";
+  conversion: {
+    minUnit: string;
+    maxUnit: string;
+    convQty: number;
+    quantityInMinUnit: number;
+  };
+  resolvedBatch: FinalizedSaleReplayBatchReference | null;
+  requiresCylinderMutation: boolean;
+};
+
+export type FinalizedSaleReplayCylinderReference = {
+  localItemId: number;
+  serverItemId: ReplayServerId;
+  localCylinderId: number | null;
+  serverCylinderId: ReplayServerId;
+  customerHolding: {
+    localHoldingId: number | null;
+    serverHoldingId: ReplayServerId;
+    customerNameSnapshot: string;
+  } | null;
+  qtyMoved: number;
+};
+
+export type FinalizedSaleReplayContractInput = {
+  localSaleId?: number;
+  invoiceNo: string;
+  customer: {
+    localId: number;
+    serverId: ReplayServerId;
+    nameSnapshot: string;
+  } | null;
+  items: FinalizedSaleReplayItemReference[];
+  payments: {
+    paidAmount: number;
+    source: "pos-finalization";
+    method: string | null;
+  };
+  cylinders: FinalizedSaleReplayCylinderReference[];
+  totals: {
+    subtotal: number;
+    discount: number;
+    tax: number;
+    dues: number;
+    grandTotal: number;
+    paid: number;
+    arrears: number;
+  };
+};
+
+export type FinalizedSaleReplayContractV1 = Omit<
+  FinalizedSaleReplayContractInput,
+  "localSaleId"
+> & {
+  payloadVersion: 1;
+  transactionType: "Sale";
+  localSaleId: number | null;
+  clientTransactionId: string;
+  createdAt: number;
+  replayReadiness: TransactionReplayReadiness;
+};
+
 export type SaleTransactionPayloadInput = {
   clientTransactionId?: string;
   createdAt?: number;
@@ -63,6 +144,7 @@ export type SaleTransactionPayloadInput = {
   stockMovements?: StockMovementSnapshot[];
   batchMutations?: BatchMutationSnapshot[];
   cylinderMutations?: CylinderMutationSnapshot[];
+  finalizedSaleReplay?: FinalizedSaleReplayContractInput;
 };
 
 export type ReturnTransactionPayloadInput = SaleTransactionPayloadInput & {
@@ -130,6 +212,151 @@ function createPayloadBase(
   };
 }
 
+function addUnsafeReason(
+  reasons: TransactionReplayReadiness["reasons"],
+  reason: TransactionReplayReadiness["reasons"][number]
+) {
+  if (
+    !reasons.some(
+      (existing) =>
+        existing.code === reason.code &&
+        existing.localSaleId === reason.localSaleId &&
+        existing.localCustomerId === reason.localCustomerId &&
+        existing.localItemId === reason.localItemId &&
+        existing.localBatchId === reason.localBatchId &&
+        existing.localCylinderId === reason.localCylinderId
+    )
+  ) {
+    reasons.push(reason);
+  }
+}
+
+export function buildFinalizedSaleReplayContract(
+  input: FinalizedSaleReplayContractInput & {
+    clientTransactionId: string;
+    createdAt: number;
+  }
+): FinalizedSaleReplayContractV1 {
+  const reasons: TransactionReplayReadiness["reasons"] = [];
+
+  if (input.localSaleId == null) {
+    addUnsafeReason(reasons, {
+      code: "missing_local_sale_id",
+      message: "Finalized local Sale id is missing.",
+      localSaleId: null,
+    });
+  }
+
+  if (input.customer && input.customer.serverId == null) {
+    addUnsafeReason(reasons, {
+      code: "missing_customer_server_id",
+      message: "Selected customer is not mapped to a backend row.",
+      localCustomerId: input.customer.localId,
+    });
+  }
+
+  for (const item of input.items) {
+    if (item.serverItemId == null) {
+      addUnsafeReason(reasons, {
+        code: "missing_server_item_id",
+        message: "Sale item is not mapped to a backend row.",
+        localItemId: item.localItemId,
+      });
+    }
+
+    if (item.resolvedBatch && item.resolvedBatch.serverBatchId == null) {
+      addUnsafeReason(reasons, {
+        code: "missing_server_batch_id",
+        message: "Resolved Sale batch is not mapped to a backend row.",
+        localItemId: item.localItemId,
+        localBatchId: item.resolvedBatch.localBatchId,
+      });
+    }
+
+    if (
+      item.requiresCylinderMutation &&
+      !input.cylinders.some((cylinder) => cylinder.localItemId === item.localItemId)
+    ) {
+      addUnsafeReason(reasons, {
+        code: "missing_cylinder_mapping",
+        message: "Cylinder Sale movement has no local cylinder mapping.",
+        localItemId: item.localItemId,
+      });
+    }
+  }
+
+  for (const cylinder of input.cylinders) {
+    if (cylinder.serverCylinderId == null) {
+      addUnsafeReason(reasons, {
+        code: "missing_server_cylinder_id",
+        message: "Cylinder Sale movement is not mapped to a backend cylinder row.",
+        localItemId: cylinder.localItemId,
+        localCylinderId: cylinder.localCylinderId,
+      });
+    }
+  }
+
+  const replayReadiness: TransactionReplayReadiness = {
+    scope: "finalized_sale",
+    payloadVersion: 1,
+    status: reasons.length === 0 ? "ready" : "unsafe",
+    reasons,
+  };
+
+  return {
+    payloadVersion: 1,
+    transactionType: "Sale",
+    localSaleId: input.localSaleId ?? null,
+    invoiceNo: input.invoiceNo,
+    clientTransactionId: input.clientTransactionId,
+    createdAt: input.createdAt,
+    customer: input.customer,
+    items: input.items,
+    payments: input.payments,
+    cylinders: input.cylinders,
+    totals: input.totals,
+    replayReadiness,
+  };
+}
+
+function buildUnavailableFinalizedSaleReplayContract(
+  input: SaleTransactionPayloadInput,
+  clientTransactionId: string,
+  createdAt: number
+): FinalizedSaleReplayContractV1 {
+  const contract = buildFinalizedSaleReplayContract({
+    localSaleId: input.saleId,
+    invoiceNo: input.sale.invoiceNo,
+    clientTransactionId,
+    createdAt,
+    customer: null,
+    items: [],
+    payments: {
+      paidAmount: Number(input.sale.paid) || 0,
+      source: "pos-finalization",
+      method: null,
+    },
+    cylinders: [],
+    totals: {
+      subtotal: input.sale.subtotal,
+      discount: input.sale.discount,
+      tax: input.sale.tax,
+      dues: input.sale.dues,
+      grandTotal: input.sale.grandTotal,
+      paid: input.sale.paid,
+      arrears: input.sale.arrears,
+    },
+  });
+
+  addUnsafeReason(contract.replayReadiness.reasons, {
+    code: "missing_finalized_sale_replay_contract",
+    message: "Finalized Sale replay mapping contract was not captured.",
+    localSaleId: input.saleId ?? null,
+  });
+  contract.replayReadiness.status = "unsafe";
+  return contract;
+}
+
 export function buildSaleTransactionPayload(
   input: SaleTransactionPayloadInput
 ): OfflineTransactionPayload {
@@ -138,8 +365,37 @@ export function buildSaleTransactionPayload(
    * snapshots after the local sale/purchase save finishes. This builder only
    * packages the transaction; it must not apply stock/accounting changes.
    */
+  const base = createPayloadBase("sale", input.clientTransactionId, input.createdAt);
+  const isFinalizedSale =
+    input.sale.transactionType === "Sale" && input.sale.isPostponed !== true;
+
+  if (isFinalizedSale) {
+    const finalizedSaleReplay = input.finalizedSaleReplay
+      ? buildFinalizedSaleReplayContract({
+          ...input.finalizedSaleReplay,
+          clientTransactionId: base.clientTransactionId,
+          createdAt: base.createdAt,
+        })
+      : buildUnavailableFinalizedSaleReplayContract(
+          input,
+          base.clientTransactionId,
+          base.createdAt
+        );
+
+    return {
+      ...base,
+      replayReadiness: finalizedSaleReplay.replayReadiness,
+      payload: clone({
+        sale: input.sale,
+        saleId: input.saleId,
+        saleItems: input.saleItems,
+        finalizedSaleReplay,
+      }),
+    };
+  }
+
   return {
-    ...createPayloadBase("sale", input.clientTransactionId, input.createdAt),
+    ...base,
     payload: clone({
       sale: input.sale,
       saleId: input.saleId,
