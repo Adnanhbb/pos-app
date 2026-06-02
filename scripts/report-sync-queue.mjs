@@ -61,6 +61,7 @@ function sanitizeQueueRow(row) {
                 message: reason.message ?? null,
                 localSaleId: reason.localSaleId ?? null,
                 localCustomerId: reason.localCustomerId ?? null,
+                localSupplierId: reason.localSupplierId ?? null,
                 localItemId: reason.localItemId ?? null,
                 localBatchId: reason.localBatchId ?? null,
                 localCylinderId: reason.localCylinderId ?? null,
@@ -77,6 +78,16 @@ function isFinalizedSaleQueueRow(row) {
     row.operation === "transaction" &&
     row.payload?.transactionType === "sale" &&
     row.payload?.payload?.sale?.transactionType === "Sale" &&
+    row.payload?.payload?.sale?.isPostponed !== true
+  );
+}
+
+function isFinalizedPurchaseQueueRow(row) {
+  return (
+    row.entity === "transactions" &&
+    row.operation === "transaction" &&
+    row.payload?.transactionType === "sale" &&
+    row.payload?.payload?.sale?.transactionType === "Purchase" &&
     row.payload?.payload?.sale?.isPostponed !== true
   );
 }
@@ -160,6 +171,7 @@ async function main() {
     const pendingRows = rows.filter((row) => row.status === "pending");
     const failedRows = rows.filter((row) => row.status === "failed");
     const finalizedSaleRows = rows.filter(isFinalizedSaleQueueRow);
+    const finalizedPurchaseRows = rows.filter(isFinalizedPurchaseQueueRow);
     const pendingCreatedAtValues = pendingRows
       .map((row) => Number(row.createdAt))
       .filter((value) => !Number.isNaN(value));
@@ -207,6 +219,24 @@ async function main() {
         ).length,
         unsafeReasons: countBy(
           finalizedSaleRows.flatMap(
+            (row) => row.replayReadiness?.reasons ?? []
+          ),
+          (reason) => reason.code
+        ),
+      },
+      finalizedPurchaseReplayReadiness: {
+        totalRows: finalizedPurchaseRows.length,
+        ready: finalizedPurchaseRows.filter(
+          (row) => row.replayReadiness?.status === "ready"
+        ).length,
+        unsafe: finalizedPurchaseRows.filter(
+          (row) => row.replayReadiness?.status === "unsafe"
+        ).length,
+        missingContract: finalizedPurchaseRows.filter(
+          (row) => !row.payload?.payload?.finalizedPurchaseReplay
+        ).length,
+        unsafeReasons: countBy(
+          finalizedPurchaseRows.flatMap(
             (row) => row.replayReadiness?.reasons ?? []
           ),
           (reason) => reason.code

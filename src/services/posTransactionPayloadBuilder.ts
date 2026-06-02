@@ -129,6 +129,84 @@ export type FinalizedSaleReplayContractV1 = Omit<
   replayReadiness: TransactionReplayReadiness;
 };
 
+export type FinalizedPurchaseReplayBatchCreateReference = {
+  localBatchId: number | null;
+  sourceSaleId: number | null;
+  purchaseDate: string;
+  qtyPurchased: number;
+  balance: number;
+  costPrice: number;
+  invoiceNo: string;
+};
+
+export type FinalizedPurchaseReplayItemReference = {
+  localItemId: number;
+  serverItemId: ReplayServerId;
+  originalItemId: number;
+  nameSnapshot: string;
+  qty: number;
+  price: number;
+  costPrice: number;
+  quantityUnit: "min";
+  selectedUnit: "min" | "max";
+  conversion: {
+    minUnit: string;
+    maxUnit: string;
+    convQty: number;
+    quantityInMinUnit: number;
+  };
+  batchCreate: FinalizedPurchaseReplayBatchCreateReference | null;
+  requiresCylinderMutation: boolean;
+};
+
+export type FinalizedPurchaseReplayCylinderReference = {
+  localItemId: number;
+  serverItemId: ReplayServerId;
+  localCylinderId: number | null;
+  serverCylinderId: ReplayServerId;
+  qtyFilledIncrease: number;
+  qtyStockIncrease: number;
+};
+
+export type FinalizedPurchaseReplayContractInput = {
+  localSaleId?: number;
+  invoiceNo: string;
+  supplier: {
+    localId: number | null;
+    serverId: ReplayServerId;
+    nameSnapshot: string;
+    directPurchase: boolean;
+  };
+  items: FinalizedPurchaseReplayItemReference[];
+  payments: {
+    paidAmount: number;
+    source: "pos-finalization";
+    method: string | null;
+  };
+  cylinders: FinalizedPurchaseReplayCylinderReference[];
+  totals: {
+    subtotal: number;
+    discount: number;
+    tax: number;
+    dues: number;
+    grandTotal: number;
+    paid: number;
+    arrears: number;
+  };
+};
+
+export type FinalizedPurchaseReplayContractV1 = Omit<
+  FinalizedPurchaseReplayContractInput,
+  "localSaleId"
+> & {
+  payloadVersion: 1;
+  transactionType: "Purchase";
+  localSaleId: number | null;
+  clientTransactionId: string;
+  createdAt: number;
+  replayReadiness: TransactionReplayReadiness;
+};
+
 export type SaleTransactionPayloadInput = {
   clientTransactionId?: string;
   createdAt?: number;
@@ -145,6 +223,7 @@ export type SaleTransactionPayloadInput = {
   batchMutations?: BatchMutationSnapshot[];
   cylinderMutations?: CylinderMutationSnapshot[];
   finalizedSaleReplay?: FinalizedSaleReplayContractInput;
+  finalizedPurchaseReplay?: FinalizedPurchaseReplayContractInput;
 };
 
 export type ReturnTransactionPayloadInput = SaleTransactionPayloadInput & {
@@ -222,6 +301,7 @@ function addUnsafeReason(
         existing.code === reason.code &&
         existing.localSaleId === reason.localSaleId &&
         existing.localCustomerId === reason.localCustomerId &&
+        existing.localSupplierId === reason.localSupplierId &&
         existing.localItemId === reason.localItemId &&
         existing.localBatchId === reason.localBatchId &&
         existing.localCylinderId === reason.localCylinderId
@@ -319,6 +399,152 @@ export function buildFinalizedSaleReplayContract(
   };
 }
 
+export function buildFinalizedPurchaseReplayContract(
+  input: FinalizedPurchaseReplayContractInput & {
+    clientTransactionId: string;
+    createdAt: number;
+  }
+): FinalizedPurchaseReplayContractV1 {
+  const reasons: TransactionReplayReadiness["reasons"] = [];
+
+  if (input.localSaleId == null) {
+    addUnsafeReason(reasons, {
+      code: "missing_local_sale_id",
+      message: "Finalized local Purchase id is missing.",
+      localSaleId: null,
+    });
+  }
+
+  if (!input.supplier.directPurchase && input.supplier.serverId == null) {
+    addUnsafeReason(reasons, {
+      code: "missing_supplier_server_id",
+      message: "Selected supplier is not mapped to a backend row.",
+      localSupplierId: input.supplier.localId,
+    });
+  }
+
+  for (const item of input.items) {
+    if (item.serverItemId == null) {
+      addUnsafeReason(reasons, {
+        code: "missing_server_item_id",
+        message: "Purchase item is not mapped to a backend row.",
+        localItemId: item.localItemId,
+      });
+    }
+
+    if (
+      !item.batchCreate ||
+      item.batchCreate.localBatchId == null ||
+      item.batchCreate.sourceSaleId == null ||
+      !Number.isFinite(item.batchCreate.qtyPurchased) ||
+      item.batchCreate.qtyPurchased <= 0 ||
+      !Number.isFinite(item.batchCreate.balance) ||
+      item.batchCreate.balance <= 0 ||
+      !Number.isFinite(item.batchCreate.costPrice) ||
+      item.batchCreate.costPrice < 0 ||
+      typeof item.batchCreate.purchaseDate !== "string" ||
+      item.batchCreate.purchaseDate.trim() === "" ||
+      typeof item.batchCreate.invoiceNo !== "string" ||
+      item.batchCreate.invoiceNo.trim() === ""
+    ) {
+      addUnsafeReason(reasons, {
+        code: "missing_batch_create_metadata",
+        message: "Purchase item is missing its local batch-create correlation metadata.",
+        localItemId: item.localItemId,
+        localBatchId: item.batchCreate?.localBatchId ?? null,
+      });
+    }
+
+    if (
+      item.requiresCylinderMutation &&
+      !input.cylinders.some((cylinder) => cylinder.localItemId === item.localItemId)
+    ) {
+      addUnsafeReason(reasons, {
+        code: "missing_cylinder_mapping",
+        message: "Cylinder Purchase movement has no local cylinder mapping.",
+        localItemId: item.localItemId,
+      });
+    }
+  }
+
+  for (const cylinder of input.cylinders) {
+    if (cylinder.serverCylinderId == null) {
+      addUnsafeReason(reasons, {
+        code: "missing_server_cylinder_id",
+        message: "Cylinder Purchase movement is not mapped to a backend cylinder row.",
+        localItemId: cylinder.localItemId,
+        localCylinderId: cylinder.localCylinderId,
+      });
+    }
+  }
+
+  const replayReadiness: TransactionReplayReadiness = {
+    scope: "finalized_purchase",
+    payloadVersion: 1,
+    status: reasons.length === 0 ? "ready" : "unsafe",
+    reasons,
+  };
+
+  return {
+    payloadVersion: 1,
+    transactionType: "Purchase",
+    localSaleId: input.localSaleId ?? null,
+    invoiceNo: input.invoiceNo,
+    clientTransactionId: input.clientTransactionId,
+    createdAt: input.createdAt,
+    supplier: input.supplier,
+    items: input.items,
+    payments: input.payments,
+    cylinders: input.cylinders,
+    totals: input.totals,
+    replayReadiness,
+  };
+}
+
+function buildUnavailableFinalizedPurchaseReplayContract(
+  input: SaleTransactionPayloadInput,
+  clientTransactionId: string,
+  createdAt: number
+): FinalizedPurchaseReplayContractV1 {
+  const directPurchase = input.sale.supplierId == null;
+  const contract = buildFinalizedPurchaseReplayContract({
+    localSaleId: input.saleId,
+    invoiceNo: input.sale.invoiceNo,
+    clientTransactionId,
+    createdAt,
+    supplier: {
+      localId: input.sale.supplierId ?? null,
+      serverId: null,
+      nameSnapshot: input.sale.supplierName || "Direct Purchase",
+      directPurchase,
+    },
+    items: [],
+    payments: {
+      paidAmount: Number(input.sale.paid) || 0,
+      source: "pos-finalization",
+      method: null,
+    },
+    cylinders: [],
+    totals: {
+      subtotal: input.sale.subtotal,
+      discount: input.sale.discount,
+      tax: input.sale.tax,
+      dues: input.sale.dues,
+      grandTotal: input.sale.grandTotal,
+      paid: input.sale.paid,
+      arrears: input.sale.arrears,
+    },
+  });
+
+  addUnsafeReason(contract.replayReadiness.reasons, {
+    code: "missing_finalized_purchase_replay_contract",
+    message: "Finalized Purchase replay mapping contract was not captured.",
+    localSaleId: input.saleId ?? null,
+  });
+  contract.replayReadiness.status = "unsafe";
+  return contract;
+}
+
 function buildUnavailableFinalizedSaleReplayContract(
   input: SaleTransactionPayloadInput,
   clientTransactionId: string,
@@ -368,6 +594,8 @@ export function buildSaleTransactionPayload(
   const base = createPayloadBase("sale", input.clientTransactionId, input.createdAt);
   const isFinalizedSale =
     input.sale.transactionType === "Sale" && input.sale.isPostponed !== true;
+  const isFinalizedPurchase =
+    input.sale.transactionType === "Purchase" && input.sale.isPostponed !== true;
 
   if (isFinalizedSale) {
     const finalizedSaleReplay = input.finalizedSaleReplay
@@ -390,6 +618,31 @@ export function buildSaleTransactionPayload(
         saleId: input.saleId,
         saleItems: input.saleItems,
         finalizedSaleReplay,
+      }),
+    };
+  }
+
+  if (isFinalizedPurchase) {
+    const finalizedPurchaseReplay = input.finalizedPurchaseReplay
+      ? buildFinalizedPurchaseReplayContract({
+          ...input.finalizedPurchaseReplay,
+          clientTransactionId: base.clientTransactionId,
+          createdAt: base.createdAt,
+        })
+      : buildUnavailableFinalizedPurchaseReplayContract(
+          input,
+          base.clientTransactionId,
+          base.createdAt
+        );
+
+    return {
+      ...base,
+      replayReadiness: finalizedPurchaseReplay.replayReadiness,
+      payload: clone({
+        sale: input.sale,
+        saleId: input.saleId,
+        saleItems: input.saleItems,
+        finalizedPurchaseReplay,
       }),
     };
   }

@@ -1530,19 +1530,23 @@ Local finalized Purchase behavior remains the IndexedDB reference:
   stock;
 - direct Purchases remain valid without a selected supplier.
 
-Backend schema coverage and internal replay primitives already exist, but the
-queued Purchase remains a legacy storage-only envelope. It does not yet carry
-`finalizedPurchaseReplay` v1, Purchase-specific `replayReadiness`, explicit
-server-only item targets, safe batch-create correlation metadata, or optional
-supplier/cylinder server mappings.
+Backend schema coverage and internal replay primitives already exist.
+Completed, non-postponed local Purchases now queue an explicit
+`finalizedPurchaseReplay` v1 contract with Purchase-specific
+`replayReadiness`, server-only item targets, safe local batch-create
+correlation metadata, optional selected-supplier mapping, and optional
+cylinder mapping. Direct Purchase remains valid without a supplier server id
+because it has no supplier accounting mutation.
 
-The recommended next task is Purchase payload hardening and fixture
-verification. Do not add `api/replay/purchase.php` until ready and unsafe
-Purchase payloads can be distinguished safely. The future endpoint should stay
-separate from Sale replay, reload stored payload by `clientTransactionId`, use
-one MySQL transaction, return backend-created batch mappings, and remain
-authenticated, explicit, manual-only, and idempotent.
+Unsafe Purchase mappings do not block a successful local IndexedDB Purchase.
+They annotate the queue row with safe reason codes and remain ineligible for a
+future backend-authoritative replay adapter. Do not add
+`api/replay/purchase.php` until endpoint-specific ready and unsafe fixtures are
+approved. The future endpoint should stay separate from Sale replay, reload
+stored payload by `clientTransactionId`, use one MySQL transaction, return
+backend-created batch mappings, and remain authenticated, explicit,
+manual-only, and idempotent.
 
 No Purchase endpoint, queue routing change, POS behavior change, background
 replay, startup replay, polling, listeners, workers, or auto-sync is added by
-this audit.
+this payload hardening.

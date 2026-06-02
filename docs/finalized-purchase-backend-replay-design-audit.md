@@ -6,13 +6,12 @@ Do not add a finalized `Purchase` replay endpoint yet.
 
 The local IndexedDB Purchase path is already atomic and the backend internal
 replay processor already contains useful Purchase mutation primitives.
-However, completed Purchases still queue the legacy storage envelope. There is
-no versioned `finalizedPurchaseReplay` contract, no Purchase-specific
-`replayReadiness`, and no server-id-only adapter boundary comparable to
-finalized Sale replay.
+Completed Purchases now queue a versioned `finalizedPurchaseReplay` v1
+contract with Purchase-specific `replayReadiness`. The contract is a safe
+future adapter boundary: local ids remain correlation metadata, while mapped
+backend ids are explicit wherever future MySQL mutation will require them.
 
-The next implementation task should harden the queued finalized Purchase
-payload first. A later task may add a narrow authenticated
+The next implementation task may add a narrow authenticated
 `POST /api/replay/purchase.php` endpoint for ready v1 payloads only.
 
 ## Current IndexedDB Purchase Outcome
@@ -55,32 +54,27 @@ existing `PUR` prefix. This behavior must remain unchanged.
 ## Current Queue Behavior And Gap
 
 After local commit, `src/POS.tsx` calls `buildSaleTransactionPayload(...)` for
-Purchase because the current builder packages Sale and Purchase headers in the
-same legacy envelope.
+Purchase because Sale and Purchase still share the established local queue
+entry path.
 
-For Purchase, the builder currently emits:
+For a completed, non-postponed Purchase, the builder now emits:
 
 - outer `transactionType: "sale"`
 - `payload.sale` with header `transactionType: "Purchase"`
 - local `saleId`
 - local-id-based `saleItems`
-- broad supplier before/after snapshots
-- broad item stock snapshots
-- broad batch mutation snapshots
-- broad cylinder mutation snapshots
-
-It does **not** emit:
-
-- `payload.finalizedPurchaseReplay`
-- Purchase-specific `replayReadiness`
+- `payload.finalizedPurchaseReplay` v1
+- Purchase-specific top-level `replayReadiness`
 - explicit `serverItemId` mutation targets
-- explicit selected-supplier `serverId`
-- a safe batch-create mapping contract
-- explicit mapped cylinder identity for Purchase
+- an explicit selected-supplier `serverId` when supplier accounting applies
+- direct-Purchase metadata when no supplier accounting applies
+- safe local batch-create correlation metadata captured after atomic local
+  commit
+- explicit mapped cylinder identity for Purchase when required
 
-This legacy envelope is useful for diagnostics and storage history, but it is
-not safe as a production replay mutation contract. Local IndexedDB ids must
-never become MySQL mutation ids.
+The hardened storage envelope omits broad supplier, stock, batch, and cylinder
+snapshots. Local IndexedDB ids remain diagnostic and correlation metadata
+only. They must never become MySQL mutation ids.
 
 Current explicit manual queue processing stores the Purchase through
 `POST /api/transactions.php`. Because there is no narrow Purchase adapter, it
@@ -140,9 +134,9 @@ operate on identifiers supplied in that envelope.
 | Cylinders | Issue filled cylinder to customer and update holding. | Increase filled cylinders and total cylinder stock; no customer holding mutation. |
 | Response mappings | Backend sale id is enough for current Sale flow. | Backend-created batch ids should be returned with local batch correlation ids for later mirror support. |
 
-## Proposed `finalizedPurchaseReplay` V1 Contract
+## Implemented `finalizedPurchaseReplay` V1 Contract
 
-The hardened queue payload should add a Purchase-specific safe contract:
+The hardened queue payload adds a Purchase-specific safe contract:
 
 ```json
 {
@@ -155,7 +149,8 @@ The hardened queue payload should add a Purchase-specific safe contract:
   "supplier": {
     "localId": 7,
     "serverId": 42,
-    "nameSnapshot": "Supplier snapshot"
+    "nameSnapshot": "Supplier snapshot",
+    "directPurchase": false
   },
   "items": [
     {
@@ -173,10 +168,12 @@ The hardened queue payload should add a Purchase-specific safe contract:
         "convQty": 1,
         "quantityInMinUnit": 4
       },
-      "createdBatch": {
+      "batchCreate": {
         "localBatchId": 27,
+        "sourceSaleId": 12,
         "purchaseDate": "2026-06-02T00:00:00.000Z",
         "qtyPurchased": 4,
+        "balance": 4,
         "costPrice": 10,
         "invoiceNo": "PUR-0001"
       },
@@ -212,7 +209,7 @@ Rules:
 - local ids remain diagnostic and correlation metadata only
 - every Purchase item requires `serverItemId`
 - selected supplier Purchase requires `supplier.serverId`
-- Direct Purchase may use `supplier: null`
+- Direct Purchase uses `directPurchase: true` and may omit a supplier server id
 - every local Purchase batch creation requires explicit safe batch-create
   metadata, including local correlation id
 - Purchase must not require an existing backend batch id because replay creates
@@ -225,13 +222,13 @@ Rules:
 
 Suggested safe reason codes:
 
-- `missing_local_purchase_id`
+- `missing_local_sale_id`
 - `missing_supplier_server_id`
 - `missing_server_item_id`
-- `missing_local_purchase_batch_id`
-- `missing_purchase_batch_contract`
+- `missing_batch_create_metadata`
 - `missing_cylinder_mapping`
 - `missing_server_cylinder_id`
+- `missing_finalized_purchase_replay_contract`
 
 ## Proposed Narrow Endpoint
 
@@ -332,22 +329,28 @@ Small shared helpers may be extracted later where duplication is mechanical:
 Leave Sale contract validation and Sale routing unchanged while Purchase is
 introduced.
 
-## Payload Hardening Prerequisites
+## Completed Payload Hardening And Remaining Endpoint Prerequisites
 
 Before implementing `api/replay/purchase.php`:
 
-1. Add `finalizedPurchaseReplay` v1 builder types and readiness diagnostics.
-2. Capture the locally created Purchase batch ids after atomic local commit.
-3. Store explicit mapped backend item ids and optional supplier id.
-4. Capture optional cylinder mapping metadata for gas/cylinder Purchase lines.
-5. Keep local Purchase finalization successful even when replay readiness is
-   unsafe.
-6. Add a safe fixture verifier for ready and unsafe queued Purchase payloads.
-7. Update manual sync routing only when the narrow Purchase endpoint exists.
+1. Completed: add `finalizedPurchaseReplay` v1 builder types and readiness
+   diagnostics.
+2. Completed: capture locally created Purchase batch ids after atomic local
+   commit.
+3. Completed: store explicit mapped backend item ids and optional supplier id.
+4. Completed: capture optional cylinder mapping metadata for gas/cylinder
+   Purchase lines.
+5. Completed: keep local Purchase finalization successful even when replay
+   readiness is unsafe.
+6. Completed: add a safe verifier for ready and unsafe Purchase payloads.
+7. Remaining: add endpoint-specific fixtures before exposing a Purchase
+   adapter.
+8. Remaining: update manual sync routing only when the narrow Purchase
+   endpoint exists.
 
 ## Explicitly Deferred
 
-This audit does not add or expose replay for:
+This hardening does not add or expose replay execution for:
 
 - Purchase
 - Customer Return
@@ -363,8 +366,8 @@ This audit does not add or expose replay for:
 
 ## Safety Boundary
 
-This is a documentation and design audit only. No runtime POS behavior,
-IndexedDB mutation path, Sale replay behavior, API endpoint, database schema,
-queue processing behavior, auto-sync behavior, or background behavior is
-changed.
-
+This hardening changes only the queued finalized Purchase metadata created
+after a successful atomic local commit. It does not change successful local
+Purchase outcomes, IndexedDB mutation order, Sale replay behavior, API
+endpoints, database schema, queue processing behavior, auto-sync behavior, or
+background behavior.
