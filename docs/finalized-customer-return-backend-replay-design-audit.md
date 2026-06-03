@@ -1,19 +1,20 @@
 # Finalized Customer Return Backend Replay Design Audit
 
-Status: queue payload hardening implemented; backend replay endpoint deferred.
-No Customer Return replay endpoint exists yet.
+Status: queue payload hardening and manual backend replay endpoint implemented.
+Customer Return replay remains manual-only and gated to replay-ready
+`finalizedCustomerReturnReplay` v1 rows.
 
-This document prepares the backend-authoritative replay path for finalized
+This document records the backend-authoritative replay path for finalized
 Customer Return transactions only. The current IndexedDB Customer Return
-finalization path remains the reference implementation. Future MySQL replay
-must match that local behavior exactly and must use the same manual,
-idempotent, contract-gated pattern already used for finalized Sale and
-finalized Purchase replay.
+finalization path remains the reference implementation. MySQL replay must
+match that local behavior exactly and uses the same manual, idempotent,
+contract-gated pattern already used for finalized Sale and finalized Purchase
+replay.
 
-This audit and payload hardening do not implement
-`api/replay/customer-return.php`, do not change successful local POS behavior,
-do not change Sale or Purchase replay, and do not add auto-sync, polling,
-listeners, workers, startup replay, or background replay.
+This implementation does not change successful local POS behavior, does not
+change Sale or Purchase replay, and does not add Supplier Return replay,
+standalone payment replay, auto-sync, polling, listeners, workers, startup
+replay, or background replay.
 
 ## Current Local Customer Return Outcome
 
@@ -105,11 +106,10 @@ already understand Customer Return direction in broad form:
 - cylinder mutation decreases customer holding, increases empty cylinders, and
   leaves filled cylinders unchanged.
 
-These helpers are useful implementation pieces, but the broad processor must
-not be exposed directly. A future Customer Return endpoint needs a
-contract-specific adapter that validates `finalizedCustomerReturnReplay` v1 and
-constructs an in-memory server-id-only envelope before calling shared mutation
-helpers.
+These helpers are used through a Customer Return-specific adapter. The broad
+processor is not exposed directly; `api/lib/finalizedCustomerReturnReplayV1.php`
+validates `finalizedCustomerReturnReplay` v1 and constructs an in-memory
+server-id-only envelope before calling shared mutation helpers.
 
 ## Customer Return Differences From Sale Replay
 
@@ -227,9 +227,9 @@ Required unsafe reason codes:
 Customer Return should not have a Direct Return path. If customer accounting or
 cylinder holding mutation is involved, a mapped customer server id is required.
 
-## Proposed Endpoint Contract
+## Implemented Endpoint Contract
 
-After payload hardening is verified, add a narrow endpoint:
+The narrow endpoint is:
 
 ```http
 POST /api/replay/customer-return.php
@@ -320,10 +320,9 @@ Small shared helpers may be extracted later where duplication is mechanical:
 
 ## Payload Readiness Gaps
 
-The queue contract now exists, but backend replay remains deferred. The next
-implementation step should be a fixture that creates one isolated Customer
-Return queue row and verifies ready/unsafe classifications against the packaged
-or safe local IndexedDB path without calling a backend replay endpoint.
+The queue contract, queue-readiness fixture, and manual backend replay endpoint
+now exist. The fixture still does not call backend replay; the backend replay
+verifier uses isolated MySQL fixture rows and calls the adapter explicitly.
 
 Completed prerequisites:
 
@@ -338,22 +337,20 @@ Completed prerequisites:
    readiness is unsafe.
 6. Completed: add a safe verifier for ready and unsafe Customer Return
    payloads.
+7. Completed: add a queue-readiness fixture that does not call a backend
+   Customer Return replay endpoint.
+8. Completed: implement the narrow manual endpoint after ready/unsafe payload
+   classifications were stable.
 
-Remaining prerequisites:
+Remaining prerequisites for broader replay work:
 
-1. Add a queue-readiness fixture that does not call a backend Customer Return
-   replay endpoint.
-2. Implement the narrow endpoint only after the fixture proves ready payloads
-   are stable.
-
-Only after those checks are stable should `api/replay/customer-return.php` be
-implemented.
+1. Keep Supplier Return and standalone payment replay separate.
+2. Keep future background/auto-sync gated by the existing eligibility checks.
 
 ## Explicitly Deferred
 
-This audit does not add or expose replay execution for:
+This audit and implementation do not add or expose replay execution for:
 
-- Customer Return
 - Supplier Return
 - standalone payments
 - invoice cancellation or reversal

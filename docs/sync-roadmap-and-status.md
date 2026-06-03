@@ -1587,11 +1587,11 @@ Unsafe Customer Return mappings do not block a successful local IndexedDB
 Customer Return. They annotate the queue row with safe reason codes and remain
 ineligible for backend-authoritative replay.
 
-The proposed future endpoint remains manual-only and should accept only ready
-`finalizedCustomerReturnReplay` v1 rows by `clientTransactionId`, build a
-server-id-only mutation envelope, and apply the Customer Return header/items,
+The manual endpoint `api/replay/customer-return.php` now accepts only ready
+`finalizedCustomerReturnReplay` v1 rows by `clientTransactionId`, builds a
+server-id-only mutation envelope, and applies the Customer Return header/items,
 item stock increase, return-batch creation, customer accounting/payment effect,
 and optional cylinder/holding movement in one MySQL transaction. Sale and
-Purchase replay are unchanged. No Customer Return replay endpoint, Supplier
-Return replay, standalone payment replay, background replay, startup replay,
-polling, listeners, workers, or auto-sync is added by this audit.
+Purchase replay are unchanged. Supplier Return replay, standalone payment
+replay, background replay, startup replay, polling, listeners, workers, and
+auto-sync remain deferred.

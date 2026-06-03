@@ -101,8 +101,8 @@ try {
     "fixture uses a uniquely named IndexedDB database instead of live POSDatabase"
   );
   assert(
-    !existsSync(backendCustomerReturnReplayPath),
-    "backend Customer Return replay HTTP endpoint is not implemented yet"
+    existsSync(backendCustomerReturnReplayPath),
+    "backend Customer Return replay HTTP endpoint exists for manual ready-row replay"
   );
   assert(
     existsSync(backendSaleReplayPath) && existsSync(backendPurchaseReplayPath),
@@ -854,7 +854,7 @@ try {
         backendBusinessMutationRequests: observedApiRequests.filter(
           (request) => request.method !== "GET" && request.method !== "HEAD"
         ).length,
-        backendCustomerReturnReplayEndpointAdded: false,
+        backendCustomerReturnReplayEndpointAdded: true,
         saleReplayChanged: false,
         purchaseReplayChanged: false,
         replayTriggered: false,

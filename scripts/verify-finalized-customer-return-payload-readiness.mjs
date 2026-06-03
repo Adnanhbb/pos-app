@@ -369,9 +369,9 @@ assert(
 assert(
   syncEngineSource.includes("replayFinalizedSale") &&
     syncEngineSource.includes("replayFinalizedPurchase") &&
-    !syncEngineSource.includes("replayFinalizedCustomerReturn") &&
-    !syncEngineSource.includes("customer-return.php"),
-  "manual sync router still has no Customer Return replay execution path"
+    syncEngineSource.includes("assertReadyFinalizedCustomerReturnReplay(item.payload)") &&
+    syncEngineSource.includes("transactionApi.replayFinalizedCustomerReturn(item.payload.clientTransactionId)"),
+  "manual sync router now gates and explicitly replays ready finalized Customer Returns"
 );
 assert(
   finalizationSource.includes('const tx = db.transaction(') &&
@@ -379,7 +379,7 @@ assert(
     finalizationSource.includes("await tx.done;"),
   "local IndexedDB finalization remains the existing atomic commit path"
 );
-assert(!existsSync(backendCustomerReturnReplayPath), "backend Customer Return replay endpoint is not implemented yet");
+assert(existsSync(backendCustomerReturnReplayPath), "backend Customer Return replay endpoint is implemented");
 assert(existsSync(backendSaleReplayPath), "existing narrow backend Sale replay endpoint remains present");
 assert(existsSync(backendPurchaseReplayPath), "existing narrow backend Purchase replay endpoint remains present");
 assert(
@@ -405,7 +405,7 @@ console.log(
         ]),
       ].sort(),
       cylinderMovement: "customerHoldingToEmpty",
-      backendCustomerReturnReplayEndpointAdded: false,
+      backendCustomerReturnReplayEndpointAdded: true,
       saleReplayChanged: false,
       purchaseReplayChanged: false,
       localPOSBehaviorChanged: false,
