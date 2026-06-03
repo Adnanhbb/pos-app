@@ -1,18 +1,22 @@
 # Finalized Supplier Return Backend Replay Design Audit
 
-Status: design/audit only. No Supplier Return replay endpoint has been added.
+Status: queue payload hardening implemented. No Supplier Return replay endpoint
+has been added.
 
 This document prepares the backend-authoritative replay path for finalized
 Supplier Return transactions only. The current IndexedDB Supplier Return
-finalization path remains the reference implementation. Any future MySQL replay
-must match that local behavior exactly, stay manual-only, and follow the
+finalization path remains the reference implementation. Completed,
+non-postponed Supplier Returns now queue a versioned
+`finalizedSupplierReturnReplay` v1 contract and readiness summary, but no
+backend Supplier Return replay endpoint exists yet. Any future MySQL replay must
+match local behavior exactly, stay manual-only, and follow the
 contract-gated/idempotent pattern already used for finalized Sale, Purchase,
 and Customer Return replay.
 
-This audit does not change successful local POS behavior, does not change Sale,
-Purchase, or Customer Return replay, and does not add Supplier Return replay,
-standalone payment replay, invoice cancellation, auto-sync, polling, listeners,
-workers, startup replay, or background replay.
+This hardening does not change successful local POS behavior, does not change
+Sale, Purchase, or Customer Return replay, and does not add Supplier Return
+replay, standalone payment replay, invoice cancellation, auto-sync, polling,
+listeners, workers, startup replay, or background replay.
 
 ## Current Local Supplier Return Outcome
 
@@ -67,23 +71,25 @@ Invoice numbering uses the existing `RET-S` prefix and must remain unchanged.
 After the local IndexedDB transaction commits, `src/POS.tsx` calls
 `buildReturnTransactionPayload(...)`.
 
-Completed, non-postponed Supplier Return rows currently still use the generic
-return queue envelope:
+Completed, non-postponed Supplier Return rows now include a hardened
+`finalizedSupplierReturnReplay` v1 contract:
 
 - outer `transactionType: "return"`;
 - `payload.returnMode: "supplier"`;
 - `payload.sale` with the local Supplier Return header;
 - local `saleId`;
 - local-id-based `saleItems`;
-- broad supplier before/after snapshot when available;
-- stock, batch, and cylinder mutation snapshots;
-- no `finalizedSupplierReturnReplay` v1 contract;
-- no Supplier Return-specific top-level `replayReadiness` scope.
+- `payload.finalizedSupplierReturnReplay` v1;
+- top-level `replayReadiness` copied from the contract.
 
-This means Supplier Return queue rows are not yet eligible for a narrow
-backend-authoritative replay endpoint. Local IndexedDB ids remain useful only as
-correlation metadata. Future MySQL mutation targets must use explicit backend
-`serverId` fields from a Supplier Return-specific contract.
+The hardened Supplier Return queue envelope omits broad supplier, stock, batch,
+and cylinder snapshots for finalized Supplier Return rows. Local IndexedDB ids
+remain useful only as correlation metadata. Future MySQL mutation targets must
+use explicit backend `serverId` fields from the contract.
+
+Supplier Return rows are still not backend-replayed. The current manual sync
+router has no Supplier Return-specific replay branch and no
+`api/replay/supplier-return.php` endpoint exists.
 
 ## Existing MySQL And Backend Coverage
 
@@ -130,7 +136,7 @@ helpers inside one MySQL transaction.
 | Cylinders | Increase filled cylinders and total cylinder stock. | Decrease filled cylinders and total cylinder stock according to the current local model. |
 | Validation | Requires item mapping and local batch-create metadata. | Requires item mapping, selected/source batch mapping when batch mutation applies, supplier mapping, and cylinder mapping when cylinder mutation applies. |
 
-## Proposed `finalizedSupplierReturnReplay` V1 Contract
+## Implemented `finalizedSupplierReturnReplay` V1 Contract
 
 The Supplier Return-specific contract should keep local finalization successful
 even when backend replay readiness is unsafe:
@@ -169,8 +175,10 @@ even when backend replay readiness is unsafe:
         "localBatchId": 31,
         "serverBatchId": 88,
         "returnedQty": 2,
-        "qtyPurchasedDecrease": 2,
-        "balanceDecrease": 2
+        "qtyPurchasedBefore": 10,
+        "qtyPurchasedAfter": 8,
+        "balanceBefore": 6,
+        "balanceAfter": 4
       },
       "requiresCylinderMutation": false
     }
@@ -187,7 +195,11 @@ even when backend replay readiness is unsafe:
       "localCylinderId": 5,
       "serverCylinderId": 8,
       "qtyReturned": 1,
-      "movement": "filledToSupplier"
+      "movement": "filledDecrease",
+      "filledCylindersBefore": 4,
+      "filledCylindersAfter": 3,
+      "qtyInStockBefore": 8,
+      "qtyInStockAfter": 7
     }
   ],
   "totals": {
@@ -224,12 +236,12 @@ Required unsafe reason codes:
 - `missing_local_sale_id`
 - `missing_supplier_server_id`
 - `missing_server_item_id`
-- `missing_supplier_return_batch_metadata`
+- `missing_source_batch_metadata`
 - `missing_server_batch_id`
 - `missing_cylinder_mapping`
 - `missing_server_cylinder_id`
 - `invalid_supplier_return_batch_delta`
-- `missing_supplier_return_cylinder_decision`
+- `unsafe_supplier_return_cylinder_clamping`
 
 Backend implementation-time validation should additionally reject:
 
@@ -314,44 +326,47 @@ Required protections:
 
 ## MySQL/API Gaps
 
-The table coverage is mostly present, but the Supplier Return slice is not
-implementation-ready yet:
+The table coverage is mostly present, but the Supplier Return replay endpoint
+is not implementation-ready yet:
 
-- no `finalizedSupplierReturnReplay` TypeScript contract exists;
-- no Supplier Return `TransactionReplayReadiness` scope exists;
-- no Supplier Return payload builder captures server ids and selected/source
-  batch mapping;
-- no Supplier Return queue-readiness fixture exists;
+- no Supplier Return queue-readiness fixture exists yet;
 - no `api/lib/finalizedSupplierReturnReplayV1.php` adapter exists;
 - no `api/replay/supplier-return.php` endpoint exists;
 - `src/api/transactionApi.ts` has no Supplier Return replay method;
 - `src/services/syncEngine.ts` has no finalized Supplier Return replay branch;
-- no transaction verifier exists for ready/unsafe Supplier Return replay.
+- no backend transaction verifier exists for ready/unsafe Supplier Return replay.
 
 ## Payload Readiness Gaps
 
-Supplier Return currently uses the generic return payload, so its queued rows
-cannot prove the server-id-only mutation target set needed by a narrow replay
-endpoint.
+Supplier Return no longer uses only the generic return payload. Completed,
+non-postponed rows now carry enough metadata to classify queue readiness, but
+they are not replayed into MySQL yet.
 
-Required prerequisites before implementation:
+Completed prerequisites:
 
-1. Add `finalizedSupplierReturnReplay` v1 builder types and readiness
+1. Completed: add `finalizedSupplierReturnReplay` v1 builder types and readiness
    diagnostics.
-2. Capture explicit mapped backend supplier id.
-3. Capture explicit mapped backend item ids for every returned line.
-4. Capture explicit selected/source batch metadata and mapped backend batch ids
-   when batch mutation applies.
-5. Capture optional mapped cylinder ids for cylinder supplier returns.
-6. Decide whether the current local Supplier Return cylinder clamping behavior
-   is intended or a business bug. The shared backend helper currently rejects
-   insufficient filled/stock cylinders, which does not exactly mirror local
-   non-negative clamping.
-7. Keep local Supplier Return finalization successful even when replay
+2. Completed: capture explicit mapped backend supplier id.
+3. Completed: capture explicit mapped backend item ids for every returned line.
+4. Completed: capture explicit selected/source batch metadata and mapped backend
+   batch ids when batch mutation applies.
+5. Completed: capture optional mapped cylinder ids and filled/stock before/after
+   metadata for cylinder supplier returns.
+6. Completed: classify cylinder supplier-return rows as unsafe when the local
+   outcome would rely on non-negative clamping.
+7. Completed: keep local Supplier Return finalization successful even when replay
    readiness is unsafe.
-8. Add a safe payload verifier for ready and unsafe Supplier Return payloads.
-9. Add a queue-readiness fixture that does not call a backend Supplier Return
+8. Completed: add a safe payload verifier for ready and unsafe Supplier Return
+   payloads.
+
+Remaining prerequisites before endpoint implementation:
+
+1. Add a queue-readiness fixture that does not call a backend Supplier Return
    replay endpoint.
+2. Decide whether any historical Supplier Return rows without the v1 contract
+   should stay manual-only or receive explicit migration/diagnostic tooling.
+3. Implement a Supplier Return-specific adapter only after ready/unsafe fixture
+   coverage is stable.
 
 ## Minimal Reuse Strategy
 
@@ -377,16 +392,17 @@ Small shared helpers may be extracted later where duplication is mechanical:
 
 Do not implement Supplier Return replay immediately.
 
-The next safe step is payload hardening only:
+The next safe step is a queue-readiness fixture:
 
-1. Add `finalizedSupplierReturnReplay` v1 queue contract and readiness
-   classification.
-2. Add local payload verifier coverage for ready and unsafe cases.
-3. Add a queue-readiness fixture that proves Supplier Return rows become ready
+1. Generate isolated finalized Supplier Return queue rows without backend
+   replay.
+2. Prove Supplier Return rows become ready
    only when supplier, item, selected batch, and optional cylinder mappings are
    present.
-4. Revisit Supplier Return cylinder clamping versus rejection before the
-   backend endpoint mutates cylinders.
+3. Prove missing supplier, item, selected batch, source batch server id, and
+   cylinder mappings remain unsafe.
+4. Keep `api/replay/supplier-return.php` absent until fixture coverage is
+   stable.
 
 Only after those checks are stable should a narrow
 `api/replay/supplier-return.php` endpoint be added.

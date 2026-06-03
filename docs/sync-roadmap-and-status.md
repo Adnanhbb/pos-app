@@ -1580,8 +1580,8 @@ Completed, non-postponed local Customer Returns now queue an explicit
 `finalizedCustomerReturnReplay` v1 contract with Customer Return-specific
 `replayReadiness`, server-only customer/item targets, safe local return-batch
 correlation metadata, optional cylinder mapping, and optional customer holding
-mapping for gas/cylinder returns. Supplier Return still uses the generic return
-payload and is not migrated by this Customer Return hardening.
+mapping for gas/cylinder returns. Supplier Return is covered separately by its
+own queue payload hardening and remains without a backend replay endpoint.
 
 Unsafe Customer Return mappings do not block a successful local IndexedDB
 Customer Return. They annotate the queue row with safe reason codes and remain
@@ -1615,15 +1615,19 @@ Local finalized Supplier Return behavior remains the IndexedDB reference:
 - cylinder Supplier Return currently decreases filled cylinders and recomputes
   total cylinder stock from the local cylinder fields.
 
-Supplier Return still uses the generic return payload today. No
-`finalizedSupplierReturnReplay` v1 queue contract, Supplier Return readiness
-scope, Supplier Return queue-readiness fixture, Supplier Return replay adapter,
-or `api/replay/supplier-return.php` endpoint exists yet.
+Completed, non-postponed local Supplier Returns now queue an explicit
+`finalizedSupplierReturnReplay` v1 contract with Supplier Return-specific
+`replayReadiness`, server-only supplier/item targets, selected/source batch
+metadata, optional cylinder mapping, negative payment metadata, and safe
+before/after batch/cylinder values where available.
 
-The recommended next step is payload hardening only: add a
-`finalizedSupplierReturnReplay` v1 contract and readiness classification,
-capture explicit supplier/item/selected-batch/server-cylinder mappings, and
-resolve the Supplier Return cylinder clamping-versus-rejection decision before
-any backend mutation endpoint is added. Sale, Purchase, and Customer Return
-replay remain unchanged. Standalone payment replay, background replay, startup
-replay, polling, listeners, workers, and auto-sync remain deferred.
+Unsafe Supplier Return mappings do not block a successful local IndexedDB
+Supplier Return. They annotate the queue row with safe reason codes and remain
+ineligible for backend-authoritative replay.
+
+No Supplier Return queue-readiness fixture, Supplier Return replay adapter, or
+`api/replay/supplier-return.php` endpoint exists yet. The recommended next step
+is a queue-readiness fixture that proves ready/unsafe Supplier Return rows
+without calling backend replay. Sale, Purchase, and Customer Return replay
+remain unchanged. Standalone payment replay, background replay, startup replay,
+polling, listeners, workers, and auto-sync remain deferred.

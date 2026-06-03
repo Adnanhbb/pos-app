@@ -59,7 +59,11 @@ export interface SyncQueueItem {
 }
 
 export type TransactionReplayReadiness = {
-  scope: "finalized_sale" | "finalized_purchase" | "finalized_customer_return";
+  scope:
+    | "finalized_sale"
+    | "finalized_purchase"
+    | "finalized_customer_return"
+    | "finalized_supplier_return";
   payloadVersion: 1;
   status: "ready" | "unsafe";
   reasons: Array<{
