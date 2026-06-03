@@ -80,6 +80,7 @@
                     "test:local:finalized-sale-queue-readiness-fixture":  "node scripts/verify-finalized-sale-queue-readiness-fixture.mjs",
                     "test:local:finalized-purchase-queue-readiness-fixture":  "node scripts/verify-finalized-purchase-queue-readiness-fixture.mjs",
                     "test:transactions:finalized-sale-manual-replay":  "node scripts/test-finalized-sale-manual-replay.mjs",
+                    "test:transactions:finalized-purchase-manual-replay":  "node scripts/test-finalized-purchase-manual-replay.mjs",
                     "test:packaged:finalized-sale-manual-replay":  "node scripts/verify-packaged-finalized-sale-manual-replay.mjs",
                     "test:packaged:pos-daily-workflows":  "node scripts/verify-packaged-pos-daily-workflows.mjs",
                     "support:user:create":  "php scripts/create-developer-support-user.php"

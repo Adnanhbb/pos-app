@@ -320,7 +320,7 @@ assert(
     finalizationSource.includes("await tx.done;"),
   "local IndexedDB finalization remains the existing atomic commit path"
 );
-assert(!existsSync(backendPurchaseReplayPath), "backend Purchase replay HTTP endpoint is intentionally absent");
+assert(existsSync(backendPurchaseReplayPath), "narrow backend Purchase replay HTTP endpoint exists");
 assert(existsSync(backendSaleReplayPath), "existing narrow backend Sale replay endpoint remains present");
 assert(
   builderSource.includes('transactionType: "Sale"') &&
@@ -343,7 +343,7 @@ console.log(
           ...unsafeCylinderContract.replayReadiness.reasons.map((reason) => reason.code),
         ]),
       ].sort(),
-      backendPurchaseReplayEndpointAdded: false,
+      backendPurchaseReplayEndpointAdded: true,
       saleReplayChanged: false,
       localPOSBehaviorChanged: false,
       autoSyncChanged: false,

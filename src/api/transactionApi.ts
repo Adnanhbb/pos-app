@@ -18,4 +18,8 @@ export const transactionApi = {
   replayFinalizedSale(clientTransactionId: string): Promise<any> {
     return apiClient.post("/replay/sale.php", { clientTransactionId });
   },
+
+  replayFinalizedPurchase(clientTransactionId: string): Promise<any> {
+    return apiClient.post("/replay/purchase.php", { clientTransactionId });
+  },
 };

@@ -99,8 +99,8 @@ try {
     "fixture uses a uniquely named IndexedDB database instead of live POSDatabase"
   );
   assert(
-    !existsSync(backendPurchaseReplayPath),
-    "backend Purchase replay HTTP endpoint is intentionally absent"
+    existsSync(backendPurchaseReplayPath),
+    "narrow backend Purchase replay HTTP endpoint exists"
   );
   assert(
     existsSync(backendSaleReplayPath),
@@ -683,7 +683,7 @@ try {
         backendBusinessMutationRequests: observedApiRequests.filter(
           (request) => request.method !== "GET" && request.method !== "HEAD"
         ).length,
-        backendPurchaseReplayEndpointAdded: false,
+        backendPurchaseReplayEndpointAdded: true,
         saleReplayChanged: false,
         replayTriggered: false,
         autoSyncChanged: false,

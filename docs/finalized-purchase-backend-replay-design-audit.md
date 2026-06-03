@@ -11,8 +11,9 @@ contract with Purchase-specific `replayReadiness`. The contract is a safe
 future adapter boundary: local ids remain correlation metadata, while mapped
 backend ids are explicit wherever future MySQL mutation will require them.
 
-The next implementation task may add a narrow authenticated
-`POST /api/replay/purchase.php` endpoint for ready v1 payloads only.
+The narrow authenticated `POST /api/replay/purchase.php` endpoint now exists
+for ready v1 payloads only. It remains manual-only and is called only after
+explicit manual queue processing stores the transaction row.
 
 ## Current IndexedDB Purchase Outcome
 
@@ -230,9 +231,7 @@ Suggested safe reason codes:
 - `missing_server_cylinder_id`
 - `missing_finalized_purchase_replay_contract`
 
-## Proposed Narrow Endpoint
-
-After payload hardening and fixture verification, add:
+## Implemented Narrow Endpoint
 
 ```http
 POST /api/replay/purchase.php
@@ -329,9 +328,7 @@ Small shared helpers may be extracted later where duplication is mechanical:
 Leave Sale contract validation and Sale routing unchanged while Purchase is
 introduced.
 
-## Completed Payload Hardening And Remaining Endpoint Prerequisites
-
-Before implementing `api/replay/purchase.php`:
+## Completed Payload And Endpoint Prerequisites
 
 1. Completed: add `finalizedPurchaseReplay` v1 builder types and readiness
    diagnostics.
@@ -343,16 +340,15 @@ Before implementing `api/replay/purchase.php`:
 5. Completed: keep local Purchase finalization successful even when replay
    readiness is unsafe.
 6. Completed: add a safe verifier for ready and unsafe Purchase payloads.
-7. Remaining: add endpoint-specific fixtures before exposing a Purchase
-   adapter.
-8. Remaining: update manual sync routing only when the narrow Purchase
-   endpoint exists.
+7. Completed: add endpoint-specific fixtures for ready, unsafe, supplier, and
+   Direct Purchase replay cases.
+8. Completed: update manual sync routing so ready finalized Purchase rows use
+   the narrow endpoint after storage.
 
 ## Explicitly Deferred
 
-This hardening does not add or expose replay execution for:
+This implementation does not add or expose replay execution for:
 
-- Purchase
 - Customer Return
 - Supplier Return
 - standalone payments
@@ -366,8 +362,8 @@ This hardening does not add or expose replay execution for:
 
 ## Safety Boundary
 
-This hardening changes only the queued finalized Purchase metadata created
-after a successful atomic local commit. It does not change successful local
-Purchase outcomes, IndexedDB mutation order, Sale replay behavior, API
-endpoints, database schema, queue processing behavior, auto-sync behavior, or
+This implementation adds manual backend-authoritative replay for ready
+finalized Purchase v1 rows only. It does not change successful local Purchase
+outcomes, IndexedDB mutation order, Sale replay behavior, database schema,
+auto-sync behavior, startup behavior, polling, listeners, workers, or
 background behavior.

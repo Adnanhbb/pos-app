@@ -163,6 +163,16 @@ function isFinalizedSalePayload(payload: OfflineTransactionPayload) {
   );
 }
 
+function isFinalizedPurchasePayload(payload: OfflineTransactionPayload) {
+  const sale = payload.payload?.sale;
+
+  return (
+    payload.transactionType === "sale" &&
+    sale?.transactionType === "Purchase" &&
+    sale?.isPostponed !== true
+  );
+}
+
 function assertReadyFinalizedSaleReplay(payload: OfflineTransactionPayload) {
   const contract = payload.payload?.finalizedSaleReplay;
 
@@ -177,6 +187,26 @@ function assertReadyFinalizedSaleReplay(payload: OfflineTransactionPayload) {
   ) {
     throw new Error(
       "Finalized Sale replay is blocked because its backend mappings are not replay-ready."
+    );
+  }
+}
+
+function assertReadyFinalizedPurchaseReplay(payload: OfflineTransactionPayload) {
+  const contract = payload.payload?.finalizedPurchaseReplay;
+
+  if (
+    payload.transactionType !== "sale" ||
+    payload.replayReadiness?.scope !== "finalized_purchase" ||
+    payload.replayReadiness?.payloadVersion !== 1 ||
+    payload.replayReadiness.status !== "ready" ||
+    payload.replayReadiness.reasons.length !== 0 ||
+    contract?.payloadVersion !== 1 ||
+    contract?.transactionType !== "Purchase" ||
+    contract?.replayReadiness?.status !== "ready" ||
+    contract?.replayReadiness?.reasons?.length !== 0
+  ) {
+    throw new Error(
+      "Finalized Purchase replay is blocked because its backend mappings are not replay-ready."
     );
   }
 }
@@ -281,6 +311,13 @@ export const syncEngine = {
         assertReadyFinalizedSaleReplay(item.payload);
         await transactionApi.postTransaction(item.payload);
         await transactionApi.replayFinalizedSale(item.payload.clientTransactionId);
+        return;
+      }
+
+      if (isFinalizedPurchasePayload(item.payload)) {
+        assertReadyFinalizedPurchaseReplay(item.payload);
+        await transactionApi.postTransaction(item.payload);
+        await transactionApi.replayFinalizedPurchase(item.payload.clientTransactionId);
         return;
       }
 

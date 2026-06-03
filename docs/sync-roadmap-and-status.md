@@ -1510,9 +1510,9 @@ Run:
 npm.cmd run test:transactions:finalized-sale-manual-replay
 ```
 
-Purchase, Customer Return, Supplier Return, standalone payment replay,
-invoice cancellation, startup replay, polling, listeners, workers, background
-replay, and auto-sync remain deferred.
+Customer Return, Supplier Return, standalone payment replay, invoice
+cancellation, startup replay, polling, listeners, workers, background replay,
+and auto-sync remain deferred.
 
 ## Finalized Purchase Backend Replay Design Audit
 
@@ -1539,14 +1539,20 @@ cylinder mapping. Direct Purchase remains valid without a supplier server id
 because it has no supplier accounting mutation.
 
 Unsafe Purchase mappings do not block a successful local IndexedDB Purchase.
-They annotate the queue row with safe reason codes and remain ineligible for a
-future backend-authoritative replay adapter. Do not add
-`api/replay/purchase.php` until endpoint-specific ready and unsafe fixtures are
-approved. The future endpoint should stay separate from Sale replay, reload
-stored payload by `clientTransactionId`, use one MySQL transaction, return
-backend-created batch mappings, and remain authenticated, explicit,
-manual-only, and idempotent.
+They annotate the queue row with safe reason codes and remain ineligible for
+backend-authoritative replay.
 
-No Purchase endpoint, queue routing change, POS behavior change, background
-replay, startup replay, polling, listeners, workers, or auto-sync is added by
-this payload hardening.
+The narrow authenticated `api/replay/purchase.php` endpoint now exists for
+explicit manual replay of ready `finalizedPurchaseReplay` v1 rows. Manual queue
+processing stores a ready finalized Purchase, then calls the Purchase endpoint
+by `clientTransactionId`. The adapter builds a server-id-only mutation envelope
+and applies the Purchase header/items, item stock increase, backend batch
+creation, optional selected-supplier accounting/payment effect, and optional
+mapped cylinder increase in one MySQL transaction. Duplicate replay is
+terminal-state skipped without duplicate business writes. Direct Purchase is
+accepted without supplier mutation.
+
+No POS behavior change, Sale replay change, Customer Return replay, Supplier
+Return replay, standalone payment replay, background replay, startup replay,
+polling, listeners, workers, or auto-sync is added by finalized Purchase
+manual replay.
