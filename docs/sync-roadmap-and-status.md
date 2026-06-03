@@ -1595,3 +1595,35 @@ and optional cylinder/holding movement in one MySQL transaction. Sale and
 Purchase replay are unchanged. Supplier Return replay, standalone payment
 replay, background replay, startup replay, polling, listeners, workers, and
 auto-sync remain deferred.
+
+## Finalized Supplier Return Backend Replay Design Audit
+
+The Supplier Return replay slice has been audited in
+[finalized-supplier-return-backend-replay-design-audit.md](./finalized-supplier-return-backend-replay-design-audit.md).
+
+Local finalized Supplier Return behavior remains the IndexedDB reference:
+
+- the local header uses `transactionType: "Return"` with supplier return mode
+  and the existing `RET-S` invoice sequence;
+- item stock decreases;
+- selected/source purchase batches decrease `qtyPurchased` and `balance` while
+  leaving `qtySold` unchanged;
+- selected supplier payable decreases, negative paid amounts are applied when
+  entered, balance is recomputed, and invoices increment;
+- optional non-zero supplier payment rows are negative and use Supplier Return
+  adjustment remarks;
+- cylinder Supplier Return currently decreases filled cylinders and recomputes
+  total cylinder stock from the local cylinder fields.
+
+Supplier Return still uses the generic return payload today. No
+`finalizedSupplierReturnReplay` v1 queue contract, Supplier Return readiness
+scope, Supplier Return queue-readiness fixture, Supplier Return replay adapter,
+or `api/replay/supplier-return.php` endpoint exists yet.
+
+The recommended next step is payload hardening only: add a
+`finalizedSupplierReturnReplay` v1 contract and readiness classification,
+capture explicit supplier/item/selected-batch/server-cylinder mappings, and
+resolve the Supplier Return cylinder clamping-versus-rejection decision before
+any backend mutation endpoint is added. Sale, Purchase, and Customer Return
+replay remain unchanged. Standalone payment replay, background replay, startup
+replay, polling, listeners, workers, and auto-sync remain deferred.
