@@ -1556,3 +1556,36 @@ No POS behavior change, Sale replay change, Customer Return replay, Supplier
 Return replay, standalone payment replay, background replay, startup replay,
 polling, listeners, workers, or auto-sync is added by finalized Purchase
 manual replay.
+
+## Finalized Customer Return Backend Replay Design Audit
+
+The Customer Return replay slice has been audited in
+[finalized-customer-return-backend-replay-design-audit.md](./finalized-customer-return-backend-replay-design-audit.md).
+
+Local finalized Customer Return behavior remains the IndexedDB reference:
+
+- the local header uses `transactionType: "Return"` with customer return mode
+  and the existing `RET-C` invoice sequence;
+- item stock increases;
+- one return batch is created per returned cart line;
+- selected customer payable decreases, negative paid amounts are applied when
+  entered, balance is recomputed, and invoices increment;
+- optional non-zero customer payment rows are negative and use return
+  adjustment remarks;
+- cylinder Customer Return moves customer holding to empty cylinders by
+  decreasing `withCustomers`, increasing `emptyCylinders`, and leaving
+  `filledCylinders` unchanged.
+
+The current queue still uses the generic return payload. It does not yet have
+the hardened `finalizedCustomerReturnReplay` v1 contract required for a narrow
+manual backend endpoint. Therefore the safe next step is payload hardening and
+readiness diagnostics, not endpoint implementation.
+
+The proposed future endpoint remains manual-only and should accept only ready
+`finalizedCustomerReturnReplay` v1 rows by `clientTransactionId`, build a
+server-id-only mutation envelope, and apply the Customer Return header/items,
+item stock increase, return-batch creation, customer accounting/payment effect,
+and optional cylinder/holding movement in one MySQL transaction. Sale and
+Purchase replay are unchanged. No Customer Return replay endpoint, Supplier
+Return replay, standalone payment replay, background replay, startup replay,
+polling, listeners, workers, or auto-sync is added by this audit.
