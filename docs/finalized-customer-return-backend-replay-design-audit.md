@@ -1,6 +1,7 @@
 # Finalized Customer Return Backend Replay Design Audit
 
-Status: design/audit only. No Customer Return replay endpoint exists yet.
+Status: queue payload hardening implemented; backend replay endpoint deferred.
+No Customer Return replay endpoint exists yet.
 
 This document prepares the backend-authoritative replay path for finalized
 Customer Return transactions only. The current IndexedDB Customer Return
@@ -9,10 +10,10 @@ must match that local behavior exactly and must use the same manual,
 idempotent, contract-gated pattern already used for finalized Sale and
 finalized Purchase replay.
 
-This audit does not implement `api/replay/customer-return.php`, does not change
-successful local POS behavior, does not change Sale or Purchase replay, and
-does not add auto-sync, polling, listeners, workers, startup replay, or
-background replay.
+This audit and payload hardening do not implement
+`api/replay/customer-return.php`, do not change successful local POS behavior,
+do not change Sale or Purchase replay, and do not add auto-sync, polling,
+listeners, workers, startup replay, or background replay.
 
 ## Current Local Customer Return Outcome
 
@@ -56,25 +57,27 @@ For Customer Return, local accounting uses the current invoice math:
 
 Invoice numbering uses the existing `RET-C` prefix and must remain unchanged.
 
-## Current Queue Behavior And Gap
+## Current Queue Behavior
 
-After the local IndexedDB transaction commits, `src/POS.tsx` currently calls
-`buildReturnTransactionPayload(...)`. The resulting queue row uses the generic
-return envelope:
+After the local IndexedDB transaction commits, `src/POS.tsx` calls
+`buildReturnTransactionPayload(...)`. Completed, non-postponed Customer Return
+rows now include a hardened `finalizedCustomerReturnReplay` v1 contract:
 
 - outer `transactionType: "return"`;
 - `payload.returnMode: "customer"`;
 - `payload.sale` with local Customer Return header;
 - local `saleId`;
 - local-id-based `saleItems`;
-- optional before/after customer snapshots;
-- stock, batch, and cylinder mutation snapshots.
+- `payload.finalizedCustomerReturnReplay` v1;
+- top-level `replayReadiness` copied from the contract.
 
-Unlike Sale and Purchase, Customer Return does not yet have a hardened
-`finalizedCustomerReturnReplay` v1 contract. That is the main blocker to a
-narrow backend endpoint. The generic payload is useful for diagnostics, but it
-is not safe as the authoritative replay contract because it can contain local
-IndexedDB ids and broad before/after snapshots.
+The hardened Customer Return queue envelope omits broad customer, supplier,
+stock, batch, and cylinder snapshots for finalized Customer Return rows. Local
+IndexedDB ids remain correlation metadata only. Future MySQL mutation targets
+must use explicit backend `serverId` fields from the contract.
+
+Supplier Return still uses the existing generic return payload and is not
+migrated by this Customer Return hardening.
 
 ## Existing MySQL And Backend Coverage
 
@@ -121,11 +124,10 @@ helpers.
 | Cylinders | Move filled cylinders to with-customer holding. | Move with-customer holding to empty cylinders; filled cylinders unchanged. |
 | Validation | Requires sufficient item/batch/cylinder stock before decrease. | Requires mapped item/cylinder rows and sufficient customer cylinder holding when cylinder lines are returned. |
 
-## Proposed `finalizedCustomerReturnReplay` V1 Contract
+## Implemented `finalizedCustomerReturnReplay` V1 Contract
 
-Future queue hardening should add a Customer Return-specific contract while
-leaving local Customer Return finalization successful even when replay is
-unsafe:
+The Customer Return-specific contract keeps local finalization successful even
+when backend replay readiness is unsafe:
 
 ```json
 {
@@ -318,21 +320,31 @@ Small shared helpers may be extracted later where duplication is mechanical:
 
 ## Payload Readiness Gaps
 
-Implementation should not start with the backend endpoint. Current Customer
-Return queue rows lack the required hardened contract.
+The queue contract now exists, but backend replay remains deferred. The next
+implementation step should be a fixture that creates one isolated Customer
+Return queue row and verifies ready/unsafe classifications against the packaged
+or safe local IndexedDB path without calling a backend replay endpoint.
 
-The next implementation step should be:
+Completed prerequisites:
 
-1. Add `finalizedCustomerReturnReplay` v1 builder types and readiness
+1. Completed: add `finalizedCustomerReturnReplay` v1 builder types and readiness
    diagnostics.
-2. Capture locally created Customer Return batch ids after atomic local commit.
-3. Store explicit mapped backend item ids and selected customer id.
-4. Capture optional mapped cylinder and holding metadata for cylinder returns.
-5. Keep local Customer Return finalization successful even when replay
+2. Completed: capture locally created Customer Return batch ids after atomic
+   local commit.
+3. Completed: store explicit mapped backend item ids and selected customer id.
+4. Completed: capture optional mapped cylinder and holding metadata for
+   cylinder returns.
+5. Completed: keep local Customer Return finalization successful even when replay
    readiness is unsafe.
-6. Add a safe verifier for ready and unsafe Customer Return payloads.
-7. Add a queue-readiness fixture that does not call a backend Customer Return
+6. Completed: add a safe verifier for ready and unsafe Customer Return
+   payloads.
+
+Remaining prerequisites:
+
+1. Add a queue-readiness fixture that does not call a backend Customer Return
    replay endpoint.
+2. Implement the narrow endpoint only after the fixture proves ready payloads
+   are stable.
 
 Only after those checks are stable should `api/replay/customer-return.php` be
 implemented.

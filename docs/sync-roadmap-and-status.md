@@ -1576,10 +1576,16 @@ Local finalized Customer Return behavior remains the IndexedDB reference:
   decreasing `withCustomers`, increasing `emptyCylinders`, and leaving
   `filledCylinders` unchanged.
 
-The current queue still uses the generic return payload. It does not yet have
-the hardened `finalizedCustomerReturnReplay` v1 contract required for a narrow
-manual backend endpoint. Therefore the safe next step is payload hardening and
-readiness diagnostics, not endpoint implementation.
+Completed, non-postponed local Customer Returns now queue an explicit
+`finalizedCustomerReturnReplay` v1 contract with Customer Return-specific
+`replayReadiness`, server-only customer/item targets, safe local return-batch
+correlation metadata, optional cylinder mapping, and optional customer holding
+mapping for gas/cylinder returns. Supplier Return still uses the generic return
+payload and is not migrated by this Customer Return hardening.
+
+Unsafe Customer Return mappings do not block a successful local IndexedDB
+Customer Return. They annotate the queue row with safe reason codes and remain
+ineligible for backend-authoritative replay.
 
 The proposed future endpoint remains manual-only and should accept only ready
 `finalizedCustomerReturnReplay` v1 rows by `clientTransactionId`, build a

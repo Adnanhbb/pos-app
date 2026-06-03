@@ -92,6 +92,17 @@ function isFinalizedPurchaseQueueRow(row) {
   );
 }
 
+function isFinalizedCustomerReturnQueueRow(row) {
+  return (
+    row.entity === "transactions" &&
+    row.operation === "transaction" &&
+    row.payload?.transactionType === "return" &&
+    row.payload?.payload?.returnMode === "customer" &&
+    row.payload?.payload?.sale?.transactionType === "Return" &&
+    row.payload?.payload?.sale?.isPostponed !== true
+  );
+}
+
 async function loadPlaywright() {
   try {
     return await import("playwright");
@@ -172,6 +183,7 @@ async function main() {
     const failedRows = rows.filter((row) => row.status === "failed");
     const finalizedSaleRows = rows.filter(isFinalizedSaleQueueRow);
     const finalizedPurchaseRows = rows.filter(isFinalizedPurchaseQueueRow);
+    const finalizedCustomerReturnRows = rows.filter(isFinalizedCustomerReturnQueueRow);
     const pendingCreatedAtValues = pendingRows
       .map((row) => Number(row.createdAt))
       .filter((value) => !Number.isNaN(value));
@@ -237,6 +249,24 @@ async function main() {
         ).length,
         unsafeReasons: countBy(
           finalizedPurchaseRows.flatMap(
+            (row) => row.replayReadiness?.reasons ?? []
+          ),
+          (reason) => reason.code
+        ),
+      },
+      finalizedCustomerReturnReplayReadiness: {
+        totalRows: finalizedCustomerReturnRows.length,
+        ready: finalizedCustomerReturnRows.filter(
+          (row) => row.replayReadiness?.status === "ready"
+        ).length,
+        unsafe: finalizedCustomerReturnRows.filter(
+          (row) => row.replayReadiness?.status === "unsafe"
+        ).length,
+        missingContract: finalizedCustomerReturnRows.filter(
+          (row) => !row.payload?.payload?.finalizedCustomerReturnReplay
+        ).length,
+        unsafeReasons: countBy(
+          finalizedCustomerReturnRows.flatMap(
             (row) => row.replayReadiness?.reasons ?? []
           ),
           (reason) => reason.code

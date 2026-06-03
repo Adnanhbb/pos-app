@@ -77,6 +77,7 @@
                     "test:local:pos-finalization-safety":  "node scripts/verify-local-pos-finalization-safety.mjs",
                     "test:local:finalized-sale-payload-readiness":  "node scripts/verify-finalized-sale-payload-readiness.mjs",
                     "test:local:finalized-purchase-payload-readiness":  "node scripts/verify-finalized-purchase-payload-readiness.mjs",
+                    "test:local:finalized-customer-return-payload-readiness":  "node scripts/verify-finalized-customer-return-payload-readiness.mjs",
                     "test:local:finalized-sale-queue-readiness-fixture":  "node scripts/verify-finalized-sale-queue-readiness-fixture.mjs",
                     "test:local:finalized-purchase-queue-readiness-fixture":  "node scripts/verify-finalized-purchase-queue-readiness-fixture.mjs",
                     "test:transactions:finalized-sale-manual-replay":  "node scripts/test-finalized-sale-manual-replay.mjs",

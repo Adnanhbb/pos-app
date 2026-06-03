@@ -1242,6 +1242,7 @@ const stockMovements = [];
 const batchMutations = [];
 const cylinderMutations = [];
 const createdPurchaseBatchesByItem = new Map<number, ItemBatch[]>();
+const createdCustomerReturnBatchesByItem = new Map<number, ItemBatch[]>();
 
 for (const ci of cart) {
   const itemAfter = await itemsRepository.getById(ci.originalItemId);
@@ -1295,11 +1296,14 @@ for (const ci of cart) {
         after: batchAfter,
       });
 
-      if (isPurchase) {
-        const created = createdPurchaseBatchesByItem.get(ci.originalItemId) ?? [];
+      if (isPurchase || isCustomerReturn) {
+        const targetMap = isPurchase
+          ? createdPurchaseBatchesByItem
+          : createdCustomerReturnBatchesByItem;
+        const created = targetMap.get(ci.originalItemId) ?? [];
         if (!created.some((batch) => batch.id === batchAfter.id)) {
           created.push(batchAfter);
-          createdPurchaseBatchesByItem.set(ci.originalItemId, created);
+          targetMap.set(ci.originalItemId, created);
         }
       }
     }
@@ -1522,6 +1526,116 @@ const finalizedPurchaseReplay = isPurchase && !isPostponed
     }
   : undefined;
 
+const customerReturnBatchOffsets = new Map<number, number>();
+const finalizedCustomerReturnReplay = isCustomerReturn && !isPostponed
+  ? {
+      localSaleId: saleId,
+      invoiceNo,
+      customer: {
+        localId: customerId ?? null,
+        serverId: getServerId(preMutationCustomer ?? {}),
+        nameSnapshot: customerName,
+      },
+      items: cart.map((ci) => {
+        const item = preMutationItems.get(ci.originalItemId);
+        const createdBatches =
+          createdCustomerReturnBatchesByItem.get(ci.originalItemId) ?? [];
+        const batchOffset =
+          customerReturnBatchOffsets.get(ci.originalItemId) ?? 0;
+        const createdBatch = createdBatches[batchOffset];
+        customerReturnBatchOffsets.set(ci.originalItemId, batchOffset + 1);
+
+        const category = (item?.category ?? "").toLowerCase();
+        const convQty = Number(item?.ConvQty ?? ci.convQty ?? 1);
+        const requiresCylinderMutation =
+          (category.includes("gas") || category.includes("cylinder")) &&
+          Number.isFinite(convQty) &&
+          convQty > 0 &&
+          Math.floor(ci.qty / convQty) > 0;
+
+        return {
+          localItemId: ci.originalItemId,
+          serverItemId: getServerId(item ?? {}),
+          originalItemId: ci.originalItemId,
+          nameSnapshot: ci.name,
+          qty: ci.qty,
+          price: ci.minUnitPrice,
+          costPrice: ci.costPrice,
+          quantityUnit: "min" as const,
+          selectedUnit: ci.unit,
+          conversion: {
+            minUnit: item?.minunit ?? ci.minunit,
+            maxUnit: item?.maxunit ?? ci.maxunit,
+            convQty,
+            quantityInMinUnit: ci.qty,
+          },
+          returnBatchCreate: createdBatch
+            ? {
+                localBatchId: createdBatch.id ?? null,
+                sourceSaleId: createdBatch.sourceSaleId ?? saleId,
+                purchaseDate: createdBatch.purchaseDate,
+                qtyReturned: createdBatch.qtyPurchased,
+                balance: createdBatch.balance,
+                costPrice: createdBatch.costPrice,
+                invoiceNo: createdBatch.invoiceNo,
+              }
+            : null,
+          requiresCylinderMutation,
+        };
+      }),
+      payments: {
+        paidAmount,
+        source: "pos-finalization" as const,
+        method: null,
+      },
+      cylinders: cart.flatMap((ci) => {
+        const item = preMutationItems.get(ci.originalItemId);
+        const category = (item?.category ?? "").toLowerCase();
+        const convQty = Number(item?.ConvQty ?? ci.convQty ?? 1);
+        const qtyReturned =
+          Number.isFinite(convQty) && convQty > 0
+            ? Math.floor(ci.qty / convQty)
+            : 0;
+        const isCylinderItem =
+          category.includes("gas") || category.includes("cylinder");
+        const cylinder = preMutationCylinders.get(ci.originalItemId);
+
+        if (!isCylinderItem || qtyReturned <= 0 || !cylinder) return [];
+
+        const holding = cylinderCustomerUpdates.find(
+          (candidate) =>
+            candidate.cylinderId === cylinder.id &&
+            candidate.customerName === customerName
+        );
+
+        return [{
+          localItemId: ci.originalItemId,
+          serverItemId: getServerId(item ?? {}),
+          localCylinderId: cylinder.id ?? null,
+          serverCylinderId: getServerId(cylinder),
+          customerHolding: holding
+            ? {
+                localHoldingId: "id" in holding ? holding.id ?? null : null,
+                serverHoldingId: getServerId(holding),
+                customerNameSnapshot: holding.customerName,
+              }
+            : null,
+          qtyReturned,
+          movement: "customerHoldingToEmpty" as const,
+        }];
+      }),
+      totals: {
+        subtotal: invoiceSubtotal,
+        discount: invoiceDiscount,
+        tax: invoiceTax,
+        dues,
+        grandTotal,
+        paid: paidAmount,
+        arrears,
+      },
+    }
+  : undefined;
+
 try {
   const transactionPayload = isReturn
     ? buildReturnTransactionPayload({
@@ -1547,6 +1661,7 @@ try {
         stockMovements,
         batchMutations,
         cylinderMutations,
+        finalizedCustomerReturnReplay,
       })
     : buildSaleTransactionPayload({
         clientTransactionId,

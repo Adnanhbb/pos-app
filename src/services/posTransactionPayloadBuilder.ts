@@ -207,6 +207,89 @@ export type FinalizedPurchaseReplayContractV1 = Omit<
   replayReadiness: TransactionReplayReadiness;
 };
 
+export type FinalizedCustomerReturnReplayBatchCreateReference = {
+  localBatchId: number | null;
+  sourceSaleId: number | null;
+  purchaseDate: string;
+  qtyReturned: number;
+  balance: number;
+  costPrice: number;
+  invoiceNo: string;
+};
+
+export type FinalizedCustomerReturnReplayItemReference = {
+  localItemId: number;
+  serverItemId: ReplayServerId;
+  originalItemId: number;
+  nameSnapshot: string;
+  qty: number;
+  price: number;
+  costPrice: number;
+  quantityUnit: "min";
+  selectedUnit: "min" | "max";
+  conversion: {
+    minUnit: string;
+    maxUnit: string;
+    convQty: number;
+    quantityInMinUnit: number;
+  };
+  returnBatchCreate: FinalizedCustomerReturnReplayBatchCreateReference | null;
+  requiresCylinderMutation: boolean;
+};
+
+export type FinalizedCustomerReturnReplayCylinderReference = {
+  localItemId: number;
+  serverItemId: ReplayServerId;
+  localCylinderId: number | null;
+  serverCylinderId: ReplayServerId;
+  customerHolding: {
+    localHoldingId: number | null;
+    serverHoldingId: ReplayServerId;
+    customerNameSnapshot: string;
+  } | null;
+  qtyReturned: number;
+  movement: "customerHoldingToEmpty";
+};
+
+export type FinalizedCustomerReturnReplayContractInput = {
+  localSaleId?: number;
+  invoiceNo: string;
+  customer: {
+    localId: number | null;
+    serverId: ReplayServerId;
+    nameSnapshot: string;
+  };
+  items: FinalizedCustomerReturnReplayItemReference[];
+  payments: {
+    paidAmount: number;
+    source: "pos-finalization";
+    method: string | null;
+  };
+  cylinders: FinalizedCustomerReturnReplayCylinderReference[];
+  totals: {
+    subtotal: number;
+    discount: number;
+    tax: number;
+    dues: number;
+    grandTotal: number;
+    paid: number;
+    arrears: number;
+  };
+};
+
+export type FinalizedCustomerReturnReplayContractV1 = Omit<
+  FinalizedCustomerReturnReplayContractInput,
+  "localSaleId"
+> & {
+  payloadVersion: 1;
+  transactionType: "Return";
+  returnMode: "customer";
+  localSaleId: number | null;
+  clientTransactionId: string;
+  createdAt: number;
+  replayReadiness: TransactionReplayReadiness;
+};
+
 export type SaleTransactionPayloadInput = {
   clientTransactionId?: string;
   createdAt?: number;
@@ -228,6 +311,7 @@ export type SaleTransactionPayloadInput = {
 
 export type ReturnTransactionPayloadInput = SaleTransactionPayloadInput & {
   returnMode: "customer" | "supplier";
+  finalizedCustomerReturnReplay?: FinalizedCustomerReturnReplayContractInput;
 };
 
 export type InvoiceDeleteTransactionPayloadInput = {
@@ -501,6 +585,164 @@ export function buildFinalizedPurchaseReplayContract(
   };
 }
 
+export function buildFinalizedCustomerReturnReplayContract(
+  input: FinalizedCustomerReturnReplayContractInput & {
+    clientTransactionId: string;
+    createdAt: number;
+  }
+): FinalizedCustomerReturnReplayContractV1 {
+  const reasons: TransactionReplayReadiness["reasons"] = [];
+
+  if (input.localSaleId == null) {
+    addUnsafeReason(reasons, {
+      code: "missing_local_sale_id",
+      message: "Finalized local Customer Return id is missing.",
+      localSaleId: null,
+    });
+  }
+
+  if (input.customer.serverId == null) {
+    addUnsafeReason(reasons, {
+      code: "missing_customer_server_id",
+      message: "Customer Return customer is not mapped to a backend row.",
+      localCustomerId: input.customer.localId,
+    });
+  }
+
+  for (const item of input.items) {
+    if (item.serverItemId == null) {
+      addUnsafeReason(reasons, {
+        code: "missing_server_item_id",
+        message: "Customer Return item is not mapped to a backend row.",
+        localItemId: item.localItemId,
+      });
+    }
+
+    if (
+      !item.returnBatchCreate ||
+      item.returnBatchCreate.localBatchId == null ||
+      item.returnBatchCreate.sourceSaleId == null ||
+      !Number.isFinite(item.returnBatchCreate.qtyReturned) ||
+      item.returnBatchCreate.qtyReturned <= 0 ||
+      !Number.isFinite(item.returnBatchCreate.balance) ||
+      item.returnBatchCreate.balance <= 0 ||
+      !Number.isFinite(item.returnBatchCreate.costPrice) ||
+      item.returnBatchCreate.costPrice < 0 ||
+      typeof item.returnBatchCreate.purchaseDate !== "string" ||
+      item.returnBatchCreate.purchaseDate.trim() === "" ||
+      typeof item.returnBatchCreate.invoiceNo !== "string" ||
+      item.returnBatchCreate.invoiceNo.trim() === ""
+    ) {
+      addUnsafeReason(reasons, {
+        code: "missing_return_batch_metadata",
+        message: "Customer Return item is missing its local return-batch correlation metadata.",
+        localItemId: item.localItemId,
+        localBatchId: item.returnBatchCreate?.localBatchId ?? null,
+      });
+    }
+
+    if (
+      item.requiresCylinderMutation &&
+      !input.cylinders.some((cylinder) => cylinder.localItemId === item.localItemId)
+    ) {
+      addUnsafeReason(reasons, {
+        code: "missing_cylinder_mapping",
+        message: "Cylinder Customer Return movement has no local cylinder mapping.",
+        localItemId: item.localItemId,
+      });
+    }
+  }
+
+  for (const cylinder of input.cylinders) {
+    if (cylinder.serverCylinderId == null) {
+      addUnsafeReason(reasons, {
+        code: "missing_server_cylinder_id",
+        message: "Cylinder Customer Return movement is not mapped to a backend cylinder row.",
+        localItemId: cylinder.localItemId,
+        localCylinderId: cylinder.localCylinderId,
+      });
+    }
+
+    if (
+      !cylinder.customerHolding ||
+      cylinder.customerHolding.localHoldingId == null ||
+      cylinder.customerHolding.serverHoldingId == null
+    ) {
+      addUnsafeReason(reasons, {
+        code: "missing_customer_holding_mapping",
+        message: "Cylinder Customer Return holding is not mapped to a backend holding row.",
+        localItemId: cylinder.localItemId,
+        localCylinderId: cylinder.localCylinderId,
+      });
+    }
+  }
+
+  const replayReadiness: TransactionReplayReadiness = {
+    scope: "finalized_customer_return",
+    payloadVersion: 1,
+    status: reasons.length === 0 ? "ready" : "unsafe",
+    reasons,
+  };
+
+  return {
+    payloadVersion: 1,
+    transactionType: "Return",
+    returnMode: "customer",
+    localSaleId: input.localSaleId ?? null,
+    invoiceNo: input.invoiceNo,
+    clientTransactionId: input.clientTransactionId,
+    createdAt: input.createdAt,
+    customer: input.customer,
+    items: input.items,
+    payments: input.payments,
+    cylinders: input.cylinders,
+    totals: input.totals,
+    replayReadiness,
+  };
+}
+
+function buildUnavailableFinalizedCustomerReturnReplayContract(
+  input: ReturnTransactionPayloadInput,
+  clientTransactionId: string,
+  createdAt: number
+): FinalizedCustomerReturnReplayContractV1 {
+  const contract = buildFinalizedCustomerReturnReplayContract({
+    localSaleId: input.saleId,
+    invoiceNo: input.sale.invoiceNo,
+    clientTransactionId,
+    createdAt,
+    customer: {
+      localId: input.sale.customerId ?? null,
+      serverId: null,
+      nameSnapshot: input.sale.customerName || "Customer Return",
+    },
+    items: [],
+    payments: {
+      paidAmount: Number(input.sale.paid) || 0,
+      source: "pos-finalization",
+      method: null,
+    },
+    cylinders: [],
+    totals: {
+      subtotal: input.sale.subtotal,
+      discount: input.sale.discount,
+      tax: input.sale.tax,
+      dues: input.sale.dues,
+      grandTotal: input.sale.grandTotal,
+      paid: input.sale.paid,
+      arrears: input.sale.arrears,
+    },
+  });
+
+  addUnsafeReason(contract.replayReadiness.reasons, {
+    code: "missing_finalized_customer_return_replay_contract",
+    message: "Finalized Customer Return replay mapping contract was not captured.",
+    localSaleId: input.saleId ?? null,
+  });
+  contract.replayReadiness.status = "unsafe";
+  return contract;
+}
+
 function buildUnavailableFinalizedPurchaseReplayContract(
   input: SaleTransactionPayloadInput,
   clientTransactionId: string,
@@ -669,8 +911,40 @@ export function buildReturnTransactionPayload(
    * For customer/supplier returns, capture the original item, batch, party, and
    * cylinder states before mutation and final states after local return save.
    */
+  const base = createPayloadBase("return", input.clientTransactionId, input.createdAt);
+  const isFinalizedCustomerReturn =
+    input.returnMode === "customer" &&
+    input.sale.transactionType === "Return" &&
+    input.sale.isPostponed !== true;
+
+  if (isFinalizedCustomerReturn) {
+    const finalizedCustomerReturnReplay = input.finalizedCustomerReturnReplay
+      ? buildFinalizedCustomerReturnReplayContract({
+          ...input.finalizedCustomerReturnReplay,
+          clientTransactionId: base.clientTransactionId,
+          createdAt: base.createdAt,
+        })
+      : buildUnavailableFinalizedCustomerReturnReplayContract(
+          input,
+          base.clientTransactionId,
+          base.createdAt
+        );
+
+    return {
+      ...base,
+      replayReadiness: finalizedCustomerReturnReplay.replayReadiness,
+      payload: clone({
+        returnMode: input.returnMode,
+        sale: input.sale,
+        saleId: input.saleId,
+        saleItems: input.saleItems,
+        finalizedCustomerReturnReplay,
+      }),
+    };
+  }
+
   return {
-    ...createPayloadBase("return", input.clientTransactionId, input.createdAt),
+    ...base,
     payload: clone({
       returnMode: input.returnMode,
       sale: input.sale,
