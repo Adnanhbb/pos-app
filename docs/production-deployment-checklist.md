@@ -80,10 +80,12 @@ npm.cmd run sync:report-reconciliation
 npm.cmd run sync:report-transactions
 npm.cmd run sync:report-replay-audit
 npm.cmd run sync:report-stale-replay-locks
+npm.cmd run sync:review-issues
 npm.cmd run sync:evaluate-auto-sync
 ```
 
 - Confirm local queue health is understood.
+- Confirm failed local queue issues are reviewed before using any archive action.
 - Confirm failed replay rows are classified or intentionally blocked.
 - Confirm stale replay locks are absent or manually reviewed.
 - Confirm auto-sync evaluator remains blocked or intentionally disabled.
@@ -141,6 +143,9 @@ npm.cmd run sync:evaluate-auto-sync
 - Confirm `saleboy`, staff, cashier, and manager roles cannot see the Settings `Sync Status` tab.
 - Confirm admin-facing Sync Status labels use client-friendly wording such as `All data is synced`, `Not sent yet`, `Could not sync`, `Needs attention`, `Last checked`, `Last sync attempt`, and `Sync Now`.
 - Confirm admin-facing Sync Status does not show raw payloads, replay bodies, tokens, hashes, backend responses, queue internals, or developer diagnostics.
+- Confirm failed queue issue review shows plain-language categories only.
+- Confirm `Archive selected` is explicit and only applies to failed stale CRUD rows; failed finalized transaction/payment rows must remain support-review-only.
+- Confirm archived queue rows are preserved with an archive status, not deleted and not counted as successfully synced.
 - Confirm panel does not show payloads, tokens, passwords, cart contents, or full sensitive records.
 - Confirm dangerous tools are not exposed in the panel.
 - Confirm manual replay remains gated and explicit.

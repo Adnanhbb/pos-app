@@ -54,8 +54,11 @@ export interface SyncQueueItem {
   updatedAt: number;
   retryCount: number;
   lastError?: string | null;
-  status: "pending" | "processing" | "failed" | "done";
+  status: "pending" | "processing" | "failed" | "done" | "archived";
   replayReadiness?: TransactionReplayReadiness;
+  archivedAt?: number | null;
+  archivedReason?: string | null;
+  archivedFromStatus?: string | null;
 }
 
 export type TransactionReplayReadiness = {

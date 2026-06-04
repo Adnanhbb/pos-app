@@ -1,4 +1,5 @@
 import { initDB } from "../db";
+import { summarizeSyncQueueIssues } from "../services/syncQueueIssueReview";
 import type { SyncQueueItem } from "../types/sync";
 
 type SyncQueueAddInput =
@@ -57,13 +58,15 @@ export const syncQueueRepository = {
     processing: number;
     failed: number;
     done: number;
+    archived: number;
   }> {
     const db = await initDB();
-    const [pending, processing, failed, done] = await Promise.all([
+    const [pending, processing, failed, done, archived] = await Promise.all([
       db.getAllFromIndex("sync_queue", "by-status", "pending"),
       db.getAllFromIndex("sync_queue", "by-status", "processing"),
       db.getAllFromIndex("sync_queue", "by-status", "failed"),
       db.getAllFromIndex("sync_queue", "by-status", "done"),
+      db.getAllFromIndex("sync_queue", "by-status", "archived"),
     ]);
 
     return {
@@ -71,7 +74,13 @@ export const syncQueueRepository = {
       processing: processing.length,
       failed: failed.length,
       done: done.length,
+      archived: archived.length,
     };
+  },
+
+  async getIssueSummary() {
+    const failed = await syncQueueRepository.getFailed();
+    return summarizeSyncQueueIssues(failed);
   },
 
   async markProcessing(id: number): Promise<void> {
@@ -90,6 +99,44 @@ export const syncQueueRepository = {
     const item = await getById(id);
     if (!item) return;
     await updateQueueItem({ ...item, status: "failed", lastError: error });
+  },
+
+  async archiveFailed(ids: number[], reason = "Reviewed and archived from Sync Status."): Promise<{
+    requested: number;
+    archived: number;
+    skipped: Array<{ id: number; reason: string }>;
+  }> {
+    const uniqueIds = Array.from(new Set(ids.filter(id => Number.isInteger(id) && id > 0)));
+    const skipped: Array<{ id: number; reason: string }> = [];
+    let archived = 0;
+
+    for (const id of uniqueIds) {
+      const item = await getById(id);
+      if (!item) {
+        skipped.push({ id, reason: "not_found" });
+        continue;
+      }
+
+      if (item.status !== "failed") {
+        skipped.push({ id, reason: "not_failed" });
+        continue;
+      }
+
+      await updateQueueItem({
+        ...item,
+        status: "archived",
+        archivedAt: Date.now(),
+        archivedReason: reason,
+        archivedFromStatus: item.status,
+      });
+      archived += 1;
+    }
+
+    return {
+      requested: uniqueIds.length,
+      archived,
+      skipped,
+    };
   },
 
   async incrementRetry(id: number, error?: string): Promise<void> {

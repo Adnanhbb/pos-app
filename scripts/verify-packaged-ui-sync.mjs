@@ -216,7 +216,57 @@ async function manualReplayLifecycle(browser, runId) {
     if (failedLocalId != null) await mutateLocalStore(page, "brands", "delete", failedLocalId);
     await context.close();
   }
-}async function openPosTransactions(page) { const sales = page.locator("aside > ul > li").nth(6); if (await sales.locator("ul").count() === 0) await sales.locator("button").first().click(); await sales.locator("ul li button").first().click(); await page.waitForTimeout(500); }
+}
+async function syncIssueArchiveLifecycle(browser, runId) {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  await context.addInitScript(() => {
+    localStorage.setItem("loggedInUserId", "packaged-archive-admin");
+    localStorage.setItem("loggedInUserName", "Packaged Archive Admin");
+    localStorage.setItem("loggedInUserRole", "admin");
+    localStorage.setItem("jawadBro.authToken", "PACKAGED_UI_VALIDATED_SESSION_FIXTURE");
+  });
+
+  const page = await context.newPage();
+  await installValidatedSessionFixture(page, "admin");
+  let staleQueueId = null;
+  let businessQueueId = null;
+  let pendingQueueId = null;
+  const checks = [];
+
+  try {
+    await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 });
+    await page.locator("aside").waitFor({ state: "visible", timeout: 10000 });
+    const now = Date.now();
+    staleQueueId = await mutateLocalStore(page, "sync_queue", "add", { entity: "brands", operation: "update", localId: 910001, serverId: 910001, payload: { id: 910001, localId: 910001, name: `Archived stale brand ${runId}` }, createdAt: now, updatedAt: now, retryCount: 1, status: "failed", lastError: "Brand not found." });
+    businessQueueId = await mutateLocalStore(page, "sync_queue", "add", { entity: "transactions", operation: "transaction", localId: 910002, serverId: null, payload: { transactionType: "sale", clientTransactionId: `archive-business-${runId}`, payload: { sale: { transactionType: "Sale", invoiceNo: `SAL-ARCHIVE-${runId}`, isPostponed: false }, finalizedSaleReplay: { payloadVersion: 1, transactionType: "Sale", invoiceNo: `SAL-ARCHIVE-${runId}` } }, replayReadiness: { scope: "finalized_sale", payloadVersion: 1, status: "unsafe", reasons: [{ code: "missing_server_item_id", message: "Sale item is not mapped to a backend row." }] }, createdAt: now }, createdAt: now + 1, updatedAt: now + 1, retryCount: 1, status: "failed", lastError: "Finalized Sale replay is blocked because its backend mappings are not replay-ready.", replayReadiness: { scope: "finalized_sale", payloadVersion: 1, status: "unsafe", reasons: [{ code: "missing_server_item_id", message: "Sale item is not mapped to a backend row." }] } });
+    pendingQueueId = await mutateLocalStore(page, "sync_queue", "add", { entity: "brands", operation: "create", localId: 910003, serverId: null, payload: { id: 910003, localId: 910003, name: `Pending brand ${runId}` }, createdAt: now + 2, updatedAt: now + 2, retryCount: 0, status: "pending" });
+
+    const main = await openSettingsSyncStatus(page);
+    await page.waitForTimeout(500);
+    let panelText = await main.locator('[data-testid="settings-sync-status-panel"]').innerText();
+    checks.push({ name: "admin sees stale issue review in plain language", ok: panelText.includes("Some old sync records could not be completed.") && panelText.includes("Archive selected") });
+    checks.push({ name: "admin sees support message for business transaction", ok: panelText.includes("Ask support to review.") && panelText.includes(`SAL-ARCHIVE-${runId}`) });
+    await main.getByRole("button", { name: "Select old records", exact: true }).click();
+    await main.getByRole("button", { name: "Archive selected", exact: true }).click();
+    await page.waitForTimeout(800);
+    const staleAfter = await readLocalStore(page, "sync_queue", "get", staleQueueId);
+    const businessAfter = await readLocalStore(page, "sync_queue", "get", businessQueueId);
+    const pendingAfter = await readLocalStore(page, "sync_queue", "get", pendingQueueId);
+    panelText = await main.locator('[data-testid="settings-sync-status-panel"]').innerText();
+    checks.push({ name: "explicit archive changes only selected stale failed row", ok: staleAfter?.status === "archived", status: staleAfter?.status ?? null, archivedAtPresent: Boolean(staleAfter?.archivedAt) });
+    checks.push({ name: "failed business transaction remains visible for support", ok: businessAfter?.status === "failed", status: businessAfter?.status ?? null });
+    checks.push({ name: "pending row is not archived accidentally", ok: pendingAfter?.status === "pending", status: pendingAfter?.status ?? null });
+    checks.push({ name: "archived row is not counted as synced", ok: panelText.includes("Reviewed old records") && !panelText.includes("Successfully synced\n1"), panelTextIncludesReviewed: panelText.includes("Reviewed old records") });
+    checks.push({ name: "archive workflow does not expose raw payload or secrets", ok: !/payload_json|response_json|password_hash|PACKAGED_UI_VALIDATED_SESSION_FIXTURE/.test(panelText) });
+    return { entity: "sync issue archive", ok: checks.every((check) => check.ok), checks, staleQueueArchived: staleAfter?.status === "archived", businessQueuePreserved: businessAfter?.status === "failed", pendingQueuePreserved: pendingAfter?.status === "pending", mysqlMutated: false, replayTriggered: false };
+  } finally {
+    if (staleQueueId != null) await mutateLocalStore(page, "sync_queue", "delete", staleQueueId);
+    if (businessQueueId != null) await mutateLocalStore(page, "sync_queue", "delete", businessQueueId);
+    if (pendingQueueId != null) await mutateLocalStore(page, "sync_queue", "delete", pendingQueueId);
+    await context.close();
+  }
+}
+async function openPosTransactions(page) { const sales = page.locator("aside > ul > li").nth(6); if (await sales.locator("ul").count() === 0) await sales.locator("button").first().click(); await sales.locator("ul li button").first().click(); await page.waitForTimeout(500); }
 async function verifyInvoicesReadOnly(page) {
   const sales = page.locator("aside > ul > li").nth(6);
   if (await sales.locator("ul").count() === 0) await sales.locator("button").first().click();
@@ -427,5 +477,5 @@ async function verifySettingsSyncStatusVisibility(browser) {
 }
 
 export async function verifyPackagedUiSync(runId) {
-  const browser = await chromium.launch({ headless: true }); try { const developerControlPanel = await verifyDeveloperControlPanelVisibility(browser); const settingsSyncStatus = await verifySettingsSyncStatusVisibility(browser); const manualReplay = await manualReplayLifecycle(browser, runId); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); localStorage.setItem("jawadBro.authToken", "PACKAGED_UI_VALIDATED_SESSION_FIXTURE"); }); const page = await context.newPage(); await installValidatedSessionFixture(page); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); const invoicesReadOnly = await verifyInvoicesReadOnly(page); await context.close(); return { appUrl: APP_URL, ok: developerControlPanel.ok && settingsSyncStatus.ok && manualReplay.ok && invoicesReadOnly.ok && lifecycles.every((item) => item.ok), developerControlPanel, settingsSyncStatus, manualReplay, invoicesReadOnly, lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
+  const browser = await chromium.launch({ headless: true }); try { const developerControlPanel = await verifyDeveloperControlPanelVisibility(browser); const settingsSyncStatus = await verifySettingsSyncStatusVisibility(browser); const manualReplay = await manualReplayLifecycle(browser, runId); const syncIssueArchive = await syncIssueArchiveLifecycle(browser, runId); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); localStorage.setItem("jawadBro.authToken", "PACKAGED_UI_VALIDATED_SESSION_FIXTURE"); }); const page = await context.newPage(); await installValidatedSessionFixture(page); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); const invoicesReadOnly = await verifyInvoicesReadOnly(page); await context.close(); return { appUrl: APP_URL, ok: developerControlPanel.ok && settingsSyncStatus.ok && manualReplay.ok && syncIssueArchive.ok && invoicesReadOnly.ok && lifecycles.every((item) => item.ok), developerControlPanel, settingsSyncStatus, manualReplay, syncIssueArchive, invoicesReadOnly, lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
 }

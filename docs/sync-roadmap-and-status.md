@@ -1725,3 +1725,37 @@ does not add auto-sync, polling, listeners, workers, startup replay, background
 replay, or retry loops. Technical diagnostics remain exact-`Dev`-only inside a
 separate developer details area. The protected Developer Control Panel remains
 exact-`Dev`-only and is still hidden from `admin`.
+
+### Queue Issue Review And Archive
+
+Settings `Sync Status` now includes a safe review path for failed local
+`sync_queue` rows. It summarizes failed rows with friendly categories and never
+prints raw payload bodies, raw backend responses, tokens, hashes, or passwords.
+
+Supported categories:
+
+- old incomplete records
+- business records needing support
+- sign-in required
+- validation/support required
+
+Only failed stale CRUD rows classified as old incomplete records are eligible
+for explicit archive. Failed finalized transactions and payment/business replay
+rows remain support-review-only and are not hidden by the admin archive action.
+
+Archived queue rows are preserved with `status = archived`; they are not
+deleted, not marked as `done`, and not counted as successfully synced. The
+archive action does not call `syncEngine.processPending()`, does not replay,
+does not mutate MySQL, and does not change POS/payment/finalization behavior.
+
+CLI tooling:
+
+```powershell
+npm.cmd run sync:review-issues
+npm.cmd run sync:archive-issues:dry
+npm.cmd run sync:archive-issues
+```
+
+`sync:archive-issues` requires explicit apply through the npm script and only
+archives rows that are still failed and still classified as old incomplete
+records. Auto-sync remains disabled.

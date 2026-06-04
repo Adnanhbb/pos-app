@@ -5,6 +5,7 @@ import { fetchCurrentSession } from "./api/authSession";
 import { settingsRepository } from "./repositories/settingsRepository";
 import { syncQueueRepository } from "./repositories/syncQueueRepository";
 import { syncEngine } from "./services/syncEngine";
+import type { SyncQueueIssueReview, SyncQueueIssueSummary } from "./services/syncQueueIssueReview";
 import { getPOSActivityState, type POSActivityState } from "./services/posActivityState";
 import type { Settings } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
@@ -18,6 +19,7 @@ type SyncQueueCounts = {
   syncing: number;
   couldNotSync: number;
   successfullySynced: number;
+  reviewedOldRecords: number;
   lastSyncAttemptAt: number | null;
   lastCheckedAt: number | null;
 };
@@ -113,12 +115,17 @@ export default function SettingsPage() {
     syncing: 0,
     couldNotSync: 0,
     successfullySynced: 0,
+    reviewedOldRecords: 0,
     lastSyncAttemptAt: null,
     lastCheckedAt: null,
   });
   const [syncDiagnostics, setSyncDiagnostics] = useState<ManualSyncDiagnostics | null>(null);
   const [syncRunning, setSyncRunning] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
+  const [syncIssueSummary, setSyncIssueSummary] = useState<SyncQueueIssueSummary | null>(null);
+  const [selectedArchiveIds, setSelectedArchiveIds] = useState<number[]>([]);
+  const [archiveRunning, setArchiveRunning] = useState(false);
+  const [archiveMessage, setArchiveMessage] = useState<string | null>(null);
   const [authDiagnostics, setAuthDiagnostics] = useState<CrudAuthDiagnostics>(fallbackAuthDiagnostics);
   const [lastReplayAuthStatus, setLastReplayAuthStatus] = useState<LastReplayAuthStatus>("none");
   const [lastReplayAuthGate, setLastReplayAuthGate] = useState<ReplayAuthGateResult | null>(null);
@@ -205,7 +212,10 @@ export default function SettingsPage() {
   };
 
   const refreshSyncQueueCounts = async () => {
-    const summary = await syncQueueRepository.getStatusSummary();
+    const [summary, issues] = await Promise.all([
+      syncQueueRepository.getStatusSummary(),
+      syncQueueRepository.getIssueSummary(),
+    ]);
 
     setSyncCounts(prev => ({
       ...prev,
@@ -213,13 +223,66 @@ export default function SettingsPage() {
       syncing: summary.processing,
       couldNotSync: summary.failed,
       successfullySynced: summary.done,
+      reviewedOldRecords: summary.archived,
       lastCheckedAt: Date.now(),
     }));
+    setSyncIssueSummary(issues);
+    setSelectedArchiveIds(prev => {
+      const validIds = new Set(
+        issues.issues
+          .filter(issue => issue.archivable && issue.id != null)
+          .map(issue => issue.id as number)
+      );
+      return prev.filter(id => validIds.has(id));
+    });
 
     try {
       setAuthDiagnostics(await fetchCrudAuthDiagnostics());
     } catch {
       setAuthDiagnostics(fallbackAuthDiagnostics());
+    }
+  };
+
+  const toggleArchiveSelection = (issue: SyncQueueIssueReview) => {
+    if (!issue.archivable || issue.id == null) return;
+    const issueId = issue.id;
+
+    setSelectedArchiveIds(prev =>
+      prev.includes(issueId)
+        ? prev.filter(id => id !== issueId)
+        : [...prev, issueId]
+    );
+  };
+
+  const selectAllArchivableIssues = () => {
+    const ids = syncIssueSummary?.issues
+      .filter(issue => issue.archivable && issue.id != null)
+      .map(issue => issue.id as number) ?? [];
+    setSelectedArchiveIds(ids);
+  };
+
+  const archiveSelectedIssues = async () => {
+    if (archiveRunning || selectedArchiveIds.length === 0) return;
+
+    setArchiveRunning(true);
+    setArchiveMessage(null);
+
+    try {
+      const result = await syncQueueRepository.archiveFailed(
+        selectedArchiveIds,
+        "Reviewed stale sync issue from Settings Sync Status."
+      );
+      setArchiveMessage(
+        result.archived > 0
+          ? "Selected old records were archived from the attention list."
+          : "No records were archived."
+      );
+      setSelectedArchiveIds([]);
+      await refreshSyncQueueCounts();
+    } catch {
+      setArchiveMessage("Could not archive selected records. Please contact support.");
+    } finally {
+      setArchiveRunning(false);
     }
   };
 
@@ -523,6 +586,10 @@ export default function SettingsPage() {
               <div className="text-gray-500">Waiting to sync</div>
               <div className="text-xl font-semibold">{syncCounts.notSentYet + syncCounts.syncing}</div>
             </div>
+            <div className="border rounded p-3">
+              <div className="text-gray-500">Reviewed old records</div>
+              <div className="text-xl font-semibold">{syncCounts.reviewedOldRecords}</div>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm mt-4">
@@ -539,6 +606,74 @@ export default function SettingsPage() {
           {friendlySyncError && (
             <div className="mt-4 border border-red-200 bg-red-50 text-red-700 rounded p-3 text-sm">
               {friendlySyncError}
+            </div>
+          )}
+
+          {archiveMessage && (
+            <div className="mt-4 border border-blue-200 bg-blue-50 text-blue-800 rounded p-3 text-sm">
+              {archiveMessage}
+            </div>
+          )}
+
+          {syncIssueSummary && syncIssueSummary.totalIssues > 0 && (
+            <div className="mt-4 border rounded p-4 text-sm">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+                <div>
+                  <div className="font-medium">Needs attention</div>
+                  <div className="text-gray-600">
+                    Some old sync records could not be completed.
+                  </div>
+                </div>
+                {syncIssueSummary.archivable > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={selectAllArchivableIssues}
+                      disabled={archiveRunning}
+                      className="px-3 py-2 border rounded hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      Select old records
+                    </button>
+                    <button
+                      type="button"
+                      onClick={archiveSelectedIssues}
+                      disabled={archiveRunning || selectedArchiveIds.length === 0}
+                      className="px-3 py-2 bg-amber-600 text-white rounded hover:bg-amber-500 disabled:opacity-60"
+                    >
+                      {archiveRunning ? "Archiving..." : "Archive selected"}
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                {syncIssueSummary.issues.slice(0, 12).map(issue => (
+                  <label
+                    key={`${issue.id ?? "issue"}-${issue.entity}-${issue.operation}`}
+                    className="flex items-start gap-3 border rounded p-3"
+                  >
+                    {issue.archivable ? (
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={issue.id != null && selectedArchiveIds.includes(issue.id)}
+                        onChange={() => toggleArchiveSelection(issue)}
+                      />
+                    ) : (
+                      <span className="mt-1 inline-block h-4 w-4 rounded-full border border-amber-300 bg-amber-50" />
+                    )}
+                    <span className="flex-1">
+                      <span className="block font-medium">
+                        {issue.invoiceNo ? `${issue.friendlyType} ${issue.invoiceNo}` : issue.friendlyType}
+                      </span>
+                      <span className="block text-gray-600">{issue.friendlyReason}</span>
+                      {!issue.archivable && (
+                        <span className="block text-amber-700">Ask support to review.</span>
+                      )}
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
           )}
 
@@ -640,6 +775,28 @@ export default function SettingsPage() {
                     <div>
                       <div className="text-gray-500">Actor Role</div>
                       <div className="font-semibold">{authDiagnostics.actorRole ?? "n/a"}</div>
+                    </div>
+                  </div>
+                )}
+
+                {syncIssueSummary && syncIssueSummary.totalIssues > 0 && (
+                  <div className="mt-4">
+                    <div className="font-medium mb-2">Queue Issue Review</div>
+                    <div className="space-y-2">
+                      {syncIssueSummary.issues.map(issue => (
+                        <div key={`${issue.id ?? "issue"}-${issue.entity}-${issue.operation}`} className="border rounded p-2 bg-gray-50">
+                          <div>Queue ID: {issue.id ?? "n/a"}</div>
+                          <div>Entity: {issue.entity}</div>
+                          <div>Operation: {issue.operation}</div>
+                          <div>Status: {issue.status}</div>
+                          <div>Category: {issue.category}</div>
+                          <div>Archivable: {issue.archivable ? "yes" : "no"}</div>
+                          {issue.invoiceNo && <div>Invoice: {issue.invoiceNo}</div>}
+                          {issue.transactionType && <div>Transaction Type: {issue.transactionType}</div>}
+                          {issue.reasonCodes.length > 0 && <div>Reason Codes: {issue.reasonCodes.join(", ")}</div>}
+                          {issue.technicalReason && <div>Message: {issue.technicalReason}</div>}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 )}
