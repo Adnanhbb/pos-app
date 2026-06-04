@@ -59,6 +59,7 @@ export interface SyncQueueItem {
   archivedAt?: number | null;
   archivedReason?: string | null;
   archivedFromStatus?: string | null;
+  archivedByRole?: string | null;
 }
 
 export type TransactionReplayReadiness = {

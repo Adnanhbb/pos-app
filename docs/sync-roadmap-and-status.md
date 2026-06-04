@@ -1753,6 +1753,15 @@ Only failed stale CRUD rows classified as old incomplete records are eligible
 for explicit archive. Failed finalized transactions and payment/business replay
 rows remain support-review-only and are not hidden by the admin archive action.
 
+Exact-role `Dev` users have one additional controlled path for rows that the
+developer explicitly confirms are test/rehearsal business records. The Dev-only
+action requires explicit confirmation in Settings before archiving failed
+business rows, stores `archivedAt`, `archivedReason`,
+`archivedFromStatus`, and `archivedByRole`, and keeps `status = archived`.
+It does not delete queue rows, mark them `done`, mark them synced, replay them,
+or mutate MySQL. Admin users can still see that business records need support,
+but cannot archive them.
+
 Archived queue rows are preserved with `status = archived`; they are not
 deleted, not marked as `done`, and not counted as successfully synced. The
 archive action does not call `syncEngine.processPending()`, does not replay,
@@ -1796,4 +1805,6 @@ being used.
 
 `sync:archive-issues` requires explicit apply through the npm script and only
 archives rows that are still failed and still classified as old incomplete
-records. Auto-sync remains disabled.
+records by default. To include failed business rows that are confirmed
+test/rehearsal records, the CLI must be run with both
+`--include-business-test-records` and `--reason`. Auto-sync remains disabled.

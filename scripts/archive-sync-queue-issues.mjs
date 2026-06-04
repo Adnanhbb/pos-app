@@ -19,7 +19,20 @@ import {
 } from "./review-sync-queue-issues.mjs";
 
 const APPLY = process.argv.includes("--apply");
+const INCLUDE_BUSINESS_TEST_RECORDS = process.argv.includes("--include-business-test-records");
 const IDS_ARG = process.argv.find((arg) => arg.startsWith("--ids="));
+
+function argValue(name) {
+  const prefix = `--${name}=`;
+  const inline = process.argv.find((arg) => arg.startsWith(prefix));
+  if (inline) return inline.slice(prefix.length);
+
+  const index = process.argv.indexOf(`--${name}`);
+  if (index >= 0 && process.argv[index + 1]) return process.argv[index + 1];
+  return null;
+}
+
+const REASON_ARG = argValue("reason");
 
 function parseIds() {
   if (!IDS_ARG) return null;
@@ -30,7 +43,7 @@ function parseIds() {
   return Array.from(new Set(ids));
 }
 
-async function applyArchive(candidateIds) {
+async function applyArchive(archiveRecords) {
   const { chromium } = await loadPlaywright();
   const context = await chromium.launchPersistentContext(USER_DATA_DIR, { headless: true });
 
@@ -38,7 +51,7 @@ async function applyArchive(candidateIds) {
     const page = await context.newPage();
     await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 });
     return await page.evaluate(
-      async ({ dbName, dbVersion, candidateIds }) => {
+      async ({ dbName, dbVersion, archiveRecords }) => {
         function openDb() {
           return new Promise((resolve, reject) => {
             const request = indexedDB.open(dbName, dbVersion);
@@ -68,13 +81,14 @@ async function applyArchive(candidateIds) {
 
         try {
           if (!Array.from(db.objectStoreNames).includes("sync_queue")) {
-            return { archived, skipped: candidateIds.map((id) => ({ id, reason: "sync_queue_missing" })) };
+            return { archived, skipped: archiveRecords.map((record) => ({ id: record.id, reason: "sync_queue_missing" })) };
           }
 
           const tx = db.transaction("sync_queue", "readwrite");
           const store = tx.objectStore("sync_queue");
 
-          for (const id of candidateIds) {
+          for (const record of archiveRecords) {
+            const id = record.id;
             const row = await requestResult(store.get(id));
             if (!row) {
               skipped.push({ id, reason: "not_found" });
@@ -90,8 +104,9 @@ async function applyArchive(candidateIds) {
               ...row,
               status: "archived",
               archivedAt: Date.now(),
-              archivedReason: "Reviewed stale sync issue via explicit archive tool.",
+              archivedReason: record.archivedReason,
               archivedFromStatus: row.status,
+              archivedByRole: record.archivedByRole,
               updatedAt: Date.now(),
             }));
             archived.push(id);
@@ -103,7 +118,7 @@ async function applyArchive(candidateIds) {
           db.close();
         }
       },
-      { dbName: DB_NAME, dbVersion: DB_VERSION, candidateIds }
+      { dbName: DB_NAME, dbVersion: DB_VERSION, archiveRecords }
     );
   } finally {
     await context.close();
@@ -113,15 +128,41 @@ async function applyArchive(candidateIds) {
 async function main() {
   const selectedIds = parseIds();
   const before = await buildIssueReport();
-  let candidates = before.issues.filter((issue) => issue.archivable && issue.id != null);
+  let staleCandidates = before.issues.filter((issue) => issue.archivable && issue.id != null);
+  let businessTestCandidates = [];
+
+  if (INCLUDE_BUSINESS_TEST_RECORDS) {
+    if (!REASON_ARG || !REASON_ARG.trim()) {
+      throw new Error("--include-business-test-records requires --reason.");
+    }
+
+    businessTestCandidates = before.issues.filter((issue) =>
+      issue.id != null &&
+      issue.status === "failed" &&
+      issue.category === "business_transaction_needs_support"
+    );
+  }
 
   if (selectedIds) {
     const selectedSet = new Set(selectedIds);
-    candidates = candidates.filter((issue) => selectedSet.has(issue.id));
+    staleCandidates = staleCandidates.filter((issue) => selectedSet.has(issue.id));
+    businessTestCandidates = businessTestCandidates.filter((issue) => selectedSet.has(issue.id));
   }
 
-  const candidateIds = candidates.map((issue) => issue.id);
-  const blocked = before.issues.filter((issue) => !issue.archivable);
+  const archiveRecords = [
+    ...staleCandidates.map((issue) => ({
+      id: issue.id,
+      archivedReason: "Reviewed stale sync issue via explicit archive tool.",
+      archivedByRole: "cli",
+    })),
+    ...businessTestCandidates.map((issue) => ({
+      id: issue.id,
+      archivedReason: REASON_ARG.trim(),
+      archivedByRole: "Dev",
+    })),
+  ];
+  const candidateIds = archiveRecords.map((record) => record.id);
+  const blocked = before.issues.filter((issue) => !candidateIds.includes(issue.id));
   const dryRun = {
     mode: APPLY ? "apply" : "dry-run",
     appUrl: APP_URL,
@@ -134,10 +175,14 @@ async function main() {
     },
     warnings: PROFILE_TARGET.warning ? [PROFILE_TARGET.warning] : [],
     totalFailedRows: before.totalFailedRows,
-    candidateRows: candidates.length,
+    candidateRows: archiveRecords.length,
+    staleCandidateRows: staleCandidates.length,
+    businessTestCandidateRows: businessTestCandidates.length,
     blockedRows: blocked.length,
+    includeBusinessTestRecords: INCLUDE_BUSINESS_TEST_RECORDS,
+    reason: INCLUDE_BUSINESS_TEST_RECORDS ? REASON_ARG : null,
     candidateIds,
-    candidates: candidates.map((issue) => ({
+    candidates: [...staleCandidates, ...businessTestCandidates].map((issue) => ({
       id: issue.id,
       entity: issue.entity,
       operation: issue.operation,
@@ -162,6 +207,8 @@ async function main() {
       mutatesMysql: false,
       printsPayloadBodies: false,
       applyRequiresFlag: true,
+      businessRowsRequireExplicitFlag: true,
+      businessRowsRequireReason: true,
     },
   };
 
@@ -182,7 +229,7 @@ async function main() {
     return;
   }
 
-  const result = await applyArchive(candidateIds);
+  const result = await applyArchive(archiveRecords);
   const after = await buildIssueReport();
   console.log(JSON.stringify({
     ...dryRun,

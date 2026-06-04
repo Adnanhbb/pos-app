@@ -253,6 +253,7 @@ async function syncIssueArchiveLifecycle(browser, runId) {
     checks.push({ name: "admin sees stale issue review in plain language", ok: panelText.includes("Some old sync records could not be completed.") && panelText.includes("Archive selected") });
     checks.push({ name: "admin sees safe issue row fields", ok: panelText.includes("Record #") && panelText.includes("Old record") && panelText.includes("Business record") && panelText.includes("Could not sync") && panelText.includes("Created:") && panelText.includes("Updated:") });
     checks.push({ name: "admin sees support message for business transaction", ok: panelText.includes("Ask support to review.") && panelText.includes(`SAL-ARCHIVE-${runId}`) });
+    checks.push({ name: "admin cannot select business records for archive", ok: !panelText.includes("Select test business records") && !panelText.includes("I confirm selected business records are test/rehearsal data.") });
     checks.push({ name: "admin issue details hide Dev reason codes", ok: !panelText.includes("missing_server_item_id") && !panelText.includes("Reason Codes:") });
     const downloadPromise = page.waitForEvent("download", { timeout: 10000 });
     await main.getByRole("button", { name: "Download issue summary", exact: true }).click();
@@ -306,8 +307,27 @@ async function verifyDevSyncIssueReasonCodes(browser, runId) {
     await main.getByRole("button", { name: "View issues", exact: true }).click();
     await openDeveloperDetails(main);
     await page.waitForTimeout(300);
-    const text = await main.locator('[data-testid="settings-sync-status-panel"]').innerText();
-    return { ok: text.includes("Reason Codes: missing_server_item_id") && text.includes(`SAL-DEV-ARCHIVE-${runId}`) && !/payload_json|response_json|password_hash|PACKAGED_UI_VALIDATED_SESSION_FIXTURE/.test(text), reasonCodeVisible: text.includes("Reason Codes: missing_server_item_id") };
+    let text = await main.locator('[data-testid="settings-sync-status-panel"]').innerText();
+    const reasonCodeVisible = text.includes("Reason Codes: missing_server_item_id");
+    const confirmVisible = text.includes("I confirm selected business records are test/rehearsal data.");
+    await main.getByRole("button", { name: "Select test business records", exact: true }).click();
+    await main.getByRole("button", { name: "Archive selected", exact: true }).click();
+    await page.waitForTimeout(300);
+    const unconfirmedRow = await readLocalStore(page, "sync_queue", "get", businessQueueId);
+    text = await main.locator('[data-testid="settings-sync-status-panel"]').innerText();
+    const unconfirmedBlocked = unconfirmedRow?.status === "failed" && text.includes("Confirm these are test or rehearsal records before archiving.");
+    await main.getByLabel("I confirm selected business records are test/rehearsal data.").check();
+    await main.getByRole("button", { name: "Archive selected", exact: true }).click();
+    await page.waitForTimeout(700);
+    const archivedRow = await readLocalStore(page, "sync_queue", "get", businessQueueId);
+    text = await main.locator('[data-testid="settings-sync-status-panel"]').innerText();
+    const archivedCorrectly = archivedRow?.status === "archived" &&
+      archivedRow?.archivedReason === "Confirmed test/rehearsal record" &&
+      archivedRow?.archivedFromStatus === "failed" &&
+      archivedRow?.archivedByRole === "Dev";
+    const notSyncedOrDeleted = archivedRow != null && archivedRow.status !== "done";
+    const noAttentionCount = !text.includes(`SAL-DEV-ARCHIVE-${runId}`) && !text.includes("Successfully synced\n1");
+    return { ok: reasonCodeVisible && confirmVisible && unconfirmedBlocked && archivedCorrectly && notSyncedOrDeleted && noAttentionCount && !/payload_json|response_json|password_hash|PACKAGED_UI_VALIDATED_SESSION_FIXTURE/.test(text), reasonCodeVisible, confirmVisible, unconfirmedBlocked, archivedCorrectly, notSyncedOrDeleted, noAttentionCount };
   } finally {
     if (businessQueueId != null) await mutateLocalStore(page, "sync_queue", "delete", businessQueueId);
     await context.close();

@@ -166,6 +166,13 @@ npm.cmd run sync:archive-issues:dry -- --profile=chrome-profile-1
   responses, tokens, passwords, hashes, and Admin-only exports omit Dev reason
   codes.
 - Confirm `Archive selected` is explicit and only applies to failed stale CRUD rows; failed finalized transaction/payment rows must remain support-review-only.
+- Confirm only exact-role `Dev` can archive confirmed test/rehearsal business
+  rows, and only after checking the explicit confirmation.
+- Confirm admin cannot archive business transaction/payment rows and still sees
+  `Ask support to review`.
+- Confirm Dev business-row archive stores `archivedAt`, `archivedReason`,
+  `archivedFromStatus`, and `archivedByRole`, while preserving `status =
+  archived`.
 - Confirm archived queue rows are preserved with an archive status, not deleted and not counted as successfully synced.
 - Confirm panel does not show payloads, tokens, passwords, cart contents, or full sensitive records.
 - Confirm dangerous tools are not exposed in the panel.

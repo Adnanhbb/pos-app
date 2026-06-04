@@ -82,6 +82,10 @@ function getFriendlyIssueCategory(category: SyncQueueIssueReview["category"]) {
   return "Needs review";
 }
 
+function isBusinessTestArchiveCandidate(issue: SyncQueueIssueReview) {
+  return issue.status === "failed" && issue.category === "business_transaction_needs_support";
+}
+
 function fallbackAuthDiagnostics(): CrudAuthDiagnostics {
   return {
     tokenPresent: Boolean(getAuthToken()),
@@ -138,6 +142,7 @@ export default function SettingsPage() {
   const [archiveRunning, setArchiveRunning] = useState(false);
   const [archiveMessage, setArchiveMessage] = useState<string | null>(null);
   const [showIssueDetails, setShowIssueDetails] = useState(false);
+  const [businessArchiveConfirmed, setBusinessArchiveConfirmed] = useState(false);
   const [authDiagnostics, setAuthDiagnostics] = useState<CrudAuthDiagnostics>(fallbackAuthDiagnostics);
   const [lastReplayAuthStatus, setLastReplayAuthStatus] = useState<LastReplayAuthStatus>("none");
   const [lastReplayAuthGate, setLastReplayAuthGate] = useState<ReplayAuthGateResult | null>(null);
@@ -149,6 +154,8 @@ export default function SettingsPage() {
   const isDevRole = currentRole === "Dev";
   const overallSyncStatus = getOverallSyncStatus(syncCounts);
   const friendlySyncError = getClientFriendlySyncMessage(syncError);
+  const canDevArchiveBusinessIssue = (issue: SyncQueueIssueReview) => isDevRole && isBusinessTestArchiveCandidate(issue);
+  const canArchiveIssueFromUi = (issue: SyncQueueIssueReview) => issue.archivable || canDevArchiveBusinessIssue(issue);
   const validateManualReplayAuthGate = async (): Promise<ReplayAuthGateResult> => {
     const checkedAt = Date.now();
 
@@ -243,7 +250,7 @@ export default function SettingsPage() {
     setSelectedArchiveIds(prev => {
       const validIds = new Set(
         issues.issues
-          .filter(issue => issue.archivable && issue.id != null)
+          .filter(issue => canArchiveIssueFromUi(issue) && issue.id != null)
           .map(issue => issue.id as number)
       );
       return prev.filter(id => validIds.has(id));
@@ -257,7 +264,7 @@ export default function SettingsPage() {
   };
 
   const toggleArchiveSelection = (issue: SyncQueueIssueReview) => {
-    if (!issue.archivable || issue.id == null) return;
+    if (!canArchiveIssueFromUi(issue) || issue.id == null) return;
     const issueId = issue.id;
 
     setSelectedArchiveIds(prev =>
@@ -274,6 +281,13 @@ export default function SettingsPage() {
     setSelectedArchiveIds(ids);
   };
 
+  const selectBusinessTestIssues = () => {
+    const ids = syncIssueSummary?.issues
+      .filter(issue => canDevArchiveBusinessIssue(issue) && issue.id != null)
+      .map(issue => issue.id as number) ?? [];
+    setSelectedArchiveIds(ids);
+  };
+
   const archiveSelectedIssues = async () => {
     if (archiveRunning || selectedArchiveIds.length === 0) return;
 
@@ -281,16 +295,42 @@ export default function SettingsPage() {
     setArchiveMessage(null);
 
     try {
-      const result = await syncQueueRepository.archiveFailed(
-        selectedArchiveIds,
-        "Reviewed stale sync issue from Settings Sync Status."
-      );
+      const selectedIdSet = new Set(selectedArchiveIds);
+      const selectedIssues = syncIssueSummary?.issues.filter(issue => issue.id != null && selectedIdSet.has(issue.id)) ?? [];
+      const staleIds = selectedIssues
+        .filter(issue => issue.archivable)
+        .map(issue => issue.id as number);
+      const businessTestIds = selectedIssues
+        .filter(issue => canDevArchiveBusinessIssue(issue))
+        .map(issue => issue.id as number);
+
+      if (businessTestIds.length > 0 && !businessArchiveConfirmed) {
+        setArchiveMessage("Confirm these are test or rehearsal records before archiving.");
+        return;
+      }
+
+      const staleResult = staleIds.length > 0
+        ? await syncQueueRepository.archiveFailed(
+            staleIds,
+            "Reviewed stale sync issue from Settings Sync Status.",
+            currentRole || null
+          )
+        : { archived: 0 };
+      const businessResult = businessTestIds.length > 0
+        ? await syncQueueRepository.archiveFailed(
+            businessTestIds,
+            "Confirmed test/rehearsal record",
+            currentRole || null
+          )
+        : { archived: 0 };
+      const archived = staleResult.archived + businessResult.archived;
       setArchiveMessage(
-        result.archived > 0
-          ? "Selected old records were archived from the attention list."
+        archived > 0
+          ? "Selected records were archived from the attention list."
           : "No records were archived."
       );
       setSelectedArchiveIds([]);
+      setBusinessArchiveConfirmed(false);
       await refreshSyncQueueCounts();
     } catch {
       setArchiveMessage("Could not archive selected records. Please contact support.");
@@ -735,7 +775,6 @@ export default function SettingsPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {syncIssueSummary.archivable > 0 && (
-                    <>
                     <button
                       type="button"
                       onClick={selectAllArchivableIssues}
@@ -744,6 +783,18 @@ export default function SettingsPage() {
                     >
                       Select old records
                     </button>
+                  )}
+                  {isDevRole && syncIssueSummary.issues.some(canDevArchiveBusinessIssue) && (
+                    <button
+                      type="button"
+                      onClick={selectBusinessTestIssues}
+                      disabled={archiveRunning}
+                      className="px-3 py-2 border rounded hover:bg-gray-50 disabled:opacity-60"
+                    >
+                      Select test business records
+                    </button>
+                  )}
+                  {(syncIssueSummary.archivable > 0 || (isDevRole && syncIssueSummary.issues.some(canDevArchiveBusinessIssue))) && (
                     <button
                       type="button"
                       onClick={archiveSelectedIssues}
@@ -752,10 +803,21 @@ export default function SettingsPage() {
                     >
                       {archiveRunning ? "Archiving..." : "Archive selected"}
                     </button>
-                    </>
                   )}
                 </div>
               </div>
+
+              {isDevRole && syncIssueSummary.issues.some(canDevArchiveBusinessIssue) && (
+                <label className="mb-3 flex items-start gap-2 rounded border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                  <input
+                    type="checkbox"
+                    checked={businessArchiveConfirmed}
+                    onChange={event => setBusinessArchiveConfirmed(event.target.checked)}
+                    className="mt-1"
+                  />
+                  <span>I confirm selected business records are test/rehearsal data.</span>
+                </label>
+              )}
 
               {showIssueDetails && (
               <div className="space-y-2">
@@ -764,7 +826,7 @@ export default function SettingsPage() {
                     key={`${issue.id ?? "issue"}-${issue.entity}-${issue.operation}`}
                     className="flex items-start gap-3 border rounded p-3"
                   >
-                    {issue.archivable ? (
+                    {canArchiveIssueFromUi(issue) ? (
                       <input
                         type="checkbox"
                         className="mt-1"
@@ -785,7 +847,10 @@ export default function SettingsPage() {
                         Created: {formatTimestamp(issue.createdAt)} - Updated: {formatTimestamp(issue.updatedAt)}
                       </span>
                       <span className="block text-gray-600">{issue.friendlyReason}</span>
-                      {!issue.archivable && (
+                      {canDevArchiveBusinessIssue(issue) && (
+                        <span className="block text-amber-700">Archive only if this is confirmed test/rehearsal data.</span>
+                      )}
+                      {!canArchiveIssueFromUi(issue) && (
                         <span className="block text-amber-700">Ask support to review.</span>
                       )}
                     </span>

@@ -104,7 +104,7 @@ export const syncQueueRepository = {
     await updateQueueItem({ ...item, status: "failed", lastError: error });
   },
 
-  async archiveFailed(ids: number[], reason = "Reviewed and archived from Sync Status."): Promise<{
+  async archiveFailed(ids: number[], reason = "Reviewed and archived from Sync Status.", archivedByRole: string | null = null): Promise<{
     requested: number;
     archived: number;
     skipped: Array<{ id: number; reason: string }>;
@@ -131,6 +131,7 @@ export const syncQueueRepository = {
         archivedAt: Date.now(),
         archivedReason: reason,
         archivedFromStatus: item.status,
+        archivedByRole,
       });
       archived += 1;
     }
