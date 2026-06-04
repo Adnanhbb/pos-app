@@ -63,7 +63,9 @@ export type TransactionReplayReadiness = {
     | "finalized_sale"
     | "finalized_purchase"
     | "finalized_customer_return"
-    | "finalized_supplier_return";
+    | "finalized_supplier_return"
+    | "standalone_customer_payment"
+    | "standalone_supplier_payment";
   payloadVersion: 1;
   status: "ready" | "unsafe";
   reasons: Array<{
@@ -75,6 +77,7 @@ export type TransactionReplayReadiness = {
     localItemId?: number | null;
     localBatchId?: number | null;
     localCylinderId?: number | null;
+    localPaymentId?: number | null;
   }>;
 };
 

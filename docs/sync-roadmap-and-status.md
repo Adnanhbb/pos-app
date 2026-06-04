@@ -1668,15 +1668,20 @@ Standalone Customer/Supplier Payment replay has been audited in
 [standalone-payment-backend-replay-design-audit.md](./standalone-payment-backend-replay-design-audit.md).
 
 Current Customer and Supplier payment pages remain local IndexedDB-only and do
-not enqueue standalone payment replay rows. Existing backend transaction storage
-can accept a broad `transactionType = "payment"` shell for storage validation,
-but there is no hardened replay readiness contract, no narrow payment replay
-endpoint, and no manual replay routing for standalone payments.
+now enqueue create-only standalone payment replay contracts after successful
+local saves. Existing local payment behavior is unchanged.
 
-The recommended next step is payload hardening before endpoint implementation:
-add explicit `standaloneCustomerPaymentReplay` v1 and
-`standaloneSupplierPaymentReplay` v1 create-only contracts, require mapped
-customer/supplier server ids, keep local ids as correlation references only,
-classify update/delete payment replay as unsafe until local semantics and
-tombstone/snapshot handling are designed, and continue to keep standalone
-Payment replay disabled until those readiness checks pass.
+Implemented payload hardening:
+
+- `standaloneCustomerPaymentReplay` v1
+- `standaloneSupplierPaymentReplay` v1
+- `replayReadiness` copied onto the queue row
+- ready only when local payment id, party server id, positive amount, and
+  payment date are present
+- unsafe rows remain local-valid and are annotated with safe reason codes
+
+There is still no standalone Payment replay endpoint. Manual replay explicitly
+blocks these rows with a safe "not implemented yet" error instead of treating
+generic transaction storage as backend replay. Update/delete payment replay,
+backend payment endpoints, startup replay, polling, listeners, workers,
+background replay, and auto-sync remain deferred.

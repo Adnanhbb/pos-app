@@ -20,8 +20,8 @@ export const indexedDbSupplierPaymentRepository = {
   },
 
   /** Add a new supplier payment */
-  add: async (payment: Omit<SupplierPayment, "id">): Promise<void> => {
-    await addSupplierPayment(
+  add: async (payment: Omit<SupplierPayment, "id">): Promise<number> => {
+    return await addSupplierPayment(
       payment.supplierId,
       payment.amount,
       payment.paymentDate,

@@ -1189,7 +1189,7 @@ export async function addCustomerPayment(
   paymentDate: string,
   remarks: string = "",
   payableSnapshot?: number // optional
-) {
+): Promise<number> {
   const db = await initDB();
   const customer = await db.get("customers", customerId);
   if (!customer) throw new Error("Customer not found");
@@ -1200,7 +1200,7 @@ export async function addCustomerPayment(
   const newPaid = (customer.paid ?? 0) + amount;
   const newBalance = currentBalance - amount;
 
-  await db.add("customer_payments", {
+  const paymentId = await db.add("customer_payments", {
     customerId,
     amount,
     paymentDate,
@@ -1214,6 +1214,8 @@ export async function addCustomerPayment(
     paid: newPaid,
     balance: newBalance,
   });
+
+  return paymentId;
 }
 
 /* ==========================================================
@@ -1231,13 +1233,13 @@ export async function addSupplierPayment(
   remarks: string = "",
   payableSnapshot: number,
   balanceSnapshot: number
-) {
+): Promise<number> {
   const db = await initDB();
   const supplier = await db.get("suppliers", supplierId);
   if (!supplier) throw new Error("Supplier not found");
 
   // ✅ Save the payment record only
-  await db.add("supplier_payments", {
+  const paymentId = await db.add("supplier_payments", {
     supplierId,
     amount,
     paymentDate,
@@ -1248,6 +1250,7 @@ export async function addSupplierPayment(
 
   // ❌ Do NOT update supplier.paid here anymore
   // handleCompleteTransaction() will update paid & balance
+  return paymentId;
 }
 
 export async function deleteSupplierPayment(id: number) {

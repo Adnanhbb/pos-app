@@ -4,6 +4,8 @@ import { indexedDbSupplierPaymentRepository as supplierPayRepo } from "./reposit
 import { indexedDbSupplierRepository as supplierRepo } from "./repositories/indexedDbSupplierRepository";
 import type { SupplierPayment, Supplier } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
+import { buildPaymentTransactionPayload } from "./services/posTransactionPayloadBuilder";
+import { queueOfflineTransaction } from "./services/transactionQueueService";
 
 import {
   FaPlus,
@@ -111,6 +113,7 @@ async function handleSave() {
   const alreadyPaid = supplier.paid ?? 0;
   const totalPayable = supplier.payable ?? 0;
   const currentPayable = totalPayable - alreadyPaid;
+  let createdPaymentForQueue: SupplierPayment | null = null;
 
   if (editingPayment) {
     // Update existing payment
@@ -138,15 +141,54 @@ async function handleSave() {
       supplierName: supplier.name,
       invoiceNo: "", // default or generate if needed
     };
-    await supplierPayRepo.add(newPayment);
+    const localPaymentId = await supplierPayRepo.add(newPayment);
+    createdPaymentForQueue = { ...newPayment, id: localPaymentId };
   }
 
   // Update supplier totals
-  await supplierRepo.update({
+  const updatedSupplier: Supplier = {
     ...supplier,
     paid: (supplier.paid ?? 0) + form.amount,
     balance: (supplier.payable ?? 0) - ((supplier.paid ?? 0) + form.amount),
-  });
+  };
+
+  await supplierRepo.update(updatedSupplier);
+
+  if (createdPaymentForQueue) {
+    try {
+      await queueOfflineTransaction(
+        buildPaymentTransactionPayload({
+          partyType: "supplier",
+          payment: createdPaymentForQueue,
+          supplier: {
+            before: supplier,
+            after: updatedSupplier,
+          },
+          standaloneSupplierPaymentReplay: {
+            operation: "create",
+            localPaymentId: createdPaymentForQueue.id ?? null,
+            supplier: {
+              localId: form.supplierId,
+              serverId:
+                (supplier as Supplier & { serverId?: number | string | null }).serverId ??
+                null,
+              nameSnapshot: supplier.name,
+            },
+            payment: {
+              amount: createdPaymentForQueue.amount,
+              paymentDate: createdPaymentForQueue.paymentDate,
+              remarks: createdPaymentForQueue.remarks ?? "",
+              invoiceNo: createdPaymentForQueue.invoiceNo ?? "",
+              payableSnapshot: createdPaymentForQueue.payableSnapshot,
+              balanceSnapshot: createdPaymentForQueue.balanceSnapshot,
+            },
+          },
+        })
+      );
+    } catch (error) {
+      console.warn("Standalone supplier payment queued replay payload failed.", error);
+    }
+  }
 
   await loadPage();
   await loadSuppliers();

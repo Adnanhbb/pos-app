@@ -25,8 +25,8 @@ export const indexedDbCustomerPaymentRepository = {
   },
 
   /** Add a new payment */
-  add: async (payment: Omit<CustomerPayment, "id">): Promise<void> => {
-    await addCustomerPayment(
+  add: async (payment: Omit<CustomerPayment, "id">): Promise<number> => {
+    return await addCustomerPayment(
       payment.customerId,
       payment.amount,
       payment.paymentDate,

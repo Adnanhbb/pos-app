@@ -195,6 +195,14 @@ function isFinalizedSupplierReturnPayload(payload: OfflineTransactionPayload) {
   );
 }
 
+function isStandalonePaymentPayload(payload: OfflineTransactionPayload) {
+  return (
+    payload.transactionType === "payment" &&
+    (payload.payload?.standaloneCustomerPaymentReplay ||
+      payload.payload?.standaloneSupplierPaymentReplay)
+  );
+}
+
 function assertReadyFinalizedSaleReplay(payload: OfflineTransactionPayload) {
   const contract = payload.payload?.finalizedSaleReplay;
 
@@ -399,6 +407,12 @@ export const syncEngine = {
         await transactionApi.postTransaction(item.payload);
         await transactionApi.replayFinalizedSupplierReturn(item.payload.clientTransactionId);
         return;
+      }
+
+      if (isStandalonePaymentPayload(item.payload)) {
+        throw new Error(
+          "Standalone Payment backend replay is not implemented yet."
+        );
       }
 
       await transactionApi.postTransaction(item.payload);

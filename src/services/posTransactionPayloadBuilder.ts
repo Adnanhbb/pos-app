@@ -372,6 +372,63 @@ export type FinalizedSupplierReturnReplayContractV1 = Omit<
   replayReadiness: TransactionReplayReadiness;
 };
 
+export type StandalonePaymentOperation = "create";
+
+export type StandalonePaymentReference = {
+  amount: number;
+  paymentDate: string;
+  remarks: string;
+  invoiceNo: string;
+  payableSnapshot: number;
+  balanceSnapshot: number;
+};
+
+export type StandaloneCustomerPaymentReplayContractInput = {
+  operation: StandalonePaymentOperation;
+  localPaymentId?: number | null;
+  clientPaymentId?: string | null;
+  customer: {
+    localId: number | null;
+    serverId: ReplayServerId;
+    nameSnapshot: string;
+  };
+  payment: StandalonePaymentReference;
+};
+
+export type StandaloneCustomerPaymentReplayContractV1 =
+  StandaloneCustomerPaymentReplayContractInput & {
+    payloadVersion: 1;
+    partyType: "customer";
+    localPaymentId: number | null;
+    clientPaymentId: string;
+    clientTransactionId: string;
+    createdAt: number;
+    replayReadiness: TransactionReplayReadiness;
+  };
+
+export type StandaloneSupplierPaymentReplayContractInput = {
+  operation: StandalonePaymentOperation;
+  localPaymentId?: number | null;
+  clientPaymentId?: string | null;
+  supplier: {
+    localId: number | null;
+    serverId: ReplayServerId;
+    nameSnapshot: string;
+  };
+  payment: StandalonePaymentReference;
+};
+
+export type StandaloneSupplierPaymentReplayContractV1 =
+  StandaloneSupplierPaymentReplayContractInput & {
+    payloadVersion: 1;
+    partyType: "supplier";
+    localPaymentId: number | null;
+    clientPaymentId: string;
+    clientTransactionId: string;
+    createdAt: number;
+    replayReadiness: TransactionReplayReadiness;
+  };
+
 export type SaleTransactionPayloadInput = {
   clientTransactionId?: string;
   createdAt?: number;
@@ -421,6 +478,8 @@ export type PaymentTransactionPayloadInput = {
   payment: Omit<CustomerPayment, "id"> | CustomerPayment | Omit<SupplierPayment, "id"> | SupplierPayment;
   customer?: Snapshot<Customer>;
   supplier?: Snapshot<Supplier>;
+  standaloneCustomerPaymentReplay?: StandaloneCustomerPaymentReplayContractInput;
+  standaloneSupplierPaymentReplay?: StandaloneSupplierPaymentReplayContractInput;
 };
 
 function clone<T>(value: T): T {
@@ -471,7 +530,8 @@ function addUnsafeReason(
         existing.localSupplierId === reason.localSupplierId &&
         existing.localItemId === reason.localItemId &&
         existing.localBatchId === reason.localBatchId &&
-        existing.localCylinderId === reason.localCylinderId
+        existing.localCylinderId === reason.localCylinderId &&
+        existing.localPaymentId === reason.localPaymentId
     )
   ) {
     reasons.push(reason);
@@ -1096,6 +1156,267 @@ function buildUnavailableFinalizedSaleReplayContract(
   return contract;
 }
 
+function createClientPaymentId(
+  partyType: "customer" | "supplier",
+  localPaymentId: number | null,
+  clientTransactionId: string
+) {
+  if (localPaymentId != null) {
+    return `${partyType}-payment-local-${localPaymentId}`;
+  }
+
+  return `${partyType}-payment-${clientTransactionId}`;
+}
+
+function normalizeStandalonePaymentReference(
+  payment: StandalonePaymentReference
+): StandalonePaymentReference {
+  return {
+    amount: Number(payment.amount),
+    paymentDate: String(payment.paymentDate ?? ""),
+    remarks: payment.remarks ?? "",
+    invoiceNo: payment.invoiceNo ?? "",
+    payableSnapshot: Number(payment.payableSnapshot ?? 0),
+    balanceSnapshot: Number(payment.balanceSnapshot ?? 0),
+  };
+}
+
+export function buildStandaloneCustomerPaymentReplayContract(
+  input: StandaloneCustomerPaymentReplayContractInput & {
+    clientTransactionId: string;
+    createdAt: number;
+  }
+): StandaloneCustomerPaymentReplayContractV1 {
+  const reasons: TransactionReplayReadiness["reasons"] = [];
+  const localPaymentId = input.localPaymentId ?? null;
+  const payment = normalizeStandalonePaymentReference(input.payment);
+
+  if (input.operation !== "create") {
+    addUnsafeReason(reasons, {
+      code: "unsupported_payment_operation",
+      message: "Standalone Customer Payment replay supports create only.",
+      localPaymentId,
+      localCustomerId: input.customer.localId,
+    });
+  }
+
+  if (localPaymentId == null) {
+    addUnsafeReason(reasons, {
+      code: "missing_local_payment_id",
+      message: "Standalone Customer Payment local id is missing.",
+      localPaymentId,
+      localCustomerId: input.customer.localId,
+    });
+  }
+
+  if (input.customer.serverId == null) {
+    addUnsafeReason(reasons, {
+      code: "missing_party_server_id",
+      message: "Standalone Customer Payment customer is not mapped to a backend row.",
+      localPaymentId,
+      localCustomerId: input.customer.localId,
+    });
+  }
+
+  if (!Number.isFinite(payment.amount) || payment.amount <= 0) {
+    addUnsafeReason(reasons, {
+      code: "invalid_payment_amount",
+      message: "Standalone Customer Payment amount must be a positive finite number.",
+      localPaymentId,
+      localCustomerId: input.customer.localId,
+    });
+  }
+
+  if (payment.paymentDate.trim() === "") {
+    addUnsafeReason(reasons, {
+      code: "missing_payment_date",
+      message: "Standalone Customer Payment date is missing.",
+      localPaymentId,
+      localCustomerId: input.customer.localId,
+    });
+  }
+
+  const replayReadiness: TransactionReplayReadiness = {
+    scope: "standalone_customer_payment",
+    payloadVersion: 1,
+    status: reasons.length === 0 ? "ready" : "unsafe",
+    reasons,
+  };
+
+  return {
+    payloadVersion: 1,
+    operation: "create",
+    partyType: "customer",
+    localPaymentId,
+    clientPaymentId:
+      input.clientPaymentId ??
+      createClientPaymentId("customer", localPaymentId, input.clientTransactionId),
+    clientTransactionId: input.clientTransactionId,
+    createdAt: input.createdAt,
+    customer: input.customer,
+    payment,
+    replayReadiness,
+  };
+}
+
+export function buildStandaloneSupplierPaymentReplayContract(
+  input: StandaloneSupplierPaymentReplayContractInput & {
+    clientTransactionId: string;
+    createdAt: number;
+  }
+): StandaloneSupplierPaymentReplayContractV1 {
+  const reasons: TransactionReplayReadiness["reasons"] = [];
+  const localPaymentId = input.localPaymentId ?? null;
+  const payment = normalizeStandalonePaymentReference(input.payment);
+
+  if (input.operation !== "create") {
+    addUnsafeReason(reasons, {
+      code: "unsupported_payment_operation",
+      message: "Standalone Supplier Payment replay supports create only.",
+      localPaymentId,
+      localSupplierId: input.supplier.localId,
+    });
+  }
+
+  if (localPaymentId == null) {
+    addUnsafeReason(reasons, {
+      code: "missing_local_payment_id",
+      message: "Standalone Supplier Payment local id is missing.",
+      localPaymentId,
+      localSupplierId: input.supplier.localId,
+    });
+  }
+
+  if (input.supplier.serverId == null) {
+    addUnsafeReason(reasons, {
+      code: "missing_party_server_id",
+      message: "Standalone Supplier Payment supplier is not mapped to a backend row.",
+      localPaymentId,
+      localSupplierId: input.supplier.localId,
+    });
+  }
+
+  if (!Number.isFinite(payment.amount) || payment.amount <= 0) {
+    addUnsafeReason(reasons, {
+      code: "invalid_payment_amount",
+      message: "Standalone Supplier Payment amount must be a positive finite number.",
+      localPaymentId,
+      localSupplierId: input.supplier.localId,
+    });
+  }
+
+  if (payment.paymentDate.trim() === "") {
+    addUnsafeReason(reasons, {
+      code: "missing_payment_date",
+      message: "Standalone Supplier Payment date is missing.",
+      localPaymentId,
+      localSupplierId: input.supplier.localId,
+    });
+  }
+
+  const replayReadiness: TransactionReplayReadiness = {
+    scope: "standalone_supplier_payment",
+    payloadVersion: 1,
+    status: reasons.length === 0 ? "ready" : "unsafe",
+    reasons,
+  };
+
+  return {
+    payloadVersion: 1,
+    operation: "create",
+    partyType: "supplier",
+    localPaymentId,
+    clientPaymentId:
+      input.clientPaymentId ??
+      createClientPaymentId("supplier", localPaymentId, input.clientTransactionId),
+    clientTransactionId: input.clientTransactionId,
+    createdAt: input.createdAt,
+    supplier: input.supplier,
+    payment,
+    replayReadiness,
+  };
+}
+
+function buildUnavailableStandaloneCustomerPaymentReplayContract(
+  input: PaymentTransactionPayloadInput,
+  clientTransactionId: string,
+  createdAt: number
+): StandaloneCustomerPaymentReplayContractV1 {
+  const payment = input.payment as Partial<CustomerPayment>;
+  const customerSnapshot = input.customer?.after ?? input.customer?.before ?? {};
+  const contract = buildStandaloneCustomerPaymentReplayContract({
+    operation: "create",
+    localPaymentId: typeof payment.id === "number" ? payment.id : null,
+    clientTransactionId,
+    createdAt,
+    customer: {
+      localId: typeof payment.customerId === "number" ? payment.customerId : null,
+      serverId: (customerSnapshot as Customer & { serverId?: ReplayServerId }).serverId ?? null,
+      nameSnapshot:
+        typeof payment.customerName === "string"
+          ? payment.customerName
+          : customerSnapshot.name ?? "",
+    },
+    payment: {
+      amount: Number(payment.amount ?? 0),
+      paymentDate: String(payment.paymentDate ?? ""),
+      remarks: payment.remarks ?? "",
+      invoiceNo: payment.invoiceNo ?? "",
+      payableSnapshot: Number(payment.payableSnapshot ?? 0),
+      balanceSnapshot: Number(payment.balanceSnapshot ?? 0),
+    },
+  });
+
+  addUnsafeReason(contract.replayReadiness.reasons, {
+    code: "missing_standalone_customer_payment_replay_contract",
+    message: "Standalone Customer Payment replay mapping contract was not captured.",
+    localPaymentId: contract.localPaymentId,
+    localCustomerId: contract.customer.localId,
+  });
+  contract.replayReadiness.status = "unsafe";
+  return contract;
+}
+
+function buildUnavailableStandaloneSupplierPaymentReplayContract(
+  input: PaymentTransactionPayloadInput,
+  clientTransactionId: string,
+  createdAt: number
+): StandaloneSupplierPaymentReplayContractV1 {
+  const payment = input.payment as Partial<SupplierPayment>;
+  const supplierSnapshot = input.supplier?.after ?? input.supplier?.before ?? {};
+  const contract = buildStandaloneSupplierPaymentReplayContract({
+    operation: "create",
+    localPaymentId: typeof payment.id === "number" ? payment.id : null,
+    clientTransactionId,
+    createdAt,
+    supplier: {
+      localId: typeof payment.supplierId === "number" ? payment.supplierId : null,
+      serverId: (supplierSnapshot as Supplier & { serverId?: ReplayServerId }).serverId ?? null,
+      nameSnapshot:
+        typeof payment.supplierName === "string"
+          ? payment.supplierName
+          : supplierSnapshot.name ?? "",
+    },
+    payment: {
+      amount: Number(payment.amount ?? 0),
+      paymentDate: String(payment.paymentDate ?? ""),
+      remarks: payment.remarks ?? "",
+      invoiceNo: payment.invoiceNo ?? "",
+      payableSnapshot: Number(payment.payableSnapshot ?? 0),
+      balanceSnapshot: Number(payment.balanceSnapshot ?? 0),
+    },
+  });
+
+  addUnsafeReason(contract.replayReadiness.reasons, {
+    code: "missing_standalone_supplier_payment_replay_contract",
+    message: "Standalone Supplier Payment replay mapping contract was not captured.",
+    localPaymentId: contract.localPaymentId,
+    localSupplierId: contract.supplier.localId,
+  });
+  contract.replayReadiness.status = "unsafe";
+  return contract;
+}
+
 export function buildSaleTransactionPayload(
   input: SaleTransactionPayloadInput
 ): OfflineTransactionPayload {
@@ -1290,13 +1611,53 @@ export function buildPaymentTransactionPayload(
    * mutation and after it succeeds. POS invoice payments belong in sale/return
    * transaction payloads instead.
    */
+  const base = createPayloadBase("payment", input.clientTransactionId, input.createdAt);
+
+  if (input.partyType === "customer") {
+    const standaloneCustomerPaymentReplay = input.standaloneCustomerPaymentReplay
+      ? buildStandaloneCustomerPaymentReplayContract({
+          ...input.standaloneCustomerPaymentReplay,
+          clientTransactionId: base.clientTransactionId,
+          createdAt: base.createdAt,
+        })
+      : buildUnavailableStandaloneCustomerPaymentReplayContract(
+          input,
+          base.clientTransactionId,
+          base.createdAt
+        );
+
+    return {
+      ...base,
+      replayReadiness: standaloneCustomerPaymentReplay.replayReadiness,
+      payload: clone({
+        partyType: input.partyType,
+        payment: input.payment,
+        customer: input.customer,
+        standaloneCustomerPaymentReplay,
+      }),
+    };
+  }
+
+  const standaloneSupplierPaymentReplay = input.standaloneSupplierPaymentReplay
+    ? buildStandaloneSupplierPaymentReplayContract({
+        ...input.standaloneSupplierPaymentReplay,
+        clientTransactionId: base.clientTransactionId,
+        createdAt: base.createdAt,
+      })
+    : buildUnavailableStandaloneSupplierPaymentReplayContract(
+        input,
+        base.clientTransactionId,
+        base.createdAt
+      );
+
   return {
-    ...createPayloadBase("payment", input.clientTransactionId, input.createdAt),
+    ...base,
+    replayReadiness: standaloneSupplierPaymentReplay.replayReadiness,
     payload: clone({
       partyType: input.partyType,
       payment: input.payment,
-      customer: input.customer,
       supplier: input.supplier,
+      standaloneSupplierPaymentReplay,
     }),
   };
 }

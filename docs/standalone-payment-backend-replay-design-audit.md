@@ -1,9 +1,11 @@
 # Standalone Payment Backend Replay Design Audit
 
 This audit prepares backend-authoritative replay for standalone Customer and
-Supplier payments only. It is design-only: no endpoint, queue contract, runtime
-payment behavior, finalized transaction replay behavior, auto-sync, polling,
-workers, listeners, startup replay, or invoice cancellation behavior is added.
+Supplier payments only. The design audit has now been followed by payload
+hardening for create-only standalone payment queue rows. No backend payment
+replay endpoint, backend payment mutation, finalized transaction replay change,
+auto-sync, polling, workers, listeners, startup replay, or invoice cancellation
+behavior is added.
 
 Project rule: the current IndexedDB behavior is the reference implementation
 unless a behavior is explicitly identified as a business bug and fixed in a
@@ -46,9 +48,11 @@ Supplier standalone payments use:
 - DB helpers: `addSupplierPayment`, `updateSupplierPayment`,
   `deleteSupplierPayment`, `updateSupplier`
 
-Both pages currently read/write local IndexedDB directly. They do not call
-backend payment endpoints, do not call `transactionApi`, and do not enqueue
-`sync_queue` rows for standalone payment replay.
+Both pages still preserve their existing local IndexedDB payment behavior. On
+successful create only, they now enqueue a safe future-replay payload with
+`standaloneCustomerPaymentReplay` v1 or `standaloneSupplierPaymentReplay` v1
+readiness metadata. They do not call backend payment replay endpoints and do not
+mark standalone payments as backend-replayed.
 
 ## Current IndexedDB Customer Payment Behavior
 
@@ -187,7 +191,35 @@ There is no payment soft-delete/restore model.
 
 ## Current Queue And Backend State
 
-Current standalone payment pages do not queue replay payloads.
+Standalone payment pages now queue create-only replay payloads after the local
+payment save and party summary mutation succeeds. The queued payloads are
+diagnostic/future-replay contracts only.
+
+Implemented queue contracts:
+
+- `standaloneCustomerPaymentReplay` v1
+- `standaloneSupplierPaymentReplay` v1
+
+Each contract includes:
+
+- `operation = "create"`
+- `localPaymentId`
+- generated or provided `clientPaymentId`
+- `clientTransactionId`
+- party local id, backend `serverId`, and name snapshot
+- amount, payment date, remarks, invoice number, payable snapshot, and balance
+  snapshot
+- `replayReadiness` with `ready` or `unsafe` status
+
+Ready requires:
+
+- local payment id
+- mapped customer/supplier backend `serverId`
+- positive finite amount
+- non-empty payment date
+
+Unsafe payment rows remain local-valid and queueable. They are annotated with
+safe reason codes and are not eligible for backend payment replay.
 
 Existing generic transaction storage can accept `transactionType = "payment"`
 with:
@@ -197,10 +229,11 @@ with:
 - `payload.payment` object
 - `payload.partyType` of `customer` or `supplier`
 
-This is storage-shape validation only. It does not validate party mappings,
-amount semantics, balance effects, payment snapshots, idempotent payment
-mutation, or replay readiness. The manual replay router has no standalone
-Payment branch, and `transactionApi` has no `/replay/payment` endpoint.
+This remains storage-shape validation only. The frontend now validates party
+mappings, amount/date readiness, and safe snapshots in the queued payload before
+future replay. The manual replay router explicitly blocks standalone payment
+backend replay with a safe "not implemented yet" error, and `transactionApi`
+has no standalone payment replay endpoint.
 
 ## MySQL Schema Readiness
 
@@ -375,18 +408,19 @@ For update/delete replay:
 
 ## Unsafe Reason Codes
 
-Minimum reason codes for payload hardening:
+Implemented and planned reason codes for payload hardening:
 
 - `missing_standalone_customer_payment_replay_contract`
 - `missing_standalone_supplier_payment_replay_contract`
 - `unsupported_payment_operation`
 - `missing_local_payment_id`
+- `missing_party_server_id`
+- `invalid_payment_amount`
+- `missing_payment_date`
 - `missing_client_payment_id`
 - `missing_customer_server_id`
 - `missing_supplier_server_id`
 - `missing_payment_amount`
-- `invalid_payment_amount`
-- `missing_payment_date`
 - `missing_accounting_effect`
 - `missing_payment_server_mapping`
 - `payment_update_semantics_unverified`
@@ -406,32 +440,36 @@ Recommended backend protections:
 - second replay of a committed payment must terminal-state skip without
   inserting another payment row or mutating party totals again
 
-## Payload Readiness Gaps
+## Endpoint Readiness Gaps
 
-Current code is not ready for endpoint implementation because:
+Payload hardening now exists, but backend endpoint implementation still needs
+explicit work because:
 
-- standalone payment pages do not build or enqueue replay payloads
-- payment rows do not carry `serverId` or `clientPaymentId`
 - customer/supplier local rows may not have `serverId`
-- the generic `payment` storage shell lacks readiness status/reasons
 - update behavior is present in code but not visible in UI and has risky local
   semantics
 - delete behavior hard-deletes local payment rows, so a future delete replay
   needs a tombstone/snapshot before the local row disappears
+- no `api/replay/customer-payment.php` or `api/replay/supplier-payment.php`
+  endpoint exists
+- no backend payment-row idempotency key has been added yet beyond the stored
+  transaction metadata
 
 ## Recommended Next Step
 
-Do payload hardening first, not endpoint implementation.
+Payload hardening has been completed for create-only standalone Customer and
+Supplier payments.
 
-Recommended next slice:
+Recommended next slice, when explicitly approved:
 
-1. Add versioned standalone payment payload builders for create only.
-2. Add replay readiness classification for Customer and Supplier payments.
-3. Require mapped customer/supplier `serverId`.
-4. Include stable local correlation ids and safe snapshots.
-5. Keep update/delete replay unsafe until local semantics and tombstones are
+1. Add narrow manual backend endpoints for ready Customer Payment create and
+   Supplier Payment create.
+2. Store each payment with backend idempotency metadata.
+3. Mutate party `paid` and `balance` in one backend transaction.
+4. Reject unsafe or unmapped rows before mutation.
+5. Keep update/delete replay deferred until local semantics and tombstones are
    explicitly designed.
-6. Add local verifier scripts proving ready/unsafe classifications.
+6. Add backend idempotency and duplicate-replay tests.
 
 Only after that should narrow manual endpoints be implemented for ready
 standalone Customer Payment create and Supplier Payment create.
@@ -443,9 +481,8 @@ This audit does not:
 - implement `api/replay/customer-payment.php`
 - implement `api/replay/supplier-payment.php`
 - route manual replay for standalone payments
-- change `CustPayments.tsx` or `SupPayments.tsx`
 - change customer/supplier balance behavior
 - change finalized Sale/Purchase/Return replay
-- add standalone Payment replay
+- add backend standalone Payment replay
 - add auto-sync/background behavior
 - re-enable invoice cancellation

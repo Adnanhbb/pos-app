@@ -3,6 +3,8 @@ import { indexedDbCustomerPaymentRepository as customerPaymentsRepo } from "./re
 import { indexedDbCustomerRepository as customerRepo } from "./repositories/indexedDbCustomerRepository";
 import type { CustomerPayment, Customer } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
+import { buildPaymentTransactionPayload } from "./services/posTransactionPayloadBuilder";
+import { queueOfflineTransaction } from "./services/transactionQueueService";
 
 import {
   FaPlus,
@@ -119,6 +121,7 @@ export default function CustPayments() {
     };
     await customerPaymentsRepo.update(updatedPayment);
   } else {
+    const customer = customers.find(c => c.id === form.customerId);
     // Add new payment: only required fields
     const newPayment: Omit<CustomerPayment, "id"> = {
       customerId: form.customerId,
@@ -127,11 +130,53 @@ export default function CustPayments() {
       remarks: form.remarks,
       payableSnapshot: form.payableSnapshot,
       // Provide default or empty values for other required fields
-      customerName: customers.find(c => c.id === form.customerId)?.name || "",
+      customerName: customer?.name || "",
       invoiceNo: "",            // default or generate
-      balanceSnapshot: form.payableSnapshot,
+      balanceSnapshot: form.payableSnapshot - form.amount,
     };
-    await customerPaymentsRepo.add(newPayment);
+    const localPaymentId = await customerPaymentsRepo.add(newPayment);
+    const queuedPayment: CustomerPayment = { ...newPayment, id: localPaymentId };
+    const customerAfter: Customer | undefined = customer
+      ? {
+          ...customer,
+          paid: (customer.paid ?? 0) + form.amount,
+          balance: (customer.balance ?? 0) - form.amount,
+        }
+      : undefined;
+
+    try {
+      await queueOfflineTransaction(
+        buildPaymentTransactionPayload({
+          partyType: "customer",
+          payment: queuedPayment,
+          customer: {
+            before: customer ?? null,
+            after: customerAfter ?? null,
+          },
+          standaloneCustomerPaymentReplay: {
+            operation: "create",
+            localPaymentId,
+            customer: {
+              localId: form.customerId,
+              serverId:
+                (customer as (Customer & { serverId?: number | string | null }) | undefined)
+                  ?.serverId ?? null,
+              nameSnapshot: customer?.name ?? newPayment.customerName,
+            },
+            payment: {
+              amount: newPayment.amount,
+              paymentDate: newPayment.paymentDate,
+              remarks: newPayment.remarks ?? "",
+              invoiceNo: newPayment.invoiceNo,
+              payableSnapshot: newPayment.payableSnapshot,
+              balanceSnapshot: newPayment.balanceSnapshot,
+            },
+          },
+        })
+      );
+    } catch (error) {
+      console.warn("Standalone customer payment queued replay payload failed.", error);
+    }
   }
 
   await loadPage();
