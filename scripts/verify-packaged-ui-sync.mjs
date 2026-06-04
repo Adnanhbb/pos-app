@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { chromium } from "playwright";
+import { readFileSync } from "node:fs";
 
 const APP_URL = process.env.APP_URL || "http://localhost/jawad-bro-rehearsal/";
 const API_BASE_URL = (process.env.API_BASE_URL || "http://localhost/jawad-bro-rehearsal/api").replace(/\/+$/, "");
@@ -218,7 +219,7 @@ async function manualReplayLifecycle(browser, runId) {
   }
 }
 async function syncIssueArchiveLifecycle(browser, runId) {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
   await context.addInitScript(() => {
     localStorage.setItem("loggedInUserId", "packaged-archive-admin");
     localStorage.setItem("loggedInUserName", "Packaged Archive Admin");
@@ -244,8 +245,25 @@ async function syncIssueArchiveLifecycle(browser, runId) {
     const main = await openSettingsSyncStatus(page);
     await page.waitForTimeout(500);
     let panelText = await main.locator('[data-testid="settings-sync-status-panel"]').innerText();
+    checks.push({ name: "admin sees active app storage source", ok: panelText.includes("Storage source") && panelText.includes("Current origin") && panelText.includes("Local database") && panelText.includes("POSDatabase") && panelText.includes("Queue row count") });
+    checks.push({ name: "admin issue details are hidden until explicitly opened", ok: panelText.includes("View issues") && !panelText.includes(`SAL-ARCHIVE-${runId}`) });
+    await main.getByRole("button", { name: "View issues", exact: true }).click();
+    await page.waitForTimeout(300);
+    panelText = await main.locator('[data-testid="settings-sync-status-panel"]').innerText();
     checks.push({ name: "admin sees stale issue review in plain language", ok: panelText.includes("Some old sync records could not be completed.") && panelText.includes("Archive selected") });
+    checks.push({ name: "admin sees safe issue row fields", ok: panelText.includes("Record #") && panelText.includes("Old record") && panelText.includes("Business record") && panelText.includes("Could not sync") && panelText.includes("Created:") && panelText.includes("Updated:") });
     checks.push({ name: "admin sees support message for business transaction", ok: panelText.includes("Ask support to review.") && panelText.includes(`SAL-ARCHIVE-${runId}`) });
+    checks.push({ name: "admin issue details hide Dev reason codes", ok: !panelText.includes("missing_server_item_id") && !panelText.includes("Reason Codes:") });
+    const downloadPromise = page.waitForEvent("download", { timeout: 10000 });
+    await main.getByRole("button", { name: "Download issue summary", exact: true }).click();
+    const download = await downloadPromise;
+    const downloadPath = await download.path();
+    const downloadedText = downloadPath ? readFileSync(downloadPath, "utf8") : "";
+    const downloadedReport = JSON.parse(downloadedText);
+    const downloadContainsUnsafePayloadProperty = /"payload"\s*:|"payload_json"\s*:|"response_json"\s*:|"password_hash"\s*:|"token"\s*:|"hash"\s*:/.test(downloadedText);
+    checks.push({ name: "admin issue export identifies active app storage safely", ok: downloadedReport?.source?.databaseName === "POSDatabase" && downloadedReport?.source?.currentOrigin === new URL(APP_URL).origin && downloadedReport?.source?.activeAppStorage === true, source: downloadedReport?.source ?? null });
+    checks.push({ name: "admin issue export includes safe row summary only", ok: Array.isArray(downloadedReport?.issues) && downloadedReport.issues.some((issue) => issue.id === staleQueueId && issue.category === "Old record") && downloadedReport.issues.some((issue) => issue.invoiceNo === `SAL-ARCHIVE-${runId}`), issueCount: downloadedReport?.issues?.length ?? null });
+    checks.push({ name: "admin issue export hides payloads, secrets, and Dev-only reason codes", ok: !downloadContainsUnsafePayloadProperty && !downloadedText.includes("PACKAGED_UI_VALIDATED_SESSION_FIXTURE") && !downloadedText.includes("missing_server_item_id") && !downloadedText.includes("technicalReason") });
     await main.getByRole("button", { name: "Select old records", exact: true }).click();
     await main.getByRole("button", { name: "Archive selected", exact: true }).click();
     await page.waitForTimeout(800);
@@ -258,11 +276,40 @@ async function syncIssueArchiveLifecycle(browser, runId) {
     checks.push({ name: "pending row is not archived accidentally", ok: pendingAfter?.status === "pending", status: pendingAfter?.status ?? null });
     checks.push({ name: "archived row is not counted as synced", ok: panelText.includes("Reviewed old records") && !panelText.includes("Successfully synced\n1"), panelTextIncludesReviewed: panelText.includes("Reviewed old records") });
     checks.push({ name: "archive workflow does not expose raw payload or secrets", ok: !/payload_json|response_json|password_hash|PACKAGED_UI_VALIDATED_SESSION_FIXTURE/.test(panelText) });
+    const devIssueCodes = await verifyDevSyncIssueReasonCodes(browser, runId);
+    checks.push({ name: "Dev issue details show safe reason codes", ok: devIssueCodes.ok, ...devIssueCodes });
     return { entity: "sync issue archive", ok: checks.every((check) => check.ok), checks, staleQueueArchived: staleAfter?.status === "archived", businessQueuePreserved: businessAfter?.status === "failed", pendingQueuePreserved: pendingAfter?.status === "pending", mysqlMutated: false, replayTriggered: false };
   } finally {
     if (staleQueueId != null) await mutateLocalStore(page, "sync_queue", "delete", staleQueueId);
     if (businessQueueId != null) await mutateLocalStore(page, "sync_queue", "delete", businessQueueId);
     if (pendingQueueId != null) await mutateLocalStore(page, "sync_queue", "delete", pendingQueueId);
+    await context.close();
+  }
+}
+async function verifyDevSyncIssueReasonCodes(browser, runId) {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  await context.addInitScript(() => {
+    localStorage.setItem("loggedInUserId", "packaged-archive-dev");
+    localStorage.setItem("loggedInUserName", "Packaged Archive Dev");
+    localStorage.setItem("loggedInUserRole", "Dev");
+    localStorage.setItem("jawadBro.authToken", "PACKAGED_UI_VALIDATED_SESSION_FIXTURE");
+  });
+  const page = await context.newPage();
+  await installValidatedSessionFixture(page, "Dev");
+  let businessQueueId = null;
+  try {
+    await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 });
+    await page.locator("aside").waitFor({ state: "visible", timeout: 10000 });
+    const now = Date.now();
+    businessQueueId = await mutateLocalStore(page, "sync_queue", "add", { entity: "transactions", operation: "transaction", localId: 920002, serverId: null, payload: { transactionType: "sale", clientTransactionId: `archive-dev-business-${runId}`, payload: { sale: { transactionType: "Sale", invoiceNo: `SAL-DEV-ARCHIVE-${runId}`, isPostponed: false }, finalizedSaleReplay: { payloadVersion: 1, transactionType: "Sale", invoiceNo: `SAL-DEV-ARCHIVE-${runId}` } }, replayReadiness: { scope: "finalized_sale", payloadVersion: 1, status: "unsafe", reasons: [{ code: "missing_server_item_id", message: "Sale item is not mapped to a backend row." }] }, createdAt: now }, createdAt: now, updatedAt: now, retryCount: 1, status: "failed", lastError: "Finalized Sale replay is blocked because its backend mappings are not replay-ready.", replayReadiness: { scope: "finalized_sale", payloadVersion: 1, status: "unsafe", reasons: [{ code: "missing_server_item_id", message: "Sale item is not mapped to a backend row." }] } });
+    const main = await openSettingsSyncStatus(page);
+    await main.getByRole("button", { name: "View issues", exact: true }).click();
+    await openDeveloperDetails(main);
+    await page.waitForTimeout(300);
+    const text = await main.locator('[data-testid="settings-sync-status-panel"]').innerText();
+    return { ok: text.includes("Reason Codes: missing_server_item_id") && text.includes(`SAL-DEV-ARCHIVE-${runId}`) && !/payload_json|response_json|password_hash|PACKAGED_UI_VALIDATED_SESSION_FIXTURE/.test(text), reasonCodeVisible: text.includes("Reason Codes: missing_server_item_id") };
+  } finally {
+    if (businessQueueId != null) await mutateLocalStore(page, "sync_queue", "delete", businessQueueId);
     await context.close();
   }
 }
@@ -448,6 +495,12 @@ async function verifySettingsSyncStatusVisibility(browser) {
         "Successfully synced",
         "Last checked",
         "Last sync attempt",
+        "Storage source",
+        "Current origin",
+        "Local database",
+        "Queue row count",
+        "View issues",
+        "Download issue summary",
         "Sync Now",
       ];
       const missingLabels = requiredLabels.filter((label) => !panelText.includes(label));

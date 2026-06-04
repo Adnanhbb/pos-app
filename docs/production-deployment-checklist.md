@@ -95,6 +95,9 @@ npm.cmd run sync:archive-issues:dry -- --profile=chrome-profile-1
 
 - Use `--profile=chrome-default` instead if the app is running from Chrome's
   Default profile, or pass an exact path with `--user-data-dir="<path>"`.
+- Prefer the in-app Settings `Sync Status` issue review/export when the browser
+  profile is unclear. `View issues` and `Download issue summary` read from the
+  running app's active IndexedDB context and include only safe metadata.
 - Keep archive dry-run as the first step. Do not run apply until the candidate
   rows have been reviewed.
 - Confirm local queue health is understood.
@@ -157,6 +160,11 @@ npm.cmd run sync:archive-issues:dry -- --profile=chrome-profile-1
 - Confirm admin-facing Sync Status labels use client-friendly wording such as `All data is synced`, `Not sent yet`, `Could not sync`, `Needs attention`, `Last checked`, `Last sync attempt`, and `Sync Now`.
 - Confirm admin-facing Sync Status does not show raw payloads, replay bodies, tokens, hashes, backend responses, queue internals, or developer diagnostics.
 - Confirm failed queue issue review shows plain-language categories only.
+- Confirm `Storage source`, `View issues`, and `Download issue summary` are
+  present for Admin/Dev and read from the active app storage context.
+- Confirm downloaded issue summaries omit full payload bodies, raw backend
+  responses, tokens, passwords, hashes, and Admin-only exports omit Dev reason
+  codes.
 - Confirm `Archive selected` is explicit and only applies to failed stale CRUD rows; failed finalized transaction/payment rows must remain support-review-only.
 - Confirm archived queue rows are preserved with an archive status, not deleted and not counted as successfully synced.
 - Confirm panel does not show payloads, tokens, passwords, cart contents, or full sensitive records.

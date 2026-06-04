@@ -1732,6 +1732,16 @@ Settings `Sync Status` now includes a safe review path for failed local
 `sync_queue` rows. It summarizes failed rows with friendly categories and never
 prints raw payload bodies, raw backend responses, tokens, hashes, or passwords.
 
+Because browser-profile diagnostics can miss the active Laragon/client
+IndexedDB profile, the Settings tab now also reads queue issues directly from
+the running app's own storage context. Admin/Dev users can explicitly open
+`View issues` and use `Download issue summary` to export safe metadata only:
+row id, status, friendly category, entity/transaction type, invoice number when
+available, friendly reason, timestamps, and Dev-only reason codes. The export
+includes a storage-source summary with the current origin, local database name,
+and queue row count, but excludes full payload bodies, raw backend responses,
+tokens, passwords, and hashes.
+
 Supported categories:
 
 - old incomplete records

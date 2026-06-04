@@ -54,6 +54,7 @@ export const syncQueueRepository = {
   },
 
   async getStatusSummary(): Promise<{
+    total: number;
     pending: number;
     processing: number;
     failed: number;
@@ -61,7 +62,8 @@ export const syncQueueRepository = {
     archived: number;
   }> {
     const db = await initDB();
-    const [pending, processing, failed, done, archived] = await Promise.all([
+    const [all, pending, processing, failed, done, archived] = await Promise.all([
+      db.getAll("sync_queue"),
       db.getAllFromIndex("sync_queue", "by-status", "pending"),
       db.getAllFromIndex("sync_queue", "by-status", "processing"),
       db.getAllFromIndex("sync_queue", "by-status", "failed"),
@@ -70,6 +72,7 @@ export const syncQueueRepository = {
     ]);
 
     return {
+      total: all.length,
       pending: pending.length,
       processing: processing.length,
       failed: failed.length,

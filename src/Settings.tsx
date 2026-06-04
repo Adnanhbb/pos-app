@@ -11,6 +11,7 @@ import type { Settings } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
 
 const placeholderImg = "https://via.placeholder.com/150?text=No+Logo";
+const SYNC_DB_NAME = "POSDatabase";
 
 type ManualSyncDiagnostics = Awaited<ReturnType<typeof syncEngine.processPending>>;
 
@@ -20,6 +21,7 @@ type SyncQueueCounts = {
   couldNotSync: number;
   successfullySynced: number;
   reviewedOldRecords: number;
+  totalRows: number;
   lastSyncAttemptAt: number | null;
   lastCheckedAt: number | null;
 };
@@ -72,6 +74,14 @@ function getClientFriendlySyncMessage(error: string | null) {
   return "Could not sync. Please try again or contact support.";
 }
 
+function getFriendlyIssueCategory(category: SyncQueueIssueReview["category"]) {
+  if (category === "old_incomplete_record") return "Old record";
+  if (category === "business_transaction_needs_support") return "Business record";
+  if (category === "sign_in_required") return "Sign-in needed";
+  if (category === "could_not_validate") return "Needs review";
+  return "Needs review";
+}
+
 function fallbackAuthDiagnostics(): CrudAuthDiagnostics {
   return {
     tokenPresent: Boolean(getAuthToken()),
@@ -116,6 +126,7 @@ export default function SettingsPage() {
     couldNotSync: 0,
     successfullySynced: 0,
     reviewedOldRecords: 0,
+    totalRows: 0,
     lastSyncAttemptAt: null,
     lastCheckedAt: null,
   });
@@ -126,6 +137,7 @@ export default function SettingsPage() {
   const [selectedArchiveIds, setSelectedArchiveIds] = useState<number[]>([]);
   const [archiveRunning, setArchiveRunning] = useState(false);
   const [archiveMessage, setArchiveMessage] = useState<string | null>(null);
+  const [showIssueDetails, setShowIssueDetails] = useState(false);
   const [authDiagnostics, setAuthDiagnostics] = useState<CrudAuthDiagnostics>(fallbackAuthDiagnostics);
   const [lastReplayAuthStatus, setLastReplayAuthStatus] = useState<LastReplayAuthStatus>("none");
   const [lastReplayAuthGate, setLastReplayAuthGate] = useState<ReplayAuthGateResult | null>(null);
@@ -224,6 +236,7 @@ export default function SettingsPage() {
       couldNotSync: summary.failed,
       successfullySynced: summary.done,
       reviewedOldRecords: summary.archived,
+      totalRows: summary.total,
       lastCheckedAt: Date.now(),
     }));
     setSyncIssueSummary(issues);
@@ -284,6 +297,72 @@ export default function SettingsPage() {
     } finally {
       setArchiveRunning(false);
     }
+  };
+
+  const buildSafeIssueExport = () => {
+    const issues = syncIssueSummary?.issues ?? [];
+
+    return {
+      exportedAt: new Date().toISOString(),
+      source: {
+        currentOrigin: typeof window !== "undefined" ? window.location.origin : "unknown",
+        databaseName: SYNC_DB_NAME,
+        queueRowCount: syncCounts.totalRows,
+        activeAppStorage: true,
+      },
+      summary: syncIssueSummary
+        ? {
+            totalIssues: syncIssueSummary.totalIssues,
+            archivable: syncIssueSummary.archivable,
+            needsSupport: syncIssueSummary.needsSupport,
+            byCategory: syncIssueSummary.byCategory,
+            byFriendlyType: syncIssueSummary.byFriendlyType,
+          }
+        : {
+            totalIssues: 0,
+            archivable: 0,
+            needsSupport: 0,
+            byCategory: {},
+            byFriendlyType: {},
+          },
+      issues: issues.map(issue => ({
+        id: issue.id,
+        status: issue.status,
+        category: getFriendlyIssueCategory(issue.category),
+        entity: issue.entity,
+        operation: issue.operation,
+        transactionType: issue.transactionType,
+        invoiceNo: issue.invoiceNo,
+        friendlyType: issue.friendlyType,
+        friendlyReason: issue.friendlyReason,
+        archivable: issue.archivable,
+        createdAt: formatTimestamp(issue.createdAt),
+        updatedAt: formatTimestamp(issue.updatedAt),
+        ...(isDevRole ? { reasonCodes: issue.reasonCodes, technicalReason: issue.technicalReason } : {}),
+      })),
+      excluded: [
+        "payload bodies",
+        "tokens",
+        "passwords",
+        "hashes",
+        "raw backend responses",
+      ],
+    };
+  };
+
+  const downloadIssueSummary = () => {
+    const report = buildSafeIssueExport();
+    const blob = new Blob([JSON.stringify(report, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+
+    link.href = url;
+    link.download = `sync-issue-summary-${stamp}.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
   const runManualSyncReplay = async () => {
@@ -561,6 +640,36 @@ export default function SettingsPage() {
             <div className="text-2xl font-semibold mt-1">{overallSyncStatus}</div>
           </div>
 
+          <div className="border rounded p-3 mb-4 text-sm bg-gray-50">
+            <div className="font-medium">Storage source</div>
+            <div className="text-gray-600">
+              Current origin: {typeof window !== "undefined" ? window.location.origin : "unknown"}
+            </div>
+            <div className="text-gray-600">
+              Local database: {SYNC_DB_NAME}
+            </div>
+            <div className="text-gray-600">
+              Queue row count: {syncCounts.totalRows}
+            </div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setShowIssueDetails(prev => !prev)}
+                disabled={!syncIssueSummary || syncIssueSummary.totalIssues === 0}
+                className="px-3 py-2 border rounded hover:bg-gray-50 disabled:opacity-60"
+              >
+                {showIssueDetails ? "Hide issues" : "View issues"}
+              </button>
+              <button
+                type="button"
+                onClick={downloadIssueSummary}
+                className="px-3 py-2 border rounded hover:bg-gray-50"
+              >
+                Download issue summary
+              </button>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
             <div className="border rounded p-3">
               <div className="text-gray-500">Not sent yet</div>
@@ -624,8 +733,9 @@ export default function SettingsPage() {
                     Some old sync records could not be completed.
                   </div>
                 </div>
-                {syncIssueSummary.archivable > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2">
+                  {syncIssueSummary.archivable > 0 && (
+                    <>
                     <button
                       type="button"
                       onClick={selectAllArchivableIssues}
@@ -642,10 +752,12 @@ export default function SettingsPage() {
                     >
                       {archiveRunning ? "Archiving..." : "Archive selected"}
                     </button>
-                  </div>
-                )}
+                    </>
+                  )}
+                </div>
               </div>
 
+              {showIssueDetails && (
               <div className="space-y-2">
                 {syncIssueSummary.issues.slice(0, 12).map(issue => (
                   <label
@@ -666,6 +778,12 @@ export default function SettingsPage() {
                       <span className="block font-medium">
                         {issue.invoiceNo ? `${issue.friendlyType} ${issue.invoiceNo}` : issue.friendlyType}
                       </span>
+                      <span className="block text-gray-500">
+                        Record #{issue.id ?? "n/a"} - {getFriendlyIssueCategory(issue.category)} - {issue.status === "failed" ? "Could not sync" : issue.status}
+                      </span>
+                      <span className="block text-gray-500">
+                        Created: {formatTimestamp(issue.createdAt)} - Updated: {formatTimestamp(issue.updatedAt)}
+                      </span>
                       <span className="block text-gray-600">{issue.friendlyReason}</span>
                       {!issue.archivable && (
                         <span className="block text-amber-700">Ask support to review.</span>
@@ -674,6 +792,7 @@ export default function SettingsPage() {
                   </label>
                 ))}
               </div>
+              )}
             </div>
           )}
 
