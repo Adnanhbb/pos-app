@@ -52,6 +52,28 @@ export const syncQueueRepository = {
     return limitItems(sortOldestFirst(items), limit);
   },
 
+  async getStatusSummary(): Promise<{
+    pending: number;
+    processing: number;
+    failed: number;
+    done: number;
+  }> {
+    const db = await initDB();
+    const [pending, processing, failed, done] = await Promise.all([
+      db.getAllFromIndex("sync_queue", "by-status", "pending"),
+      db.getAllFromIndex("sync_queue", "by-status", "processing"),
+      db.getAllFromIndex("sync_queue", "by-status", "failed"),
+      db.getAllFromIndex("sync_queue", "by-status", "done"),
+    ]);
+
+    return {
+      pending: pending.length,
+      processing: processing.length,
+      failed: failed.length,
+      done: done.length,
+    };
+  },
+
   async markProcessing(id: number): Promise<void> {
     const item = await getById(id);
     if (!item) return;

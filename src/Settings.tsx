@@ -14,10 +14,15 @@ const placeholderImg = "https://via.placeholder.com/150?text=No+Logo";
 type ManualSyncDiagnostics = Awaited<ReturnType<typeof syncEngine.processPending>>;
 
 type SyncQueueCounts = {
-  pending: number;
-  failed: number;
-  lastReplayAt: number | null;
+  notSentYet: number;
+  syncing: number;
+  couldNotSync: number;
+  successfullySynced: number;
+  lastSyncAttemptAt: number | null;
+  lastCheckedAt: number | null;
 };
+
+type SettingsTab = "general" | "sync";
 
 type LastReplayAuthStatus = "none" | "absent" | "valid" | "invalid" | "401" | "403" | "unknown";
 type ReplayAuthGateState = "authenticated" | "unauthenticated" | "authUnknown" | "enforcementDisabled";
@@ -40,6 +45,29 @@ function getSafeSyncErrorMessage(error: unknown) {
 function formatTimestamp(value: number | null) {
   if (!value) return "Never";
   return new Date(value).toLocaleString();
+}
+
+function getOverallSyncStatus(counts: SyncQueueCounts) {
+  if (counts.couldNotSync > 0) return "Some records need attention";
+  if (counts.notSentYet > 0 || counts.syncing > 0) return "Some data is waiting to sync";
+  return "All data is synced";
+}
+
+function getOverallSyncStatusClasses(counts: SyncQueueCounts) {
+  if (counts.couldNotSync > 0) return "border-amber-200 bg-amber-50 text-amber-800";
+  if (counts.notSentYet > 0 || counts.syncing > 0) return "border-blue-200 bg-blue-50 text-blue-800";
+  return "border-green-200 bg-green-50 text-green-800";
+}
+
+function getClientFriendlySyncMessage(error: string | null) {
+  if (!error) return null;
+
+  const lower = error.toLowerCase();
+  if (lower.includes("auth") || lower.includes("session") || lower.includes("sign in")) {
+    return "Please sign in again before syncing.";
+  }
+
+  return "Could not sync. Please try again or contact support.";
 }
 
 function fallbackAuthDiagnostics(): CrudAuthDiagnostics {
@@ -79,7 +107,15 @@ export default function SettingsPage() {
   });
 
   const [loading, setLoading] = useState(true);
-  const [syncCounts, setSyncCounts] = useState<SyncQueueCounts>({ pending: 0, failed: 0, lastReplayAt: null });
+  const [activeTab, setActiveTab] = useState<SettingsTab>("general");
+  const [syncCounts, setSyncCounts] = useState<SyncQueueCounts>({
+    notSentYet: 0,
+    syncing: 0,
+    couldNotSync: 0,
+    successfullySynced: 0,
+    lastSyncAttemptAt: null,
+    lastCheckedAt: null,
+  });
   const [syncDiagnostics, setSyncDiagnostics] = useState<ManualSyncDiagnostics | null>(null);
   const [syncRunning, setSyncRunning] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -89,6 +125,11 @@ export default function SettingsPage() {
   const [posActivity, setPosActivity] = useState<POSActivityState>(() => getPOSActivityState());
 
   const { t, setLang } = useLang();
+  const currentRole = typeof window !== "undefined" ? localStorage.getItem("loggedInUserRole") ?? "" : "";
+  const canViewSyncStatus = currentRole === "admin" || currentRole === "Dev";
+  const isDevRole = currentRole === "Dev";
+  const overallSyncStatus = getOverallSyncStatus(syncCounts);
+  const friendlySyncError = getClientFriendlySyncMessage(syncError);
   const validateManualReplayAuthGate = async (): Promise<ReplayAuthGateResult> => {
     const checkedAt = Date.now();
 
@@ -164,15 +205,15 @@ export default function SettingsPage() {
   };
 
   const refreshSyncQueueCounts = async () => {
-    const [pending, failed] = await Promise.all([
-      syncQueueRepository.getPending(),
-      syncQueueRepository.getFailed(),
-    ]);
+    const summary = await syncQueueRepository.getStatusSummary();
 
     setSyncCounts(prev => ({
       ...prev,
-      pending: pending.length,
-      failed: failed.length,
+      notSentYet: summary.pending,
+      syncing: summary.processing,
+      couldNotSync: summary.failed,
+      successfullySynced: summary.done,
+      lastCheckedAt: Date.now(),
     }));
 
     try {
@@ -204,7 +245,7 @@ export default function SettingsPage() {
       const result = await syncEngine.processPending();
       setSyncDiagnostics(result);
       setLastReplayAuthStatus(getLastReplayAuthStatus(result));
-      setSyncCounts(prev => ({ ...prev, lastReplayAt: Date.now() }));
+      setSyncCounts(prev => ({ ...prev, lastSyncAttemptAt: Date.now() }));
       await refreshSyncQueueCounts();
     } catch (error) {
       setSyncError(getSafeSyncErrorMessage(error));
@@ -224,6 +265,12 @@ export default function SettingsPage() {
     }
     load();
   }, []);
+
+  useEffect(() => {
+    if (!canViewSyncStatus && activeTab === "sync") {
+      setActiveTab("general");
+    }
+  }, [activeTab, canViewSyncStatus]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -262,6 +309,34 @@ export default function SettingsPage() {
     <div className="bg-white p-6 rounded-lg shadow-lg w-full max-w-screen-lg mx-auto">
       <h2 className="text-xl font-semibold mb-4 text-center">{t("settings_title")}</h2>
 
+      <div className="mb-6 flex flex-wrap gap-2 border-b">
+        <button
+          type="button"
+          onClick={() => setActiveTab("general")}
+          className={`px-4 py-2 text-sm font-semibold border-b-2 ${
+            activeTab === "general"
+              ? "border-indigo-600 text-indigo-700"
+              : "border-transparent text-gray-600 hover:text-gray-900"
+          }`}
+        >
+          General
+        </button>
+        {canViewSyncStatus && (
+          <button
+            type="button"
+            onClick={() => setActiveTab("sync")}
+            className={`px-4 py-2 text-sm font-semibold border-b-2 ${
+              activeTab === "sync"
+                ? "border-indigo-600 text-indigo-700"
+                : "border-transparent text-gray-600 hover:text-gray-900"
+            }`}
+          >
+            Sync Status
+          </button>
+        )}
+      </div>
+
+      {activeTab === "general" && (
       <div className="flex flex-col md:flex-row gap-8">
         <div className="md:w-1/3 flex flex-col items-center">
           <div className="w-40 h-40 border rounded-lg overflow-hidden bg-gray-100 flex items-center justify-center">
@@ -387,170 +462,210 @@ export default function SettingsPage() {
           </div>
         </div>
       </div>
+      )}
 
-      <div className="mt-8 border-t pt-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
-          <div>
-            <h3 className="text-lg font-semibold">Developer Sync Replay</h3>
-            <p className="text-sm text-gray-600">Manual replay only. This does not start auto-sync or background polling.</p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={refreshSyncQueueCounts}
-              disabled={syncRunning}
-              className="px-4 py-2 border rounded hover:bg-gray-50 disabled:opacity-60"
-            >
-              Refresh Counts
-            </button>
-            <button
-              type="button"
-              onClick={runManualSyncReplay}
-              disabled={syncRunning}
-              className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-500 disabled:opacity-60"
-            >
-              {syncRunning ? "Replay Running..." : "Run Manual Replay"}
-            </button>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-          <div className="border rounded p-3">
-            <div className="text-gray-500">Pending</div>
-            <div className="text-xl font-semibold">{syncCounts.pending}</div>
-          </div>
-          <div className="border rounded p-3">
-            <div className="text-gray-500">Failed</div>
-            <div className="text-xl font-semibold">{syncCounts.failed}</div>
-          </div>
-          <div className="border rounded p-3 md:col-span-2">
-            <div className="text-gray-500">Last Manual Replay</div>
-            <div className="font-medium">{formatTimestamp(syncCounts.lastReplayAt)}</div>
-          </div>
-        </div>
-
-        <div className="mt-4 border rounded p-4 text-sm">
-          <div className="font-medium mb-3">Auth Diagnostics</div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      {canViewSyncStatus && activeTab === "sync" && (
+        <div className="mt-2" data-testid="settings-sync-status-panel">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
             <div>
-              <div className="text-gray-500">Token Present</div>
-              <div className="font-semibold">{authDiagnostics.tokenPresent ? "Yes" : "No"}</div>
+              <h3 className="text-lg font-semibold">Sync Status</h3>
+              <p className="text-sm text-gray-600">
+                Data is sent only when you choose to sync.
+              </p>
             </div>
-            <div>
-              <div className="text-gray-500">Backend Enforcement</div>
-              <div className="font-semibold">{authDiagnostics.backendAuthEnforcement}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">Backend Auth Status</div>
-              <div className="font-semibold">{authDiagnostics.backendAuthStatus}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">Last Replay Auth</div>
-              <div className="font-semibold">{lastReplayAuthStatus}</div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={refreshSyncQueueCounts}
+                disabled={syncRunning}
+                className="px-4 py-2 border rounded hover:bg-gray-50 disabled:opacity-60"
+              >
+                Refresh Status
+              </button>
+              <button
+                type="button"
+                onClick={runManualSyncReplay}
+                disabled={syncRunning}
+                className="px-4 py-2 bg-indigo-600 text-white rounded hover:bg-indigo-500 disabled:opacity-60"
+              >
+                {syncRunning ? "Syncing..." : "Sync Now"}
+              </button>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-            <div>
-              <div className="text-gray-500">Replay Auth Gate</div>
-              <div className="font-semibold">{lastReplayAuthGate?.state ?? "none"}</div>
+          <div className={`border rounded p-4 mb-4 ${getOverallSyncStatusClasses(syncCounts)}`}>
+            <div className="text-sm font-medium">Current status</div>
+            <div className="text-2xl font-semibold mt-1">{overallSyncStatus}</div>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
+            <div className="border rounded p-3">
+              <div className="text-gray-500">Not sent yet</div>
+              <div className="text-xl font-semibold">{syncCounts.notSentYet}</div>
             </div>
-            <div>
-              <div className="text-gray-500">Session Checked At</div>
-              <div className="font-semibold">{formatTimestamp(lastReplayAuthGate?.checkedAt ?? null)}</div>
+            <div className="border rounded p-3">
+              <div className="text-gray-500">Syncing now</div>
+              <div className="text-xl font-semibold">{syncCounts.syncing}</div>
             </div>
-            <div>
-              <div className="text-gray-500">Gate Result</div>
-              <div className="font-semibold">{lastReplayAuthGate ? (lastReplayAuthGate.allowed ? "Allowed" : "Blocked") : "n/a"}</div>
+            <div className="border rounded p-3">
+              <div className="text-gray-500">Could not sync</div>
+              <div className="text-xl font-semibold">{syncCounts.couldNotSync}</div>
+            </div>
+            <div className="border rounded p-3">
+              <div className="text-gray-500">Needs attention</div>
+              <div className="text-xl font-semibold">{syncCounts.couldNotSync}</div>
+            </div>
+            <div className="border rounded p-3">
+              <div className="text-gray-500">Successfully synced</div>
+              <div className="text-xl font-semibold">{syncCounts.successfullySynced}</div>
+            </div>
+            <div className="border rounded p-3">
+              <div className="text-gray-500">Waiting to sync</div>
+              <div className="text-xl font-semibold">{syncCounts.notSentYet + syncCounts.syncing}</div>
             </div>
           </div>
 
-          {lastReplayAuthGate && (
-            <div className="mt-3 rounded border bg-gray-50 p-2 text-gray-700">
-              {lastReplayAuthGate.message}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm mt-4">
+            <div className="border rounded p-3">
+              <div className="text-gray-500">Last checked</div>
+              <div className="font-medium">{formatTimestamp(syncCounts.lastCheckedAt)}</div>
+            </div>
+            <div className="border rounded p-3">
+              <div className="text-gray-500">Last sync attempt</div>
+              <div className="font-medium">{formatTimestamp(syncCounts.lastSyncAttemptAt)}</div>
+            </div>
+          </div>
+
+          {friendlySyncError && (
+            <div className="mt-4 border border-red-200 bg-red-50 text-red-700 rounded p-3 text-sm">
+              {friendlySyncError}
             </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-            <div>
-              <div className="text-gray-500">POS Active</div>
-              <div className="font-semibold">{posActivity.active ? "Yes" : "No"}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">POS Started At</div>
-              <div className="font-semibold">{formatTimestamp(posActivity.startedAt ?? null)}</div>
-            </div>
-            <div>
-              <div className="text-gray-500">POS Source</div>
-              <div className="font-semibold">{posActivity.source ?? "n/a"}</div>
-            </div>
-          </div>
-
-          {(authDiagnostics.actorType || authDiagnostics.actorId || authDiagnostics.actorRole) && (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
-              <div>
-                <div className="text-gray-500">Actor Type</div>
-                <div className="font-semibold">{authDiagnostics.actorType ?? "n/a"}</div>
-              </div>
-              <div>
-                <div className="text-gray-500">Actor ID</div>
-                <div className="font-semibold break-all">{authDiagnostics.actorId ?? "n/a"}</div>
-              </div>
-              <div>
-                <div className="text-gray-500">Actor Role</div>
-                <div className="font-semibold">{authDiagnostics.actorRole ?? "n/a"}</div>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {syncError && (
-          <div className="mt-4 border border-red-200 bg-red-50 text-red-700 rounded p-3 text-sm">
-            {syncError}
-          </div>
-        )}
-
-        {syncDiagnostics && (
-          <div className="mt-4 border rounded p-4 text-sm">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <div className="text-gray-500">Processed</div>
-                <div className="font-semibold">{syncDiagnostics.processed}</div>
-              </div>
-              <div>
-                <div className="text-gray-500">Succeeded</div>
-                <div className="font-semibold">{syncDiagnostics.succeeded}</div>
-              </div>
-              <div>
-                <div className="text-gray-500">Failed</div>
-                <div className="font-semibold">{syncDiagnostics.failed}</div>
-              </div>
-              <div>
-                <div className="text-gray-500">Skipped</div>
-                <div className="font-semibold">{syncDiagnostics.skipped}</div>
-              </div>
-            </div>
-
-            {syncDiagnostics.errors.length > 0 && (
-              <div className="mt-4">
-                <div className="font-medium mb-2">Safe Error Summary</div>
-                <div className="space-y-2">
-                  {syncDiagnostics.errors.map((error, index) => (
-                    <div key={`${error.id ?? "no-id"}-${index}`} className="border rounded p-2 bg-gray-50">
-                      <div>Queue ID: {error.id ?? "n/a"}</div>
-                      <div>Entity: {error.entity}</div>
-                      <div>Operation: {error.operation}</div>
-                      {error.status && <div>Status: {error.status}</div>}
-                      {error.authError && <div>Auth: action required</div>}
-                      <div>Message: {error.message}</div>
-                    </div>
-                  ))}
+          {syncDiagnostics && (
+            <div className="mt-4 border rounded p-4 text-sm">
+              <div className="font-medium mb-3">Last sync attempt</div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div>
+                  <div className="text-gray-500">Records checked</div>
+                  <div className="font-semibold">{syncDiagnostics.processed}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Successfully synced</div>
+                  <div className="font-semibold">{syncDiagnostics.succeeded}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Could not sync</div>
+                  <div className="font-semibold">{syncDiagnostics.failed}</div>
                 </div>
               </div>
-            )}
-          </div>
-        )}
-      </div>
+              {syncDiagnostics.errors.length > 0 && (
+                <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                  Some records need support.
+                </div>
+              )}
+            </div>
+          )}
+
+          {isDevRole && (
+            <details className="mt-6 border rounded p-4 text-sm">
+              <summary className="cursor-pointer font-medium">Developer details</summary>
+              <div className="mt-4">
+                <div className="font-medium mb-3">Auth Diagnostics</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div>
+                    <div className="text-gray-500">Token Present</div>
+                    <div className="font-semibold">{authDiagnostics.tokenPresent ? "Yes" : "No"}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Backend Enforcement</div>
+                    <div className="font-semibold">{authDiagnostics.backendAuthEnforcement}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Backend Auth Status</div>
+                    <div className="font-semibold">{authDiagnostics.backendAuthStatus}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Last Replay Auth</div>
+                    <div className="font-semibold">{lastReplayAuthStatus}</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                  <div>
+                    <div className="text-gray-500">Replay Auth Gate</div>
+                    <div className="font-semibold">{lastReplayAuthGate?.state ?? "none"}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Session Checked At</div>
+                    <div className="font-semibold">{formatTimestamp(lastReplayAuthGate?.checkedAt ?? null)}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">Gate Result</div>
+                    <div className="font-semibold">{lastReplayAuthGate ? (lastReplayAuthGate.allowed ? "Allowed" : "Blocked") : "n/a"}</div>
+                  </div>
+                </div>
+
+                {lastReplayAuthGate && (
+                  <div className="mt-3 rounded border bg-gray-50 p-2 text-gray-700">
+                    {lastReplayAuthGate.message}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                  <div>
+                    <div className="text-gray-500">POS Active</div>
+                    <div className="font-semibold">{posActivity.active ? "Yes" : "No"}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">POS Started At</div>
+                    <div className="font-semibold">{formatTimestamp(posActivity.startedAt ?? null)}</div>
+                  </div>
+                  <div>
+                    <div className="text-gray-500">POS Source</div>
+                    <div className="font-semibold">{posActivity.source ?? "n/a"}</div>
+                  </div>
+                </div>
+
+                {(authDiagnostics.actorType || authDiagnostics.actorId || authDiagnostics.actorRole) && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+                    <div>
+                      <div className="text-gray-500">Actor Type</div>
+                      <div className="font-semibold">{authDiagnostics.actorType ?? "n/a"}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500">Actor ID</div>
+                      <div className="font-semibold break-all">{authDiagnostics.actorId ?? "n/a"}</div>
+                    </div>
+                    <div>
+                      <div className="text-gray-500">Actor Role</div>
+                      <div className="font-semibold">{authDiagnostics.actorRole ?? "n/a"}</div>
+                    </div>
+                  </div>
+                )}
+
+                {syncDiagnostics && syncDiagnostics.errors.length > 0 && (
+                  <div className="mt-4">
+                    <div className="font-medium mb-2">Safe Error Summary</div>
+                    <div className="space-y-2">
+                      {syncDiagnostics.errors.map((error, index) => (
+                        <div key={`${error.id ?? "no-id"}-${index}`} className="border rounded p-2 bg-gray-50">
+                          <div>Queue ID: {error.id ?? "n/a"}</div>
+                          <div>Entity: {error.entity}</div>
+                          <div>Operation: {error.operation}</div>
+                          {error.status && <div>Status: {error.status}</div>}
+                          {error.authError && <div>Auth: action required</div>}
+                          <div>Message: {error.message}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </details>
+          )}
+        </div>
+      )}
     </div>
   );
 }

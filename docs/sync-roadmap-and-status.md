@@ -1700,3 +1700,28 @@ npm.cmd run test:transactions:standalone-payment-manual-replay
 
 Update/delete payment replay, startup replay, polling, listeners, workers,
 background replay, and auto-sync remain deferred.
+
+## Admin Sync Status Tab In Settings
+
+`Settings.tsx` now includes a dedicated `Sync Status` tab for client-facing
+sync status. It is visible to lowercase `admin` and exact `Dev` roles only;
+`saleboy`, staff, cashier, and manager roles do not see it.
+
+The tab uses non-technical wording for administrators:
+
+- All data is synced
+- Some data is waiting to sync
+- Some records need attention
+- Not sent yet
+- Could not sync
+- Needs attention
+- Successfully synced
+- Last checked
+- Last sync attempt
+- Sync Now
+
+The `Sync Now` button reuses the existing explicit manual sync/replay path and
+does not add auto-sync, polling, listeners, workers, startup replay, background
+replay, or retry loops. Technical diagnostics remain exact-`Dev`-only inside a
+separate developer details area. The protected Developer Control Panel remains
+exact-`Dev`-only and is still hidden from `admin`.

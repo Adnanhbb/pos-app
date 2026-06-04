@@ -3,7 +3,7 @@
 /*
  * Packaged-Laragon end-to-end verifier for explicit finalized Sale replay.
  *
- * This uses the copied frontend's real Settings "Run Manual Replay" button and
+ * This uses the copied frontend's real Settings "Sync Now" button and
  * live POSDatabase queue. It refuses to run while unrelated actionable queue
  * rows exist, creates only uniquely named rehearsal fixtures, avoids cylinders,
  * and removes its local/backend fixtures in finally blocks. The bearer token is
@@ -719,9 +719,14 @@ async function waitForQueueStatus(id, status) {
 async function clickSettingsMenu() {
   await page.locator("aside > ul > li").nth(11).click();
   await page.waitForTimeout(250);
+  const syncStatusTab = page
+    .locator("main")
+    .getByRole("button", { name: "Sync Status", exact: true });
+  await syncStatusTab.waitFor({ state: "visible", timeout: 10000 });
+  await syncStatusTab.click();
   const button = page
     .locator("main")
-    .getByRole("button", { name: "Run Manual Replay", exact: true });
+    .getByRole("button", { name: "Sync Now", exact: true });
   await button.waitFor({ state: "visible", timeout: 10000 });
   return button;
 }
@@ -1122,4 +1127,3 @@ try {
     }
   }
 }
-

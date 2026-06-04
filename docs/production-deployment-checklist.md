@@ -136,6 +136,11 @@ npm.cmd run sync:evaluate-auto-sync
 - Confirm a DB-backed `Dev` support user exists for Developer Control Panel access.
 - Confirm normal staff cannot see Developer Control Panel.
 - Confirm only the exact DB-backed `Dev` role can see Developer Control Panel.
+- Confirm lowercase `admin` can see the Settings `Sync Status` tab.
+- Confirm lowercase `admin` cannot see Developer Control Panel.
+- Confirm `saleboy`, staff, cashier, and manager roles cannot see the Settings `Sync Status` tab.
+- Confirm admin-facing Sync Status labels use client-friendly wording such as `All data is synced`, `Not sent yet`, `Could not sync`, `Needs attention`, `Last checked`, `Last sync attempt`, and `Sync Now`.
+- Confirm admin-facing Sync Status does not show raw payloads, replay bodies, tokens, hashes, backend responses, queue internals, or developer diagnostics.
 - Confirm panel does not show payloads, tokens, passwords, cart contents, or full sensitive records.
 - Confirm dangerous tools are not exposed in the panel.
 - Confirm manual replay remains gated and explicit.

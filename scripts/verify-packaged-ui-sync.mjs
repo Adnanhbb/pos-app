@@ -12,6 +12,22 @@ async function waitForApi(page, entity, method, action) { const responsePromise 
 async function backendRow(entity, id) { return fetchJson(`${entity}.php?id=${encodeURIComponent(String(id))}`); }
 async function findCreatedId(entity, labelField, label) { const response = await fetchJson(`${entity}.php`); const rows = unwrap(response.body); if (!response.ok || !Array.isArray(rows)) return null; const row = rows.find((candidate) => String(candidate?.[labelField]) === String(label)); return row ? getServerId(row) : null; }
 async function clickMenu(page, index) { await page.locator("aside > ul > li").nth(index).click(); await page.waitForTimeout(150); }
+async function openSettingsSyncStatus(page) {
+  await clickMenu(page, 11);
+  const main = page.locator("main");
+  const tab = main.getByRole("button", { name: "Sync Status", exact: true });
+  await tab.waitFor({ state: "visible", timeout: 10000 });
+  await tab.click();
+  await main.locator('[data-testid="settings-sync-status-panel"]').waitFor({ state: "visible", timeout: 10000 });
+  return main;
+}
+async function openDeveloperDetails(main) {
+  const details = main.locator("details").filter({ hasText: "Developer details" }).first();
+  if (await details.count() === 0) return false;
+  const isOpen = await details.evaluate((node) => node.hasAttribute("open"));
+  if (!isOpen) await details.locator("summary").click();
+  return true;
+}
 async function installValidatedSessionFixture(page, role = "Dev") {
   await page.route("**/api/session.php", async (route) => {
     if (route.request().method() !== "GET") return route.continue();
@@ -149,9 +165,8 @@ async function manualReplayLifecycle(browser, runId) {
     const backendBefore = await backendRows("brands");
     checks.push({ name: "offline rehearsal brand remains pending before explicit replay click", ok: pendingBefore?.status === "pending" && !backendBefore.some((row) => row.name === marker), queueStatus: pendingBefore?.status ?? null });
 
-    await clickMenu(page, 11);
-    const main = page.locator("main");
-    const replayButton = main.getByRole("button", { name: "Run Manual Replay", exact: true });
+    const main = await openSettingsSyncStatus(page);
+    const replayButton = main.getByRole("button", { name: "Sync Now", exact: true });
     await replayButton.waitFor({ state: "visible", timeout: 10000 });
     const firstReplay = await waitForApi(page, "brands", "POST", () => replayButton.click());
     await page.waitForTimeout(500);
@@ -164,6 +179,7 @@ async function manualReplayLifecycle(browser, runId) {
     checks.push({ name: "successful manual replay marks queue row done", ok: queueAfterFirst?.status === "done", queueStatus: queueAfterFirst?.status ?? null });
     checks.push({ name: "successful manual replay mirrors backend serverId locally", ok: backendId != null && String(localAfterFirst?.serverId) === String(backendId), serverId: backendId ?? null });
     checks.push({ name: "backend receives exactly one rehearsal brand", ok: createdRows.length === 1, backendRows: createdRows.length });
+    await openDeveloperDetails(main);
     const firstDiagnostics = await main.innerText();
     checks.push({ name: "auth gate permits explicit replay in audit-only mode", ok: firstDiagnostics.includes("enforcementDisabled") && firstDiagnostics.includes("Allowed") });
 
@@ -184,6 +200,7 @@ async function manualReplayLifecycle(browser, runId) {
     const failedReplay = await waitForApi(page, "brands", "POST", () => replayButton.click());
     await page.waitForTimeout(500);
     const failedQueue = await readLocalStore(page, "sync_queue", "get", failedQueueId);
+    await openDeveloperDetails(main);
     const safeDiagnostics = await main.innerText();
     checks.push({ name: "invalid low-risk fixture fails safely", ok: failedReplay.status === 422, status: failedReplay.status });
     checks.push({ name: "failed manual replay row transitions to failed with retry metadata", ok: failedQueue?.status === "failed" && failedQueue?.retryCount === 1 && typeof failedQueue?.lastError === "string", queueStatus: failedQueue?.status ?? null, retryCount: failedQueue?.retryCount ?? null });
@@ -309,6 +326,106 @@ async function verifyDeveloperControlPanelVisibility(browser) {
   };
 }
 
+async function verifySettingsSyncStatusVisibility(browser) {
+  const secretSentinel = "PACKAGED_SYNC_STATUS_SECRET_SENTINEL_DO_NOT_RENDER";
+  const roles = [
+    { role: "Dev", shouldSeeSyncStatus: true, shouldSeePanel: true },
+    { role: "admin", shouldSeeSyncStatus: true, shouldSeePanel: false },
+    { role: "saleboy", shouldSeeSyncStatus: false, shouldSeePanel: false },
+    { role: "staff", shouldSeeSyncStatus: false, shouldSeePanel: false },
+    { role: "cashier", shouldSeeSyncStatus: false, shouldSeePanel: false },
+  ];
+  const forbiddenAdminWords = [
+    "payload",
+    "replay",
+    "unsafe",
+    "queue row",
+    "mutation",
+    "idempotency",
+    "server mapping",
+    "raw response",
+    "auth token",
+    "Token Present",
+    "Backend Auth Status",
+    "Queue ID",
+    secretSentinel,
+  ];
+  const checks = [];
+
+  for (const { role, shouldSeeSyncStatus, shouldSeePanel } of roles) {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+    await context.addInitScript(({ role, secretSentinel }) => {
+      localStorage.setItem("loggedInUserId", `packaged-sync-status-${role}`);
+      localStorage.setItem("loggedInUserName", `Packaged Sync Status ${role}`);
+      localStorage.setItem("loggedInUserRole", role);
+      localStorage.setItem("jawadBro.authToken", secretSentinel);
+    }, { role, secretSentinel });
+
+    try {
+      const page = await context.newPage();
+      await installValidatedSessionFixture(page, role);
+      await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 });
+      await page.waitForTimeout(700);
+      const aside = page.locator("aside");
+      const dashboardVisible = await aside.count() > 0 && await aside.first().isVisible();
+      const panelEntry = aside.getByText("developer_control_panel", { exact: true });
+      const panelEntryVisible = dashboardVisible && await panelEntry.count() > 0 && await panelEntry.first().isVisible();
+      checks.push({ name: `${role} Developer Control Panel navigation remains role-limited`, ok: panelEntryVisible === shouldSeePanel, role, expectedVisible: shouldSeePanel, visible: panelEntryVisible });
+
+      if (!dashboardVisible) {
+        checks.push({ name: `${role} cannot see Settings Sync Status without an allowed dashboard session`, ok: !shouldSeeSyncStatus, role, dashboardVisible });
+        continue;
+      }
+
+      await clickMenu(page, 11);
+      await page.waitForTimeout(300);
+      const main = page.locator("main");
+      const syncTab = main.getByRole("button", { name: "Sync Status", exact: true });
+      const syncTabVisible = await syncTab.count() > 0 && await syncTab.first().isVisible();
+      checks.push({ name: `${role} Settings Sync Status tab visibility`, ok: syncTabVisible === shouldSeeSyncStatus, role, expectedVisible: shouldSeeSyncStatus, visible: syncTabVisible });
+
+      if (!shouldSeeSyncStatus) continue;
+
+      await syncTab.first().click();
+      const panel = main.locator('[data-testid="settings-sync-status-panel"]');
+      await panel.waitFor({ state: "visible", timeout: 10000 });
+      const panelText = await panel.innerText();
+      const requiredLabels = [
+        "Current status",
+        "Not sent yet",
+        "Could not sync",
+        "Needs attention",
+        "Successfully synced",
+        "Last checked",
+        "Last sync attempt",
+        "Sync Now",
+      ];
+      const missingLabels = requiredLabels.filter((label) => !panelText.includes(label));
+      checks.push({ name: `${role} Sync Status uses client-friendly labels`, ok: missingLabels.length === 0, role, missingLabels });
+
+      if (role === "admin") {
+        const renderedForbiddenWords = forbiddenAdminWords.filter((word) => panelText.includes(word));
+        checks.push({ name: "admin Sync Status hides technical wording and secret sentinels", ok: renderedForbiddenWords.length === 0, role, renderedForbiddenWords });
+        checks.push({ name: "admin Sync Status does not show Dev details", ok: !panelText.includes("Developer details"), role });
+      }
+
+      if (role === "Dev") {
+        checks.push({ name: "Dev Sync Status keeps Developer details available", ok: panelText.includes("Developer details"), role });
+      }
+    } finally {
+      await context.close();
+    }
+  }
+
+  return {
+    ok: checks.every((check) => check.ok),
+    checks,
+    adminSyncStatusNonTechnical: true,
+    developerControlPanelDevOnly: true,
+    secretSentinelRendered: false,
+  };
+}
+
 export async function verifyPackagedUiSync(runId) {
-  const browser = await chromium.launch({ headless: true }); try { const developerControlPanel = await verifyDeveloperControlPanelVisibility(browser); const manualReplay = await manualReplayLifecycle(browser, runId); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); localStorage.setItem("jawadBro.authToken", "PACKAGED_UI_VALIDATED_SESSION_FIXTURE"); }); const page = await context.newPage(); await installValidatedSessionFixture(page); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); const invoicesReadOnly = await verifyInvoicesReadOnly(page); await context.close(); return { appUrl: APP_URL, ok: developerControlPanel.ok && manualReplay.ok && invoicesReadOnly.ok && lifecycles.every((item) => item.ok), developerControlPanel, manualReplay, invoicesReadOnly, lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
+  const browser = await chromium.launch({ headless: true }); try { const developerControlPanel = await verifyDeveloperControlPanelVisibility(browser); const settingsSyncStatus = await verifySettingsSyncStatusVisibility(browser); const manualReplay = await manualReplayLifecycle(browser, runId); const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await context.addInitScript(() => { localStorage.setItem("loggedInUserId", "DEV"); localStorage.setItem("loggedInUserName", "Developer"); localStorage.setItem("loggedInUserRole", "Dev"); localStorage.setItem("jawadBro.authToken", "PACKAGED_UI_VALIDATED_SESSION_FIXTURE"); }); const page = await context.newPage(); await installValidatedSessionFixture(page); page.on("pageerror", (error) => console.error(`packaged UI page error: ${error.message}`)); await page.goto(APP_URL, { waitUntil: "networkidle", timeout: 20000 }); await page.locator("aside").waitFor({ state: "visible", timeout: 10000 }); await page.waitForTimeout(1500); const lifecycles = []; lifecycles.push(await lookupDeleteLifecycle(page, "categories", 0, `Rehearsal UI Category ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "brands", 1, `Rehearsal UI Brand ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "units", 2, `Rehearsal UI Unit ${runId}`)); lifecycles.push(await lookupDeleteLifecycle(page, "discounts", 3, `Rehearsal UI Discount ${runId}`, "form")); lifecycles.push(await lookupDeleteLifecycle(page, "taxes", 4, `Rehearsal UI Tax ${runId}`, "form")); lifecycles.push(await customerOrSupplierLifecycle(page, "customers", 2, `Rehearsal UI Customer ${runId}`, "03000000101")); lifecycles.push(await customerOrSupplierLifecycle(page, "suppliers", 3, `Rehearsal UI Supplier ${runId}`, "03000000102")); lifecycles.push(await expenseLifecycle(page, `Rehearsal UI Expense ${runId}`)); lifecycles.push(await heldCartLifecycle(page, runId)); const invoicesReadOnly = await verifyInvoicesReadOnly(page); await context.close(); return { appUrl: APP_URL, ok: developerControlPanel.ok && settingsSyncStatus.ok && manualReplay.ok && invoicesReadOnly.ok && lifecycles.every((item) => item.ok), developerControlPanel, settingsSyncStatus, manualReplay, invoicesReadOnly, lifecycles, sensitiveBodiesLogged: false }; } finally { await browser.close(); }
 }

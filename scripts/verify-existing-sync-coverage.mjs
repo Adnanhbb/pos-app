@@ -30,6 +30,7 @@ const sourceChecks = [
   ["items", "src/repositories/itemsRepository.ts", ["entityApi.update", "pickSafeItemProfilePayload", "hasUnsafeItemFieldChange", "Item create is intentionally local-only"]],
   ["developer control panel dashboard visibility", "src/Dashboard.tsx", ["...(user?.role === \"Dev\" ? [", "if (key === \"developer_control_panel\" && user.role !== \"Dev\") return;"]],
   ["developer control panel self guard", "src/DeveloperControlPanel.tsx", ["const canAccess = user.role === \"Dev\";", "restricted to developer support users"]],
+  ["admin Sync Status Settings tab", "src/Settings.tsx", ["Sync Status", "currentRole === \"admin\" || currentRole === \"Dev\"", "currentRole === \"Dev\"", "Sync Now", "Some records need support"]],
   ["invoice read-only view and print", "src/Invoices.tsx", ["handlePrintInvoice", "printInvoice({"]],
   ["manual replay failed-row handling", "src/services/syncEngine.ts", ["await syncQueueRepository.incrementRetry(item.id, message);", "await syncQueueRepository.markFailed(item.id, message);"]],
 ];
@@ -164,6 +165,10 @@ function md(report) {
   for (const check of report.packagedUi.developerControlPanel?.checks ?? []) {
     out.push(`- ${check.ok ? "PASS" : "FAIL"}: ${check.name}${check.role ? ` role=${check.role}` : ""}`);
   }
+  out.push("", "## Settings Sync Status Packaged Visibility Verification");
+  for (const check of report.packagedUi.settingsSyncStatus?.checks ?? []) {
+    out.push(`- ${check.ok ? "PASS" : "FAIL"}: ${check.name}${check.role ? ` role=${check.role}` : ""}`);
+  }
   out.push("", "## Packaged Invoice Read-Only Verification");
   for (const check of report.packagedUi.invoicesReadOnly?.checks ?? []) {
     out.push(`- ${check.ok ? "PASS" : "FAIL"}: ${check.name}`);
@@ -172,7 +177,7 @@ function md(report) {
   for (const check of report.packagedUi.manualReplay?.checks ?? []) {
     out.push(`- ${check.ok ? "PASS" : "FAIL"}: ${check.name}${check.queueStatus ? ` queueStatus=${check.queueStatus}` : ""}${check.status != null ? ` status=${check.status}` : ""}`);
   }
-  out.push("", "The manual replay fixture is an isolated low-risk `brands` create row. The verifier inserts a clearly named local rehearsal queue item, proves it remains pending before the explicit Settings button click, confirms backend creation and local `serverId` mirroring, proves repeated replay does not duplicate the backend row, exercises a safely rejected invalid fixture, and removes its fixture rows afterward.");
+  out.push("", "The manual replay fixture is an isolated low-risk `brands` create row. The verifier inserts a clearly named local rehearsal queue item, proves it remains pending before the explicit Settings `Sync Now` button click, confirms backend creation and local `serverId` mirroring, proves repeated replay does not duplicate the backend row, exercises a safely rejected invalid fixture, and removes its fixture rows afterward.");
   out.push("", "The browser verification injects isolated role state only to exercise packaged UI guards. It does not use the disabled frontend backdoor, create auth tokens, or expose backup export actions in the panel. Replay is triggered only by an explicit Settings button click for isolated low-risk rehearsal brand fixtures. There is no direct URL route for the panel; the component self-guard also requires role exactly `Dev`.");
   out.push("", "## Skipped Unsafe Areas");
   for (const item of report.skipped) out.push(`- ${item.entity}: ${item.reason}`);
