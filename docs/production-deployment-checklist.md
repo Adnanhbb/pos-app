@@ -2,6 +2,18 @@
 
 This checklist prepares a client production hosting rollout. It is operational preparation only: it does not deploy anything, enable auto-sync, change runtime sync behavior, or add CI/CD automation.
 
+For the client-facing handover routine, support workflow, daily/weekly backup
+routine, and final handover go/no-go gate, also use
+[client-handover-operational-checklist.md](./client-handover-operational-checklist.md).
+
+For the current production deployment readiness audit, including packaging,
+environment ownership, server assumptions, rollback readiness, and remaining
+real-hosting requirements, use
+[production-deployment-readiness-audit.md](./production-deployment-readiness-audit.md).
+
+For the final pre-tag release-candidate handover gate, use
+[release-candidate-client-handover-audit.md](./release-candidate-client-handover-audit.md).
+
 ## Frontend Build Verification
 
 - Confirm production API URL is set through `VITE_API_BASE_URL`.
@@ -63,12 +75,21 @@ npm.cmd run backup:mysql:export
 npm.cmd run backup:validate -- backups/<backup-file>.json
 ```
 
+- Audit backup/restore readiness:
+
+```powershell
+npm.cmd run backup:audit-readiness
+```
+
 - Confirm validation reports `ok: true`.
 - Confirm count mismatches are `0`.
 - Confirm unsafe sensitive fields are `0`.
+- Confirm expected IndexedDB store coverage has no missing stores.
 - Store backup checksums with deployment notes.
 - Protect backup files because they still contain business data.
 - Restore/import is not implemented; do not promise restore capability yet.
+- Follow [backup-disaster-recovery-handover.md](./backup-disaster-recovery-handover.md)
+  for the client handover backup routine and disaster recovery no-go rules.
 
 ## Replay/Queue Health Verification
 
@@ -238,7 +259,9 @@ After deployment:
 
 Go only if:
 
+- the client handover operational checklist has been reviewed
 - backup validation passed
+- backup readiness audit passed
 - HTTPS is working
 - auth/session behavior is verified
 - API base URL is correct
@@ -253,7 +276,11 @@ No-go if:
 - API URL points to local/staging by mistake
 - HTTPS is unavailable
 - backup validation failed
+- backup readiness audit reports missing stores
 - auth/session flow leaks sensitive details
+- transaction or payment replay regression fails
+- sync verification fails
+- unexplained sync failures remain
 - auto-sync/background behavior is enabled accidentally
 - rollback path is unknown
 ## Release Verification And Manifest
@@ -281,6 +308,22 @@ A local deployment package preparation command exists:
 ```powershell
 npm.cmd run deployment:package
 ```
+
+For a real root-domain client package, set the final production API URL and
+root asset base path explicitly before packaging:
+
+```powershell
+$env:VITE_API_BASE_URL="https://<client-api-domain-or-path>"
+$env:VITE_BASE_PATH="/"
+npm.cmd run deployment:package
+Remove-Item Env:VITE_API_BASE_URL
+Remove-Item Env:VITE_BASE_PATH
+```
+
+For subfolder hosting, set `VITE_BASE_PATH` to the real public subfolder path
+with leading and trailing slashes. For Laragon rehearsal, use
+`npm.cmd run rehearsal:laragon -- --copy`, which supplies the local API URL and
+`/jawad-bro-rehearsal/` base path intentionally.
 
 This command is preparation only. It runs a production build, creates a local `deployment-package/` folder, copies `dist/` output into `deployment-package/frontend/`, copies backend PHP files into `deployment-package/api/`, includes selected public deployment documentation under `deployment-package/docs/`, and writes `deployment-package/deployment-manifest.json`.
 

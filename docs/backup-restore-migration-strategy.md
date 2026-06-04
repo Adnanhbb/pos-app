@@ -541,3 +541,30 @@ Important boundaries:
 - the validator does not mutate backup files, IndexedDB, or backend MySQL
 - the validator does not trigger replay, hydration, auto-sync, startup replay, polling, listeners, or background sync
 - backup files still contain business data and must be protected even when validation passes
+
+## Client Handover Disaster Recovery Runbook
+
+A client handover backup/disaster recovery runbook now exists at
+[backup-disaster-recovery-handover.md](./backup-disaster-recovery-handover.md).
+
+It documents:
+
+- how to create IndexedDB and MySQL backups
+- where backups should be stored
+- how to validate backups before relying on them
+- why restore/import is not implemented yet
+- validation-only restore rehearsal steps
+- what not to do during disaster recovery
+- post-restore checks required by any future restore tool
+- recommended daily, weekly, and pre-update backup routines
+
+The backup readiness audit command is:
+
+```powershell
+npm.cmd run backup:audit-readiness
+```
+
+The audit checks expected IndexedDB store coverage, required backup scripts,
+restore/import absence, documentation coverage, and safe package scripts. It is
+read-only and does not open IndexedDB, read business rows, mutate MySQL, replay,
+or enable auto-sync.

@@ -13,7 +13,7 @@ const backendTarget = join(packageRoot, "api");
 const docsTarget = join(packageRoot, "docs");
 
 const buildApiBaseUrl = process.env.VITE_API_BASE_URL || "https://api.example.com";
-const buildBasePath = process.env.VITE_BASE_PATH || "/pos-app/";
+const buildBasePath = process.env.VITE_BASE_PATH || "/";
 const buildDevBackdoorEnabled = process.env.VITE_ENABLE_DEV_BACKDOOR === "true";
 const buildOfflineLoginEnabled = process.env.VITE_ALLOW_OFFLINE_LOGIN === "true";
 const buildCommand = process.platform === "win32" ? "cmd.exe" : "npm";
@@ -41,11 +41,17 @@ const excludedFiles = [
 
 const deploymentDocs = [
   "docs/production-deployment-checklist.md",
+  "docs/production-deployment-readiness-audit.md",
   "docs/deployment-and-environment-hardening-strategy.md",
+  "docs/hosting-agnostic-deployment-rehearsal.md",
+  "docs/local-production-rehearsal-laragon.md",
+  "docs/client-handover-operational-checklist.md",
+  "docs/release-candidate-client-handover-audit.md",
   "docs/offline-first-sync-architecture-status.md",
   "docs/production-operational-tooling-strategy.md",
   "docs/developer-control-panel-architecture.md",
   "docs/backup-restore-migration-strategy.md",
+  "docs/backup-disaster-recovery-handover.md",
   "docs/auto-sync-eligibility-gate.md",
 ];
 

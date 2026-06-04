@@ -487,8 +487,14 @@ Production preparation assets now exist:
 
 - `.env.production.example`
 - [production-deployment-checklist.md](./production-deployment-checklist.md)
+- [production-deployment-readiness-audit.md](./production-deployment-readiness-audit.md)
 
 The environment template contains placeholders only and must not be committed with real secrets. The checklist covers frontend build verification, backend PHP verification, database migration verification, auth enforcement verification, backup/export validation, replay/queue health, HTTPS/TLS, environment variables, rollback, disaster recovery, admin access, mobile readiness, performance sanity checks, first rollout constraints, and post-deployment validation.
+
+The readiness audit consolidates package contents, environment ownership,
+server assumptions, secret handling, rollback/recovery requirements, go/no-go
+criteria, and real-hosting requirements that cannot be closed until the client
+host/domain/SSL/database details are known.
 
 This is preparation-only. It does not deploy anything, enable auto-sync, change runtime sync behavior, or add CI/CD automation.
 ## Release Verification And Manifest Tooling

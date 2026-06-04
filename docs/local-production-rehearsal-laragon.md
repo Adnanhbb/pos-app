@@ -2,6 +2,11 @@
 
 This checklist rehearses a production-like deployment locally with Laragon before real client hosting is available. It is documentation/checklist only: it does not deploy to real hosting, change runtime behavior, add CI/CD, or enable auto-sync.
 
+For final client handover, pair this Laragon rehearsal with
+[client-handover-operational-checklist.md](./client-handover-operational-checklist.md).
+That checklist covers the support workflow, daily/weekly backup routine, and
+handover go/no-go decision in client-safe language.
+
 ## Purpose Of Local Rehearsal
 
 The local rehearsal validates the deployment shape before hosting is known:

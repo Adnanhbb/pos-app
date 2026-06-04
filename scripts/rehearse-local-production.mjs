@@ -30,7 +30,11 @@ const requiredDocs = [
   "docs/local-production-rehearsal-laragon.md",
   "docs/hosting-agnostic-deployment-rehearsal.md",
   "docs/production-deployment-checklist.md",
+  "docs/production-deployment-readiness-audit.md",
   "docs/deployment-and-environment-hardening-strategy.md",
+  "docs/client-handover-operational-checklist.md",
+  "docs/release-candidate-client-handover-audit.md",
+  "docs/backup-disaster-recovery-handover.md",
   "docs/sync-roadmap-and-status.md",
 ];
 

@@ -12,6 +12,7 @@ import { chromium } from "playwright";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { tmpdir } from "node:os";
+import { BUSINESS_CRITICAL_INDEXEDDB_STORES, compareStoreCoverage } from "./lib/indexeddb-store-inventory.mjs";
 
 const APP_URL = process.env.APP_URL || "http://localhost:5173";
 const DB_NAME = process.env.INDEXEDDB_BACKUP_DB_NAME || "POSDatabase";
@@ -157,6 +158,7 @@ function buildBackup(raw) {
   const warningStores = [];
 
   const storeNames = Array.isArray(raw.storeNames) ? raw.storeNames.sort() : [];
+  const expectedStoreCoverage = compareStoreCoverage(storeNames, BUSINESS_CRITICAL_INDEXEDDB_STORES);
   for (const storeName of storeNames) {
     const rows = Array.isArray(raw.stores?.[storeName]) ? raw.stores[storeName] : [];
     stores[storeName] = rows.map((row) => redact(row, storeName));
@@ -185,6 +187,7 @@ function buildBackup(raw) {
       autoSyncAdded: false,
       warning: "Restore/import is not implemented. This backup is for export/safekeeping/inspection only and still contains sensitive business data even after secret redaction.",
     },
+    expectedStoreCoverage,
     storeCounts,
     storeClassifications,
     indexes: raw.indexes ?? {},
@@ -196,6 +199,8 @@ function buildBackup(raw) {
       rawAuthTokenExported: false,
       authTokenPresentButNotExported: Boolean(raw.authTokenPresent),
       highRiskPOSTransactionStores: warningStores,
+      missingExpectedStores: expectedStoreCoverage.missingStores,
+      unexpectedStores: expectedStoreCoverage.unexpectedStores,
       highRiskWarning: "POS/sales/payment/batch/cylinder stores are included for backup completeness only. Do not restore or replay from this file without future restore planning and validation.",
       syncQueueWarning: storeNames.includes("sync_queue") ? "sync_queue is included as metadata. Restored queues must be quarantined and must never be replayed blindly." : null,
     },

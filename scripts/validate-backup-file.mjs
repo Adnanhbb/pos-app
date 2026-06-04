@@ -13,6 +13,7 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
+import { BUSINESS_CRITICAL_INDEXEDDB_STORES } from "./lib/indexeddb-store-inventory.mjs";
 
 const SENSITIVE_KEY_PATTERNS = [
   /^password$/i,
@@ -115,6 +116,28 @@ function validateIndexedDbCounts(backup, issues) {
   }
 
   return { checked: Object.keys(storeCounts).length, mismatches };
+}
+
+function validateIndexedDbStoreCoverage(backup, issues) {
+  if (!backup || typeof backup !== "object" || !backup.stores || typeof backup.stores !== "object") {
+    return { expectedStores: BUSINESS_CRITICAL_INDEXEDDB_STORES, missingStores: BUSINESS_CRITICAL_INDEXEDDB_STORES, unexpectedStores: [] };
+  }
+
+  const actualStores = Object.keys(backup.stores);
+  const actual = new Set(actualStores);
+  const expected = new Set(BUSINESS_CRITICAL_INDEXEDDB_STORES);
+  const missingStores = BUSINESS_CRITICAL_INDEXEDDB_STORES.filter((store) => !actual.has(store));
+  const unexpectedStores = actualStores.filter((store) => !expected.has(store)).sort();
+
+  if (missingStores.length > 0) {
+    addIssue(issues, "error", "missingExpectedIndexedDbStores", "IndexedDB backup is missing expected business-critical stores.", { missingStores });
+  }
+
+  if (unexpectedStores.length > 0) {
+    addIssue(issues, "warning", "unexpectedIndexedDbStores", "IndexedDB backup contains stores outside the expected inventory.", { unexpectedStores });
+  }
+
+  return { expectedStores: BUSINESS_CRITICAL_INDEXEDDB_STORES, missingStores, unexpectedStores };
 }
 
 function validateMysqlCounts(backup, issues) {
@@ -256,6 +279,9 @@ function main() {
     addIssue(issues, "error", "unknownBackupType", "Backup type could not be detected as IndexedDB or MySQL.");
   }
 
+  const indexedDbStoreCoverage = backupType === "indexeddb"
+    ? validateIndexedDbStoreCoverage(backup, issues)
+    : null;
   const sensitiveFindings = validateSensitiveData(backup, backupType, issues);
   validateExpectedRedactionFlags(backup, issues);
 
@@ -279,6 +305,7 @@ function main() {
       mismatchCount: countValidation.mismatches.length,
       mismatches: safeSample(countValidation.mismatches),
     },
+    indexedDbStoreCoverage,
     sensitiveFieldValidation: {
       unsafeSensitiveFieldCount: sensitiveFindings.unsafe.length,
       redactedSensitiveFieldCount: sensitiveFindings.redacted.length,

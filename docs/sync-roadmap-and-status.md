@@ -1287,6 +1287,7 @@ Available commands:
 npm.cmd run backup:indexeddb:export
 npm.cmd run backup:mysql:export
 npm.cmd run backup:validate -- backups/<backup-file>.json
+npm.cmd run backup:audit-readiness
 ```
 
 Current validation status:
@@ -1295,8 +1296,17 @@ Current validation status:
 - MySQL backup `ok: true`
 - count mismatches: `0`
 - unsafe sensitive fields: `0`
+- expected IndexedDB store coverage is audited before handover
 
 The validator computes SHA-256 checksums and checks structure/count/sensitive-field leakage only. It does not prove restore success. Restore/import remains unimplemented, and no backup tooling triggers replay, hydration, IndexedDB/backend mutation, auto-sync, startup replay, polling, listeners, or background sync.
+
+The client handover disaster recovery runbook is documented in [backup-disaster-recovery-handover.md](./backup-disaster-recovery-handover.md). Restore rehearsal remains validation-only until a future quarantined restore planner exists.
+
+The client operational handover checklist is documented in
+[client-handover-operational-checklist.md](./client-handover-operational-checklist.md).
+It consolidates pre-handover POS/auth/report/backup/sync checks, support and
+recovery steps, daily/weekly routines, and go/no-go criteria without changing
+runtime behavior.
 ## Deployment And Environment Hardening Strategy
 
 Production deployment and environment hardening is documented in [deployment-and-environment-hardening-strategy.md](./deployment-and-environment-hardening-strategy.md).
@@ -1808,3 +1818,23 @@ archives rows that are still failed and still classified as old incomplete
 records by default. To include failed business rows that are confirmed
 test/rehearsal records, the CLI must be run with both
 `--include-business-test-records` and `--reason`. Auto-sync remains disabled.
+
+### Production Deployment Readiness Audit
+
+Client-handover deployment readiness is documented in
+[production-deployment-readiness-audit.md](./production-deployment-readiness-audit.md).
+
+The final pre-tag release-candidate handover gate is documented in
+[release-candidate-client-handover-audit.md](./release-candidate-client-handover-audit.md).
+
+The audit records package contents, environment configuration ownership, server
+assumptions, secret handling, rollback/recovery expectations, go/no-go criteria,
+and remaining real-hosting requirements. Deployment package and release
+verification now treat the handover and disaster-recovery docs as required
+readiness assets, and the dry-run package defaults to a root asset base path
+unless a real subfolder path is explicitly supplied.
+
+This is deployment preparation only. It does not deploy, upload, mutate
+IndexedDB/MySQL, trigger replay, restore/import data, change POS/payment
+behavior, change sync behavior, enable auto-sync, or add polling, listeners,
+workers, startup replay, or background replay.
