@@ -87,6 +87,9 @@ npm.cmd run sync:evaluate-auto-sync
 - Confirm failed replay rows are classified or intentionally blocked.
 - Confirm stale replay locks are absent or manually reviewed.
 - Confirm auto-sync evaluator remains blocked or intentionally disabled.
+- Run `npm.cmd run test:transactions:manual-replay-regression` before any
+  release that changes finalized Sale, Purchase, Customer Return, Supplier
+  Return, replay routing, replay auth, or transaction endpoint code.
 - Do not replay automatically.
 
 ## HTTPS/TLS Verification
@@ -180,6 +183,10 @@ After deployment:
 - Create a low-risk CRUD row while backend is online and verify MySQL.
 - Create a low-risk CRUD row while backend is unavailable in staging only and verify queue behavior.
 - Run manual replay only when safe and explicitly intended.
+- Run `npm.cmd run test:transactions:manual-replay-regression` in staging or
+  local production rehearsal to confirm finalized Sale, Purchase, Customer
+  Return, and Supplier Return replay remain ready-gated, idempotent, auth-gated,
+  and manual-only.
 - In Laragon/staging rehearsal, use only a clearly named low-risk lookup fixture for manual replay verification.
 - Confirm the fixture remains pending before the explicit replay click, becomes done afterward, mirrors `serverId`, and is not duplicated by a second explicit replay click.
 - Confirm a safely rejected low-risk fixture is reported through a safe summary and transitions to failed rather than remaining stranded in processing.

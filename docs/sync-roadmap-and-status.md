@@ -1644,3 +1644,20 @@ mutation.
 Sale, Purchase, and Customer Return replay remain unchanged. Standalone payment
 replay, background replay, startup replay, polling, listeners, workers, and
 auto-sync remain deferred.
+
+## Consolidated Manual Transaction Replay Regression Gate
+
+`test:transactions:manual-replay-regression` now orchestrates the implemented
+manual finalized transaction replay suites for Sale, Purchase, Customer Return,
+and Supplier Return.
+
+The gate verifies, per transaction type, that only replay-ready payloads are
+accepted, unsafe payloads are blocked without mutation, a second explicit replay
+is idempotent, local IndexedDB ids are not used as MySQL mutation ids, replay
+auth is required, and the frontend router continues to call only the narrow
+manual replay endpoint for the matching transaction type.
+
+It also performs source-level guard checks that no standalone Payment replay is
+wired and no auto-sync, startup replay, polling, listener, worker, or timer-based
+`processPending()` path has been introduced. This is verification-only and does
+not add new transaction types or background behavior.
