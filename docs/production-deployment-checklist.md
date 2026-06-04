@@ -84,6 +84,19 @@ npm.cmd run sync:review-issues
 npm.cmd run sync:evaluate-auto-sync
 ```
 
+- If the admin `Sync Status` tab shows failed rows but CLI review reports an
+  empty queue, run the review against the live Chrome profile used by the
+  Laragon/client session:
+
+```powershell
+npm.cmd run sync:review-issues -- --profile=chrome-profile-1
+npm.cmd run sync:archive-issues:dry -- --profile=chrome-profile-1
+```
+
+- Use `--profile=chrome-default` instead if the app is running from Chrome's
+  Default profile, or pass an exact path with `--user-data-dir="<path>"`.
+- Keep archive dry-run as the first step. Do not run apply until the candidate
+  rows have been reviewed.
 - Confirm local queue health is understood.
 - Confirm failed local queue issues are reviewed before using any archive action.
 - Confirm failed replay rows are classified or intentionally blocked.

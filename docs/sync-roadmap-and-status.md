@@ -1756,6 +1756,34 @@ npm.cmd run sync:archive-issues:dry
 npm.cmd run sync:archive-issues
 ```
 
+By default these commands use the safe diagnostics profile under `%TEMP%`. That
+profile may not be the live browser profile used by the Laragon app. To inspect
+the same Chrome profile where the admin `Sync Status` tab shows failed rows,
+pass an explicit profile selector:
+
+```powershell
+npm.cmd run sync:review-issues -- --profile=chrome-profile-1
+npm.cmd run sync:archive-issues:dry -- --profile=chrome-profile-1
+```
+
+If the app is running from Chrome's Default profile instead, use:
+
+```powershell
+npm.cmd run sync:review-issues -- --profile=chrome-default
+npm.cmd run sync:archive-issues:dry -- --profile=chrome-default
+```
+
+An exact profile path may also be supplied:
+
+```powershell
+npm.cmd run sync:review-issues -- --user-data-dir="C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Profile 1"
+npm.cmd run sync:archive-issues:dry -- --user-data-dir="C:\Users\<user>\AppData\Local\Google\Chrome\User Data\Profile 1"
+```
+
+Close Chrome first if the selected live profile is locked. The commands always
+report which profile path they inspect and warn when the default temp profile is
+being used.
+
 `sync:archive-issues` requires explicit apply through the npm script and only
 archives rows that are still failed and still classified as old incomplete
 records. Auto-sync remains disabled.

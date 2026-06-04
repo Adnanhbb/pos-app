@@ -11,11 +11,84 @@ import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
 export const APP_URL = process.env.APP_URL || "http://localhost/jawad-bro-rehearsal/";
-export const USER_DATA_DIR =
-  process.env.SYNC_TOOLS_USER_DATA_DIR ||
-  resolve(tmpdir(), "jawad-bro-sync-tools-profile");
+export const TEMP_USER_DATA_DIR = resolve(tmpdir(), "jawad-bro-sync-tools-profile");
 export const DB_NAME = "POSDatabase";
 export const DB_VERSION = 20;
+
+function argValue(name) {
+  const prefix = `--${name}=`;
+  const inline = process.argv.find((arg) => arg.startsWith(prefix));
+  if (inline) return inline.slice(prefix.length);
+
+  const index = process.argv.indexOf(`--${name}`);
+  if (index >= 0 && process.argv[index + 1]) return process.argv[index + 1];
+  return null;
+}
+
+function chromeProfilePath(profileName) {
+  const localAppData = process.env.LOCALAPPDATA || "";
+  if (!localAppData) return null;
+  return resolve(localAppData, "Google", "Chrome", "User Data", profileName);
+}
+
+export function resolveProfileTarget() {
+  const userDataDirArg = argValue("user-data-dir");
+  if (userDataDirArg) {
+    return {
+      label: "custom",
+      source: "--user-data-dir",
+      userDataDir: resolve(userDataDirArg),
+      liveBrowserProfile: true,
+      warning: "Inspecting an explicitly selected browser profile. Close Chrome if the profile is locked.",
+    };
+  }
+
+  const profileArg = argValue("profile");
+  if (profileArg && profileArg !== "temp") {
+    const profileNameByAlias = {
+      "chrome-default": "Default",
+      "chrome-profile-1": "Profile 1",
+      "chrome-profile-2": "Profile 2",
+      "chrome-profile-3": "Profile 3",
+    };
+    const profileName = profileNameByAlias[profileArg] ?? profileArg;
+    const userDataDir = chromeProfilePath(profileName);
+
+    if (!userDataDir) {
+      throw new Error("LOCALAPPDATA is not available, so the Chrome profile path could not be resolved. Use --user-data-dir instead.");
+    }
+
+    return {
+      label: profileArg,
+      source: "--profile",
+      chromeProfileName: profileName,
+      userDataDir,
+      liveBrowserProfile: true,
+      warning: "Inspecting a real Chrome profile. Close Chrome first if this profile is locked by the browser.",
+    };
+  }
+
+  if (process.env.SYNC_TOOLS_USER_DATA_DIR) {
+    return {
+      label: "env",
+      source: "SYNC_TOOLS_USER_DATA_DIR",
+      userDataDir: resolve(process.env.SYNC_TOOLS_USER_DATA_DIR),
+      liveBrowserProfile: true,
+      warning: "Inspecting the profile selected by SYNC_TOOLS_USER_DATA_DIR.",
+    };
+  }
+
+  return {
+    label: "temp",
+    source: "default-temp",
+    userDataDir: TEMP_USER_DATA_DIR,
+    liveBrowserProfile: false,
+    warning: "This may not be the live browser profile.",
+  };
+}
+
+export const PROFILE_TARGET = resolveProfileTarget();
+export const USER_DATA_DIR = PROFILE_TARGET.userDataDir;
 
 const BUSINESS_QUEUE_ENTITIES = new Set([
   "transactions",
@@ -187,7 +260,7 @@ export async function loadPlaywright() {
   }
 }
 
-export async function readSyncQueueRows({ appUrl = APP_URL, userDataDir = USER_DATA_DIR } = {}) {
+export async function readSyncQueueRows({ appUrl = APP_URL, profileTarget = PROFILE_TARGET, userDataDir = profileTarget.userDataDir } = {}) {
   const { chromium } = await loadPlaywright();
   const context = await chromium.launchPersistentContext(userDataDir, { headless: true });
 
@@ -229,10 +302,18 @@ export async function readSyncQueueRows({ appUrl = APP_URL, userDataDir = USER_D
 }
 
 export async function buildIssueReport(options = {}) {
-  const rows = await readSyncQueueRows(options);
+  const profileTarget = options.profileTarget ?? PROFILE_TARGET;
+  const rows = await readSyncQueueRows({ ...options, profileTarget });
   return {
     appUrl: options.appUrl ?? APP_URL,
-    userDataDir: options.userDataDir ?? USER_DATA_DIR,
+    profile: {
+      label: profileTarget.label,
+      source: profileTarget.source,
+      chromeProfileName: profileTarget.chromeProfileName ?? null,
+      userDataDir: options.userDataDir ?? profileTarget.userDataDir,
+      liveBrowserProfile: profileTarget.liveBrowserProfile,
+    },
+    warnings: profileTarget.warning ? [profileTarget.warning] : [],
     totalQueueRows: rows.length,
     ...summarizeQueueIssues(rows),
   };
@@ -240,6 +321,8 @@ export async function buildIssueReport(options = {}) {
 
 async function main() {
   console.log("Safe sync_queue issue review. Read-only; no replay/archive is performed.");
+  console.log(`Profile: ${PROFILE_TARGET.label} (${PROFILE_TARGET.userDataDir})`);
+  if (PROFILE_TARGET.warning) console.log(`Warning: ${PROFILE_TARGET.warning}`);
   const report = await buildIssueReport();
   console.log(JSON.stringify(report, null, 2));
 }

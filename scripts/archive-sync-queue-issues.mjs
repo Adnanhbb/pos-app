@@ -12,6 +12,7 @@ import {
   APP_URL,
   DB_NAME,
   DB_VERSION,
+  PROFILE_TARGET,
   USER_DATA_DIR,
   buildIssueReport,
   loadPlaywright,
@@ -124,6 +125,14 @@ async function main() {
   const dryRun = {
     mode: APPLY ? "apply" : "dry-run",
     appUrl: APP_URL,
+    profile: {
+      label: PROFILE_TARGET.label,
+      source: PROFILE_TARGET.source,
+      chromeProfileName: PROFILE_TARGET.chromeProfileName ?? null,
+      userDataDir: PROFILE_TARGET.userDataDir,
+      liveBrowserProfile: PROFILE_TARGET.liveBrowserProfile,
+    },
+    warnings: PROFILE_TARGET.warning ? [PROFILE_TARGET.warning] : [],
     totalFailedRows: before.totalFailedRows,
     candidateRows: candidates.length,
     blockedRows: blocked.length,
@@ -158,6 +167,8 @@ async function main() {
 
   if (!APPLY) {
     console.log("Safe sync_queue archive dry-run. No IndexedDB changes are applied.");
+    console.log(`Profile: ${PROFILE_TARGET.label} (${PROFILE_TARGET.userDataDir})`);
+    if (PROFILE_TARGET.warning) console.log(`Warning: ${PROFILE_TARGET.warning}`);
     console.log(JSON.stringify(dryRun, null, 2));
     return;
   }
