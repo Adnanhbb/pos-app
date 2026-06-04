@@ -26,4 +26,8 @@ export const transactionApi = {
   replayFinalizedCustomerReturn(clientTransactionId: string): Promise<any> {
     return apiClient.post("/replay/customer-return.php", { clientTransactionId });
   },
+
+  replayFinalizedSupplierReturn(clientTransactionId: string): Promise<any> {
+    return apiClient.post("/replay/supplier-return.php", { clientTransactionId });
+  },
 };

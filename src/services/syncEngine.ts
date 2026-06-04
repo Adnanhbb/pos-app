@@ -184,6 +184,17 @@ function isFinalizedCustomerReturnPayload(payload: OfflineTransactionPayload) {
   );
 }
 
+function isFinalizedSupplierReturnPayload(payload: OfflineTransactionPayload) {
+  const sale = payload.payload?.sale;
+
+  return (
+    payload.transactionType === "return" &&
+    payload.payload?.returnMode === "supplier" &&
+    sale?.transactionType === "Return" &&
+    sale?.isPostponed !== true
+  );
+}
+
 function assertReadyFinalizedSaleReplay(payload: OfflineTransactionPayload) {
   const contract = payload.payload?.finalizedSaleReplay;
 
@@ -240,6 +251,28 @@ function assertReadyFinalizedCustomerReturnReplay(payload: OfflineTransactionPay
   ) {
     throw new Error(
       "Finalized Customer Return replay is blocked because its backend mappings are not replay-ready."
+    );
+  }
+}
+
+function assertReadyFinalizedSupplierReturnReplay(payload: OfflineTransactionPayload) {
+  const contract = payload.payload?.finalizedSupplierReturnReplay;
+
+  if (
+    payload.transactionType !== "return" ||
+    payload.payload?.returnMode !== "supplier" ||
+    payload.replayReadiness?.scope !== "finalized_supplier_return" ||
+    payload.replayReadiness?.payloadVersion !== 1 ||
+    payload.replayReadiness.status !== "ready" ||
+    payload.replayReadiness.reasons.length !== 0 ||
+    contract?.payloadVersion !== 1 ||
+    contract?.transactionType !== "Return" ||
+    contract?.returnMode !== "supplier" ||
+    contract?.replayReadiness?.status !== "ready" ||
+    contract?.replayReadiness?.reasons?.length !== 0
+  ) {
+    throw new Error(
+      "Finalized Supplier Return replay is blocked because its backend mappings are not replay-ready."
     );
   }
 }
@@ -358,6 +391,13 @@ export const syncEngine = {
         assertReadyFinalizedCustomerReturnReplay(item.payload);
         await transactionApi.postTransaction(item.payload);
         await transactionApi.replayFinalizedCustomerReturn(item.payload.clientTransactionId);
+        return;
+      }
+
+      if (isFinalizedSupplierReturnPayload(item.payload)) {
+        assertReadyFinalizedSupplierReturnReplay(item.payload);
+        await transactionApi.postTransaction(item.payload);
+        await transactionApi.replayFinalizedSupplierReturn(item.payload.clientTransactionId);
         return;
       }
 

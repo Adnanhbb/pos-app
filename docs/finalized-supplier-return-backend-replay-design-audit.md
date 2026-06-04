@@ -1,22 +1,23 @@
 # Finalized Supplier Return Backend Replay Design Audit
 
-Status: queue payload hardening and queue-readiness fixture implemented. No
-Supplier Return replay endpoint has been added.
+Status: queue payload hardening, queue-readiness fixture, and narrow manual
+Supplier Return replay endpoint implemented.
 
 This document prepares the backend-authoritative replay path for finalized
 Supplier Return transactions only. The current IndexedDB Supplier Return
 finalization path remains the reference implementation. Completed,
 non-postponed Supplier Returns now queue a versioned
-`finalizedSupplierReturnReplay` v1 contract and readiness summary, but no
-backend Supplier Return replay endpoint exists yet. Any future MySQL replay must
-match local behavior exactly, stay manual-only, and follow the
+`finalizedSupplierReturnReplay` v1 contract and readiness summary. The narrow
+manual `api/replay/supplier-return.php` endpoint now accepts only replay-ready
+v1 Supplier Return rows by `clientTransactionId`. MySQL replay must match local
+behavior exactly, stay manual-only, and follow the
 contract-gated/idempotent pattern already used for finalized Sale, Purchase,
 and Customer Return replay.
 
-This hardening does not change successful local POS behavior, does not change
-Sale, Purchase, or Customer Return replay, and does not add Supplier Return
-replay, standalone payment replay, invoice cancellation, auto-sync, polling,
-listeners, workers, startup replay, or background replay.
+This implementation does not change successful local POS behavior, does not
+change Sale, Purchase, or Customer Return replay, and does not add standalone
+payment replay, invoice cancellation, auto-sync, polling, listeners, workers,
+startup replay, or background replay.
 
 ## Current Local Supplier Return Outcome
 
@@ -87,9 +88,10 @@ and cylinder snapshots for finalized Supplier Return rows. Local IndexedDB ids
 remain useful only as correlation metadata. Future MySQL mutation targets must
 use explicit backend `serverId` fields from the contract.
 
-Supplier Return rows are still not backend-replayed. The current manual sync
-router has no Supplier Return-specific replay branch and no
-`api/replay/supplier-return.php` endpoint exists.
+Supplier Return rows are now backend-replayed only through explicit manual
+queue processing when both the queued row and the v1 contract have
+`replayReadiness.status === "ready"` with no reasons. Unsafe rows remain
+blocked locally and are not sent to the Supplier Return replay endpoint.
 
 ## Existing MySQL And Backend Coverage
 
@@ -118,9 +120,9 @@ already understand Supplier Return direction in broad form:
   `balance` while leaving `qtySold` unchanged;
 - cylinder mutation decreases `filledCylinders` and `qtyInStock`.
 
-These helpers are useful but should not be exposed directly. A future
-Supplier Return-specific adapter should validate `finalizedSupplierReturnReplay`
-v1, construct a server-id-only in-memory envelope, and then call shared mutation
+These helpers are useful but are not exposed directly. The
+Supplier Return-specific adapter validates `finalizedSupplierReturnReplay` v1,
+constructs a server-id-only in-memory envelope, and then calls shared mutation
 helpers inside one MySQL transaction.
 
 ## Supplier Return Differences From Purchase Replay
@@ -253,9 +255,9 @@ Backend implementation-time validation should additionally reject:
   unless a separate approved local behavior decision explicitly preserves the
   current local clamping semantics.
 
-## Proposed Endpoint Contract
+## Implemented Endpoint Contract
 
-The future narrow endpoint should be:
+The narrow endpoint is:
 
 ```http
 POST /api/replay/supplier-return.php
@@ -271,7 +273,7 @@ Request:
 }
 ```
 
-The endpoint should reload the stored payload server-side and accept only:
+The endpoint reloads the stored payload server-side and accepts only:
 
 - outer stored transaction type `return`;
 - `payload.returnMode === "supplier"`;
@@ -283,7 +285,7 @@ The endpoint should reload the stored payload server-side and accept only:
 - top-level and contract `replayReadiness.status === "ready"`;
 - no readiness reasons.
 
-Required sequence:
+Implemented sequence:
 
 1. Authenticate and authorize before lock acquisition.
 2. Load the stored transaction by `clientTransactionId`.
@@ -324,24 +326,30 @@ Required protections:
 
 `invoiceNo` is a conflict check, not the primary idempotency key.
 
-## MySQL/API Gaps
+## MySQL/API Status
 
-The table coverage is mostly present, but the Supplier Return replay endpoint
-is not implementation-ready yet:
+The table coverage is present for the current Supplier Return replay slice:
 
 - the Supplier Return queue-readiness fixture now proves ready/unsafe rows
   without backend replay;
-- no `api/lib/finalizedSupplierReturnReplayV1.php` adapter exists;
-- no `api/replay/supplier-return.php` endpoint exists;
-- `src/api/transactionApi.ts` has no Supplier Return replay method;
-- `src/services/syncEngine.ts` has no finalized Supplier Return replay branch;
-- no backend transaction verifier exists for ready/unsafe Supplier Return replay.
+- `api/lib/finalizedSupplierReturnReplayV1.php` validates the v1 contract and
+  builds a server-id-only mutation envelope;
+- `api/replay/supplier-return.php` accepts explicit manual replay requests by
+  `clientTransactionId`;
+- `src/api/transactionApi.ts` targets the narrow Supplier Return replay
+  endpoint;
+- `src/services/syncEngine.ts` stores ready Supplier Return rows and then calls
+  the Supplier Return endpoint only after readiness validation;
+- `test:transactions:finalized-supplier-return-manual-replay` verifies
+  ready replay, unsafe rejection, idempotency, source batch reduction,
+  non-cylinder replay, cylinder `filledDecrease`, and local/server id
+  separation.
 
 ## Payload Readiness Gaps
 
 Supplier Return no longer uses only the generic return payload. Completed,
-non-postponed rows now carry enough metadata to classify queue readiness, but
-they are not replayed into MySQL yet.
+non-postponed rows now carry enough metadata to classify queue readiness and
+to replay explicitly into MySQL when the contract is ready.
 
 Completed prerequisites:
 
@@ -363,13 +371,20 @@ Completed prerequisites:
    origin plus an isolated temporary IndexedDB database, queues exactly one
    Supplier Return row, verifies ready/unsafe scenarios, and confirms no
    Supplier Return replay endpoint is called.
+10. Completed: add a narrow authenticated Supplier Return replay endpoint and
+    backend adapter for ready `finalizedSupplierReturnReplay` v1 rows only.
+11. Completed: wire manual sync routing so ready Supplier Return rows are
+    stored and then explicitly replayed; unsafe rows remain blocked locally.
+12. Completed: add backend replay verification for ready/unsafe replay,
+    idempotency, non-cylinder replay, source-batch reduction, cylinder
+    `filledDecrease`, and local/server id separation.
 
-Remaining prerequisites before endpoint implementation:
+Remaining prerequisites before any broader replay expansion:
 
 1. Decide whether any historical Supplier Return rows without the v1 contract
    should stay manual-only or receive explicit migration/diagnostic tooling.
-2. Implement a Supplier Return-specific adapter only after ready/unsafe fixture
-   coverage is stable.
+2. Keep Supplier Return replay manual-only until auto-sync eligibility,
+   rollback visibility, backup/restore, and operator workflows are mature.
 
 ## Minimal Reuse Strategy
 
@@ -391,30 +406,25 @@ Small shared helpers may be extracted later where duplication is mechanical:
 - server-id-only envelope construction for stock-decreasing batch-consumption
   transactions.
 
-## Recommended Next Step
+## Current Replay Boundary
 
-Do not implement Supplier Return replay automatically or broadly.
+Supplier Return replay is implemented only as an explicit manual endpoint for
+ready v1 rows. It is not automatic or broad.
 
-The queue-readiness fixture now proves:
+The current verifier proves:
 
-1. isolated finalized Supplier Return queue rows can be created without backend
-   replay;
-2. Supplier Return rows become ready only when supplier, item, selected/source
-   batch, and optional cylinder mappings are present;
-3. missing supplier, item, source batch metadata, source batch server id, and
-   cylinder mappings remain unsafe;
-4. unsafe cylinder clamping remains explicitly unsafe;
-5. `api/replay/supplier-return.php` remains absent.
-
-The next implementation step, when explicitly approved, is a narrow
-`api/replay/supplier-return.php` endpoint plus a contract-specific backend
-adapter.
+1. ready Supplier Return rows commit exactly once;
+2. repeated replay is idempotent and terminal-state skipped;
+3. unsafe rows are rejected without business mutation;
+4. non-cylinder Supplier Return works without cylinder metadata;
+5. cylinder Supplier Return applies `filledDecrease` exactly;
+6. selected/source batch `qtyPurchased` and `balance` decrease exactly;
+7. local IndexedDB ids are never used as MySQL mutation ids.
 
 ## Explicitly Deferred
 
 This audit does not add or expose replay execution for:
 
-- Supplier Return
 - standalone payments
 - invoice cancellation or reversal
 - stock adjustment

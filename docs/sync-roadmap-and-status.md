@@ -1581,7 +1581,7 @@ Completed, non-postponed local Customer Returns now queue an explicit
 `replayReadiness`, server-only customer/item targets, safe local return-batch
 correlation metadata, optional cylinder mapping, and optional customer holding
 mapping for gas/cylinder returns. Supplier Return is covered separately by its
-own queue payload hardening and remains without a backend replay endpoint.
+own queue payload hardening and narrow manual replay endpoint.
 
 Unsafe Customer Return mappings do not block a successful local IndexedDB
 Customer Return. They annotate the queue row with safe reason codes and remain
@@ -1592,9 +1592,8 @@ The manual endpoint `api/replay/customer-return.php` now accepts only ready
 server-id-only mutation envelope, and applies the Customer Return header/items,
 item stock increase, return-batch creation, customer accounting/payment effect,
 and optional cylinder/holding movement in one MySQL transaction. Sale and
-Purchase replay are unchanged. Supplier Return replay, standalone payment
-replay, background replay, startup replay, polling, listeners, workers, and
-auto-sync remain deferred.
+Purchase replay are unchanged. Standalone payment replay, background replay,
+startup replay, polling, listeners, workers, and auto-sync remain deferred.
 
 ## Finalized Supplier Return Backend Replay Design Audit
 
@@ -1633,7 +1632,15 @@ verifies mapped Supplier Return readiness, non-cylinder readiness without
 cylinder metadata, missing supplier/item/source-batch/server-batch/cylinder
 mapping failures, and unsafe cylinder clamping classification.
 
-No Supplier Return replay adapter or `api/replay/supplier-return.php` endpoint
-exists yet. Sale, Purchase, and Customer Return replay remain unchanged.
-Standalone payment replay, background replay, startup replay, polling,
-listeners, workers, and auto-sync remain deferred.
+The manual endpoint `api/replay/supplier-return.php` now accepts only ready
+`finalizedSupplierReturnReplay` v1 rows by `clientTransactionId`, builds a
+server-id-only mutation envelope, and applies the Supplier Return header/items,
+item stock decrease, selected/source batch reduction, supplier
+accounting/payment effect, and optional cylinder `filledDecrease` in one MySQL
+transaction. Duplicate replay is terminal-state skipped without duplicate
+business writes. Unsafe Supplier Return rows are rejected before business
+mutation.
+
+Sale, Purchase, and Customer Return replay remain unchanged. Standalone payment
+replay, background replay, startup replay, polling, listeners, workers, and
+auto-sync remain deferred.

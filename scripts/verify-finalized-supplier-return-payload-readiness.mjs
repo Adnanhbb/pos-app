@@ -407,16 +407,16 @@ assert(
     finalizationSource.includes("await tx.done;"),
   "local IndexedDB finalization remains the existing atomic commit path"
 );
-assert(!existsSync(backendSupplierReturnReplayPath), "backend Supplier Return replay endpoint does not exist yet");
+assert(existsSync(backendSupplierReturnReplayPath), "backend Supplier Return replay endpoint exists for manual ready-row replay");
 assert(
-  !transactionApiSource.includes("replayFinalizedSupplierReturn") &&
-    !transactionApiSource.includes("/replay/supplier-return.php"),
-  "transaction API has no Supplier Return replay endpoint route"
+  transactionApiSource.includes("replayFinalizedSupplierReturn") &&
+    transactionApiSource.includes("/replay/supplier-return.php"),
+  "transaction API targets narrow Supplier Return replay endpoint"
 );
 assert(
-  !syncEngineSource.includes("assertReadyFinalizedSupplierReturnReplay") &&
-    !syncEngineSource.includes("replayFinalizedSupplierReturn"),
-  "manual sync router has no Supplier Return replay branch yet"
+  syncEngineSource.includes("assertReadyFinalizedSupplierReturnReplay") &&
+    syncEngineSource.includes("transactionApi.replayFinalizedSupplierReturn(item.payload.clientTransactionId)"),
+  "manual sync router stores then explicitly replays ready finalized Supplier Return"
 );
 assert(existsSync(backendSaleReplayPath), "existing narrow backend Sale replay endpoint remains present");
 assert(existsSync(backendPurchaseReplayPath), "existing narrow backend Purchase replay endpoint remains present");
@@ -447,7 +447,7 @@ console.log(
         ]),
       ].sort(),
       cylinderMovement: "filledDecrease",
-      backendSupplierReturnReplayEndpointAdded: false,
+      backendSupplierReturnReplayEndpointAdded: true,
       saleReplayChanged: false,
       purchaseReplayChanged: false,
       customerReturnReplayChanged: false,
