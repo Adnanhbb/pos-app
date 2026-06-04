@@ -1592,8 +1592,9 @@ The manual endpoint `api/replay/customer-return.php` now accepts only ready
 server-id-only mutation envelope, and applies the Customer Return header/items,
 item stock increase, return-batch creation, customer accounting/payment effect,
 and optional cylinder/holding movement in one MySQL transaction. Sale and
-Purchase replay are unchanged. Standalone payment replay, background replay,
-startup replay, polling, listeners, workers, and auto-sync remain deferred.
+Purchase replay are unchanged. Standalone payment create replay is covered by
+its own narrow manual endpoint pair. Background replay, startup replay,
+polling, listeners, workers, and auto-sync remain deferred.
 
 ## Finalized Supplier Return Backend Replay Design Audit
 
@@ -1642,8 +1643,9 @@ business writes. Unsafe Supplier Return rows are rejected before business
 mutation.
 
 Sale, Purchase, and Customer Return replay remain unchanged. Standalone payment
-replay, background replay, startup replay, polling, listeners, workers, and
-auto-sync remain deferred.
+create replay is covered by its own narrow manual endpoint pair. Background
+replay, startup replay, polling, listeners, workers, and auto-sync remain
+deferred.
 
 ## Consolidated Manual Transaction Replay Regression Gate
 
@@ -1657,19 +1659,20 @@ is idempotent, local IndexedDB ids are not used as MySQL mutation ids, replay
 auth is required, and the frontend router continues to call only the narrow
 manual replay endpoint for the matching transaction type.
 
-It also performs source-level guard checks that no standalone Payment replay is
-wired and no auto-sync, startup replay, polling, listener, worker, or timer-based
+It also performs source-level guard checks that standalone Payment replay wiring
+is limited to the narrow manual Customer/Supplier Payment endpoints and that no
+auto-sync, startup replay, polling, listener, worker, or timer-based
 `processPending()` path has been introduced. This is verification-only and does
-not add new transaction types or background behavior.
+not add new finalized transaction types or background behavior.
 
 ## Standalone Customer/Supplier Payment Backend Replay Design Audit
 
 Standalone Customer/Supplier Payment replay has been audited in
 [standalone-payment-backend-replay-design-audit.md](./standalone-payment-backend-replay-design-audit.md).
 
-Current Customer and Supplier payment pages remain local IndexedDB-only and do
-now enqueue create-only standalone payment replay contracts after successful
-local saves. Existing local payment behavior is unchanged.
+Current Customer and Supplier payment pages keep their existing local IndexedDB
+behavior and now enqueue create-only standalone payment replay contracts after
+successful local saves. Existing payment UI behavior is unchanged.
 
 Implemented payload hardening:
 
@@ -1680,8 +1683,20 @@ Implemented payload hardening:
   payment date are present
 - unsafe rows remain local-valid and are annotated with safe reason codes
 
-There is still no standalone Payment replay endpoint. Manual replay explicitly
-blocks these rows with a safe "not implemented yet" error instead of treating
-generic transaction storage as backend replay. Update/delete payment replay,
-backend payment endpoints, startup replay, polling, listeners, workers,
+The narrow authenticated endpoints `api/replay/customer-payment.php` and
+`api/replay/supplier-payment.php` now accept only ready create payloads. Manual
+replay stores the payment transaction row, then calls the matching endpoint by
+`clientTransactionId`. The backend inserts one payment ledger row and updates
+only party `paid`/`balance` in one MySQL transaction; `payable` and `invoices`
+are preserved. A second explicit replay terminal-state skips without duplicate
+ledger or accounting mutation. Unsafe standalone payment rows remain blocked
+before mutation.
+
+Run:
+
+```powershell
+npm.cmd run test:transactions:standalone-payment-manual-replay
+```
+
+Update/delete payment replay, startup replay, polling, listeners, workers,
 background replay, and auto-sync remain deferred.

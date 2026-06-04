@@ -14,10 +14,12 @@ const supPaymentsPath = resolve(root, "src/SupPayments.tsx");
 const syncEnginePath = resolve(root, "src/services/syncEngine.ts");
 const transactionApiPath = resolve(root, "src/api/transactionApi.ts");
 
-const forbiddenPaymentReplayEndpoints = [
-  resolve(root, "api/replay/payment.php"),
+const paymentReplayEndpoints = [
   resolve(root, "api/replay/customer-payment.php"),
   resolve(root, "api/replay/supplier-payment.php"),
+];
+const forbiddenGenericPaymentReplayEndpoints = [
+  resolve(root, "api/replay/payment.php"),
   resolve(root, "api/replay/standalone-payment.php"),
 ];
 
@@ -368,18 +370,23 @@ assert(
   "standalone payment replay contract is create-only"
 );
 assert(
-  syncEngineSource.includes("Standalone Payment backend replay is not implemented yet."),
-  "manual sync router blocks standalone payment backend replay until endpoints exist"
+  syncEngineSource.includes("assertReadyStandaloneCustomerPaymentReplay") &&
+    syncEngineSource.includes("assertReadyStandaloneSupplierPaymentReplay") &&
+    syncEngineSource.includes("transactionApi.replayStandaloneCustomerPayment(item.payload.clientTransactionId)") &&
+    syncEngineSource.includes("transactionApi.replayStandaloneSupplierPayment(item.payload.clientTransactionId)"),
+  "manual sync router routes only ready standalone Customer/Supplier Payment payloads"
 );
 assert(
-  !transactionApiSource.includes("/replay/payment") &&
-    !transactionApiSource.includes("/replay/customer-payment") &&
-    !transactionApiSource.includes("/replay/supplier-payment"),
-  "transaction API has no standalone payment replay endpoint"
+  transactionApiSource.includes('apiClient.post("/replay/customer-payment.php", { clientTransactionId })') &&
+    transactionApiSource.includes('apiClient.post("/replay/supplier-payment.php", { clientTransactionId })') &&
+    !transactionApiSource.includes("/replay/payment.php") &&
+    !transactionApiSource.includes("/replay/standalone-payment.php"),
+  "transaction API uses only narrow standalone payment replay endpoints"
 );
 assert(
-  forbiddenPaymentReplayEndpoints.every((endpointPath) => !existsSync(endpointPath)),
-  "backend standalone payment replay endpoints are absent"
+  paymentReplayEndpoints.every((endpointPath) => existsSync(endpointPath)) &&
+    forbiddenGenericPaymentReplayEndpoints.every((endpointPath) => !existsSync(endpointPath)),
+  "backend standalone payment replay endpoints are narrow and generic payment replay is absent"
 );
 assert(
   transactionApiSource.includes("replayFinalizedSale") &&
@@ -410,7 +417,7 @@ console.log(
         ]),
       ].sort(),
       queueRowsCreatedForStandalonePayments: true,
-      backendPaymentReplayEndpointAdded: false,
+      backendPaymentReplayEndpointAdded: true,
       finalizedTransactionReplayChanged: false,
       autoSyncChanged: false,
       sourceModule: pathToFileURL(builderPath).href,

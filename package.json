@@ -89,6 +89,7 @@
                     "test:transactions:finalized-purchase-manual-replay":  "node scripts/test-finalized-purchase-manual-replay.mjs",
                     "test:transactions:finalized-customer-return-manual-replay":  "node scripts/test-finalized-customer-return-manual-replay.mjs",
                     "test:transactions:finalized-supplier-return-manual-replay":  "node scripts/test-finalized-supplier-return-manual-replay.mjs",
+                    "test:transactions:standalone-payment-manual-replay":  "node scripts/test-standalone-payment-manual-replay.mjs",
                     "test:transactions:manual-replay-regression":  "node scripts/test-finalized-transaction-manual-replay-regression.mjs",
                     "test:packaged:finalized-sale-manual-replay":  "node scripts/verify-packaged-finalized-sale-manual-replay.mjs",
                     "test:packaged:pos-daily-workflows":  "node scripts/verify-packaged-pos-daily-workflows.mjs",

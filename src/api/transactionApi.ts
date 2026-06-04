@@ -30,4 +30,12 @@ export const transactionApi = {
   replayFinalizedSupplierReturn(clientTransactionId: string): Promise<any> {
     return apiClient.post("/replay/supplier-return.php", { clientTransactionId });
   },
+
+  replayStandaloneCustomerPayment(clientTransactionId: string): Promise<any> {
+    return apiClient.post("/replay/customer-payment.php", { clientTransactionId });
+  },
+
+  replayStandaloneSupplierPayment(clientTransactionId: string): Promise<any> {
+    return apiClient.post("/replay/supplier-payment.php", { clientTransactionId });
+  },
 };

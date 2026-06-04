@@ -195,11 +195,19 @@ function isFinalizedSupplierReturnPayload(payload: OfflineTransactionPayload) {
   );
 }
 
-function isStandalonePaymentPayload(payload: OfflineTransactionPayload) {
+function isStandaloneCustomerPaymentPayload(payload: OfflineTransactionPayload) {
   return (
     payload.transactionType === "payment" &&
-    (payload.payload?.standaloneCustomerPaymentReplay ||
-      payload.payload?.standaloneSupplierPaymentReplay)
+    payload.payload?.partyType === "customer" &&
+    Boolean(payload.payload?.standaloneCustomerPaymentReplay)
+  );
+}
+
+function isStandaloneSupplierPaymentPayload(payload: OfflineTransactionPayload) {
+  return (
+    payload.transactionType === "payment" &&
+    payload.payload?.partyType === "supplier" &&
+    Boolean(payload.payload?.standaloneSupplierPaymentReplay)
   );
 }
 
@@ -281,6 +289,50 @@ function assertReadyFinalizedSupplierReturnReplay(payload: OfflineTransactionPay
   ) {
     throw new Error(
       "Finalized Supplier Return replay is blocked because its backend mappings are not replay-ready."
+    );
+  }
+}
+
+function assertReadyStandaloneCustomerPaymentReplay(payload: OfflineTransactionPayload) {
+  const contract = payload.payload?.standaloneCustomerPaymentReplay;
+
+  if (
+    payload.transactionType !== "payment" ||
+    payload.payload?.partyType !== "customer" ||
+    payload.replayReadiness?.scope !== "standalone_customer_payment" ||
+    payload.replayReadiness?.payloadVersion !== 1 ||
+    payload.replayReadiness.status !== "ready" ||
+    payload.replayReadiness.reasons.length !== 0 ||
+    contract?.payloadVersion !== 1 ||
+    contract?.partyType !== "customer" ||
+    contract?.operation !== "create" ||
+    contract?.replayReadiness?.status !== "ready" ||
+    contract?.replayReadiness?.reasons?.length !== 0
+  ) {
+    throw new Error(
+      "Standalone Customer Payment replay is blocked because its backend mapping is not replay-ready."
+    );
+  }
+}
+
+function assertReadyStandaloneSupplierPaymentReplay(payload: OfflineTransactionPayload) {
+  const contract = payload.payload?.standaloneSupplierPaymentReplay;
+
+  if (
+    payload.transactionType !== "payment" ||
+    payload.payload?.partyType !== "supplier" ||
+    payload.replayReadiness?.scope !== "standalone_supplier_payment" ||
+    payload.replayReadiness?.payloadVersion !== 1 ||
+    payload.replayReadiness.status !== "ready" ||
+    payload.replayReadiness.reasons.length !== 0 ||
+    contract?.payloadVersion !== 1 ||
+    contract?.partyType !== "supplier" ||
+    contract?.operation !== "create" ||
+    contract?.replayReadiness?.status !== "ready" ||
+    contract?.replayReadiness?.reasons?.length !== 0
+  ) {
+    throw new Error(
+      "Standalone Supplier Payment replay is blocked because its backend mapping is not replay-ready."
     );
   }
 }
@@ -409,9 +461,23 @@ export const syncEngine = {
         return;
       }
 
-      if (isStandalonePaymentPayload(item.payload)) {
+      if (isStandaloneCustomerPaymentPayload(item.payload)) {
+        assertReadyStandaloneCustomerPaymentReplay(item.payload);
+        await transactionApi.postTransaction(item.payload);
+        await transactionApi.replayStandaloneCustomerPayment(item.payload.clientTransactionId);
+        return;
+      }
+
+      if (isStandaloneSupplierPaymentPayload(item.payload)) {
+        assertReadyStandaloneSupplierPaymentReplay(item.payload);
+        await transactionApi.postTransaction(item.payload);
+        await transactionApi.replayStandaloneSupplierPayment(item.payload.clientTransactionId);
+        return;
+      }
+
+      if (item.payload.transactionType === "payment") {
         throw new Error(
-          "Standalone Payment backend replay is not implemented yet."
+          "Standalone Payment replay is blocked because its v1 backend replay contract is missing or unsafe."
         );
       }
 

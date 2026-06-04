@@ -179,11 +179,16 @@ function checkNoForbiddenSourcePatterns() {
           manualReplayBody.indexOf("syncEngine.processPending"),
     },
     {
-      name: "no standalone Payment replay endpoint is wired",
+      name: "standalone Payment replay wiring is narrow and manual-only",
       ok:
-        !transactionApi.includes("/replay/payment") &&
-        !transactionApi.includes("replayStandalonePayment") &&
-        !syncEngine.includes("replayStandalonePayment"),
+        transactionApi.includes("/replay/customer-payment.php") &&
+        transactionApi.includes("/replay/supplier-payment.php") &&
+        !transactionApi.includes("/replay/payment.php") &&
+        !transactionApi.includes("/replay/standalone-payment.php") &&
+        syncEngine.includes("assertReadyStandaloneCustomerPaymentReplay") &&
+        syncEngine.includes("assertReadyStandaloneSupplierPaymentReplay") &&
+        syncEngine.includes("transactionApi.replayStandaloneCustomerPayment(item.payload.clientTransactionId)") &&
+        syncEngine.includes("transactionApi.replayStandaloneSupplierPayment(item.payload.clientTransactionId)"),
     },
     {
       name: "only implemented finalized transaction replay endpoints are routed",
@@ -243,7 +248,7 @@ const report = {
   generatedAt: new Date().toISOString(),
   scope: ["Sale", "Purchase", "Customer Return", "Supplier Return"],
   addedTransactionTypes: [],
-  standalonePaymentReplayAdded: false,
+  standalonePaymentReplayAdded: true,
   autoSyncEnabled: false,
   backgroundReplayEnabled: false,
   startupReplayEnabled: false,

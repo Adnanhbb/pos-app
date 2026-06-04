@@ -27,10 +27,12 @@ const fixtureDatabaseName = `POSStandalonePaymentQueueReadinessFixture-${Date.no
 const fixtureName = "Rehearsal Standalone Payment Queue Readiness Fixture";
 const createdAt = Date.now();
 
-const forbiddenPaymentReplayEndpoints = [
-  resolve(root, "api/replay/payment.php"),
+const paymentReplayEndpoints = [
   resolve(root, "api/replay/customer-payment.php"),
   resolve(root, "api/replay/supplier-payment.php"),
+];
+const forbiddenGenericPaymentReplayEndpoints = [
+  resolve(root, "api/replay/payment.php"),
   resolve(root, "api/replay/standalone-payment.php"),
 ];
 
@@ -108,18 +110,23 @@ try {
     "fixture uses a uniquely named IndexedDB database instead of live POSDatabase"
   );
   assert(
-    forbiddenPaymentReplayEndpoints.every((endpointPath) => !existsSync(endpointPath)),
-    "backend standalone payment replay endpoints are absent"
+    paymentReplayEndpoints.every((endpointPath) => existsSync(endpointPath)) &&
+      forbiddenGenericPaymentReplayEndpoints.every((endpointPath) => !existsSync(endpointPath)),
+    "backend standalone payment replay endpoints are narrow and generic payment replay is absent"
   );
   assert(
-    !transactionApiSource.includes("/replay/payment") &&
-      !transactionApiSource.includes("/replay/customer-payment") &&
-      !transactionApiSource.includes("/replay/supplier-payment"),
-    "transaction API has no standalone payment replay endpoint"
+    transactionApiSource.includes('apiClient.post("/replay/customer-payment.php", { clientTransactionId })') &&
+      transactionApiSource.includes('apiClient.post("/replay/supplier-payment.php", { clientTransactionId })') &&
+      !transactionApiSource.includes("/replay/payment.php") &&
+      !transactionApiSource.includes("/replay/standalone-payment.php"),
+    "transaction API uses only narrow standalone payment replay endpoints"
   );
   assert(
-    syncEngineSource.includes("Standalone Payment backend replay is not implemented yet."),
-    "manual replay blocks standalone payments until endpoints exist"
+    syncEngineSource.includes("assertReadyStandaloneCustomerPaymentReplay") &&
+      syncEngineSource.includes("assertReadyStandaloneSupplierPaymentReplay") &&
+      syncEngineSource.includes("transactionApi.replayStandaloneCustomerPayment(item.payload.clientTransactionId)") &&
+      syncEngineSource.includes("transactionApi.replayStandaloneSupplierPayment(item.payload.clientTransactionId)"),
+    "manual replay routes only ready standalone Customer/Supplier Payment payloads"
   );
 
   const localFixture = await page.evaluate(
@@ -758,9 +765,9 @@ try {
           ).length,
           unsafeReasonCodes,
         },
-        manualReplayBlockMessage:
-          "Standalone Payment backend replay is not implemented yet.",
-        backendPaymentReplayEndpointAdded: false,
+        manualReplayStatus:
+          "Standalone Payment replay endpoints exist, but this fixture does not invoke manual replay.",
+        backendPaymentReplayEndpointAdded: true,
         paymentReplayTriggered: false,
         finalizedTransactionReplayChanged: false,
         autoSyncChanged: false,
