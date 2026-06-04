@@ -1661,3 +1661,22 @@ It also performs source-level guard checks that no standalone Payment replay is
 wired and no auto-sync, startup replay, polling, listener, worker, or timer-based
 `processPending()` path has been introduced. This is verification-only and does
 not add new transaction types or background behavior.
+
+## Standalone Customer/Supplier Payment Backend Replay Design Audit
+
+Standalone Customer/Supplier Payment replay has been audited in
+[standalone-payment-backend-replay-design-audit.md](./standalone-payment-backend-replay-design-audit.md).
+
+Current Customer and Supplier payment pages remain local IndexedDB-only and do
+not enqueue standalone payment replay rows. Existing backend transaction storage
+can accept a broad `transactionType = "payment"` shell for storage validation,
+but there is no hardened replay readiness contract, no narrow payment replay
+endpoint, and no manual replay routing for standalone payments.
+
+The recommended next step is payload hardening before endpoint implementation:
+add explicit `standaloneCustomerPaymentReplay` v1 and
+`standaloneSupplierPaymentReplay` v1 create-only contracts, require mapped
+customer/supplier server ids, keep local ids as correlation references only,
+classify update/delete payment replay as unsafe until local semantics and
+tombstone/snapshot handling are designed, and continue to keep standalone
+Payment replay disabled until those readiness checks pass.
