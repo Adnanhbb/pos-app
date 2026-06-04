@@ -1625,9 +1625,15 @@ Unsafe Supplier Return mappings do not block a successful local IndexedDB
 Supplier Return. They annotate the queue row with safe reason codes and remain
 ineligible for backend-authoritative replay.
 
-No Supplier Return queue-readiness fixture, Supplier Return replay adapter, or
-`api/replay/supplier-return.php` endpoint exists yet. The recommended next step
-is a queue-readiness fixture that proves ready/unsafe Supplier Return rows
-without calling backend replay. Sale, Purchase, and Customer Return replay
-remain unchanged. Standalone payment replay, background replay, startup replay,
-polling, listeners, workers, and auto-sync remain deferred.
+`test:local:finalized-supplier-return-queue-readiness-fixture` now creates an
+isolated packaged-Laragon Supplier Return fixture in a temporary IndexedDB
+database, queues exactly one pending `finalizedSupplierReturnReplay` v1 row,
+and proves ready/unsafe classification without calling backend replay. It
+verifies mapped Supplier Return readiness, non-cylinder readiness without
+cylinder metadata, missing supplier/item/source-batch/server-batch/cylinder
+mapping failures, and unsafe cylinder clamping classification.
+
+No Supplier Return replay adapter or `api/replay/supplier-return.php` endpoint
+exists yet. Sale, Purchase, and Customer Return replay remain unchanged.
+Standalone payment replay, background replay, startup replay, polling,
+listeners, workers, and auto-sync remain deferred.

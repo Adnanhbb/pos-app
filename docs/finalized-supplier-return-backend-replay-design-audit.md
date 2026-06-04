@@ -1,7 +1,7 @@
 # Finalized Supplier Return Backend Replay Design Audit
 
-Status: queue payload hardening implemented. No Supplier Return replay endpoint
-has been added.
+Status: queue payload hardening and queue-readiness fixture implemented. No
+Supplier Return replay endpoint has been added.
 
 This document prepares the backend-authoritative replay path for finalized
 Supplier Return transactions only. The current IndexedDB Supplier Return
@@ -329,7 +329,8 @@ Required protections:
 The table coverage is mostly present, but the Supplier Return replay endpoint
 is not implementation-ready yet:
 
-- no Supplier Return queue-readiness fixture exists yet;
+- the Supplier Return queue-readiness fixture now proves ready/unsafe rows
+  without backend replay;
 - no `api/lib/finalizedSupplierReturnReplayV1.php` adapter exists;
 - no `api/replay/supplier-return.php` endpoint exists;
 - `src/api/transactionApi.ts` has no Supplier Return replay method;
@@ -358,14 +359,16 @@ Completed prerequisites:
    readiness is unsafe.
 8. Completed: add a safe payload verifier for ready and unsafe Supplier Return
    payloads.
+9. Completed: add a safe queue-readiness fixture that uses the packaged Laragon
+   origin plus an isolated temporary IndexedDB database, queues exactly one
+   Supplier Return row, verifies ready/unsafe scenarios, and confirms no
+   Supplier Return replay endpoint is called.
 
 Remaining prerequisites before endpoint implementation:
 
-1. Add a queue-readiness fixture that does not call a backend Supplier Return
-   replay endpoint.
-2. Decide whether any historical Supplier Return rows without the v1 contract
+1. Decide whether any historical Supplier Return rows without the v1 contract
    should stay manual-only or receive explicit migration/diagnostic tooling.
-3. Implement a Supplier Return-specific adapter only after ready/unsafe fixture
+2. Implement a Supplier Return-specific adapter only after ready/unsafe fixture
    coverage is stable.
 
 ## Minimal Reuse Strategy
@@ -390,22 +393,22 @@ Small shared helpers may be extracted later where duplication is mechanical:
 
 ## Recommended Next Step
 
-Do not implement Supplier Return replay immediately.
+Do not implement Supplier Return replay automatically or broadly.
 
-The next safe step is a queue-readiness fixture:
+The queue-readiness fixture now proves:
 
-1. Generate isolated finalized Supplier Return queue rows without backend
-   replay.
-2. Prove Supplier Return rows become ready
-   only when supplier, item, selected batch, and optional cylinder mappings are
-   present.
-3. Prove missing supplier, item, selected batch, source batch server id, and
-   cylinder mappings remain unsafe.
-4. Keep `api/replay/supplier-return.php` absent until fixture coverage is
-   stable.
+1. isolated finalized Supplier Return queue rows can be created without backend
+   replay;
+2. Supplier Return rows become ready only when supplier, item, selected/source
+   batch, and optional cylinder mappings are present;
+3. missing supplier, item, source batch metadata, source batch server id, and
+   cylinder mappings remain unsafe;
+4. unsafe cylinder clamping remains explicitly unsafe;
+5. `api/replay/supplier-return.php` remains absent.
 
-Only after those checks are stable should a narrow
-`api/replay/supplier-return.php` endpoint be added.
+The next implementation step, when explicitly approved, is a narrow
+`api/replay/supplier-return.php` endpoint plus a contract-specific backend
+adapter.
 
 ## Explicitly Deferred
 
