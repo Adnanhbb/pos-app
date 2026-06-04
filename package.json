@@ -84,6 +84,7 @@
                     "test:local:finalized-purchase-queue-readiness-fixture":  "node scripts/verify-finalized-purchase-queue-readiness-fixture.mjs",
                     "test:local:finalized-customer-return-queue-readiness-fixture":  "node scripts/verify-finalized-customer-return-queue-readiness-fixture.mjs",
                     "test:local:finalized-supplier-return-queue-readiness-fixture":  "node scripts/verify-finalized-supplier-return-queue-readiness-fixture.mjs",
+                    "test:local:standalone-payment-queue-readiness-fixture":  "node scripts/verify-standalone-payment-queue-readiness-fixture.mjs",
                     "test:transactions:finalized-sale-manual-replay":  "node scripts/test-finalized-sale-manual-replay.mjs",
                     "test:transactions:finalized-purchase-manual-replay":  "node scripts/test-finalized-purchase-manual-replay.mjs",
                     "test:transactions:finalized-customer-return-manual-replay":  "node scripts/test-finalized-customer-return-manual-replay.mjs",
