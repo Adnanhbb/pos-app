@@ -61,6 +61,13 @@ try {
         'invoiceNo' => isset($result['invoiceNo']) ? (string) $result['invoiceNo'] : null,
         'saleItemsInserted' => isset($result['saleItemsInserted']) ? (int) $result['saleItemsInserted'] : 0,
         'batchesCreated' => isset($result['batchesCreated']) ? (int) $result['batchesCreated'] : 0,
+        'batchMappings' => array_values(array_filter(
+            is_array($result['batchMappings'] ?? null) ? $result['batchMappings'] : [],
+            static fn($mapping): bool => is_array($mapping)
+                && isset($mapping['localBatchId'], $mapping['serverBatchId'])
+                && (int) $mapping['localBatchId'] > 0
+                && (int) $mapping['serverBatchId'] > 0
+        )),
     ]);
 } catch (ApiAuthException $exception) {
     unset($exception);
@@ -69,4 +76,3 @@ try {
     unset($exception);
     error_response('Server error.', 500);
 }
-

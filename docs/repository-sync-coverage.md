@@ -315,3 +315,20 @@ storage-to-replay orchestration.
 This audit does not migrate sales, sale items, stock, batches, cylinders,
 customer balances, or payments into direct CRUD sync. Those domains remain
 transaction/replay-owned.
+## Manual item and batch mapping foundation
+
+Locally created non-cylinder items with exactly one Opening Stock batch now
+have an explicit manual mapping foundation. The authenticated
+`replay/item-opening-stock.php` endpoint creates the item profile and original
+Opening Stock baseline in one MySQL transaction and returns exact item and
+batch IDs. The local manual mapping service writes both IDs to IndexedDB in one
+transaction only after validating the local batch history and queued Sale
+consumption.
+
+This is not general item CRUD sync. It does not map cylinder items, multiple
+batch histories, or guess matches by item name/barcode. Customer profile
+mapping remains a separate exact `client_id` create/mirror operation.
+
+Finalized Purchase replay now returns exact local-batch to backend-batch
+mappings, and the manual replay path writes those IDs back to the corresponding
+local batch. See `docs/manual-inventory-mapping-strategy.md`.

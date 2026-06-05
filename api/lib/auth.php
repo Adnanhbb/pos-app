@@ -152,13 +152,13 @@ function require_replay_auth_context(array $auth): array
 
     $actorType = trim((string) ($auth['actorType'] ?? ''));
     $actorId = trim((string) ($auth['actorId'] ?? ''));
-    $actorRole = trim((string) ($auth['actorRole'] ?? ''));
+    $actorRole = strtolower(trim((string) ($auth['actorRole'] ?? '')));
 
     if ($actorType === '' || $actorId === '') {
         throw new ApiAuthException('Unauthorized replay request.');
     }
 
-    $allowedRoles = ['replay', 'admin', 'owner'];
+    $allowedRoles = ['replay', 'admin', 'owner', 'dev'];
     $allowedActorTypes = ['replay_worker', 'user', 'device'];
 
     if (!in_array($actorRole, $allowedRoles, true) || !in_array($actorType, $allowedActorTypes, true)) {

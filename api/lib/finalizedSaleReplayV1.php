@@ -530,7 +530,18 @@ function alignFinalizedSaleV1PaymentSnapshot(PDO $pdo, int $syncTransactionId, f
         'sync_transaction_id' => $syncTransactionId,
     ]);
 
-    if ($statement->rowCount() !== 1) {
+    $verification = $pdo->prepare(
+        'SELECT COUNT(*)
+         FROM `customer_payments`
+         WHERE `sync_transaction_id` = :sync_transaction_id
+           AND ABS(`payableSnapshot` - :payableSnapshot) <= 0.000001'
+    );
+    $verification->execute([
+        'payableSnapshot' => $invoicePayable,
+        'sync_transaction_id' => $syncTransactionId,
+    ]);
+
+    if ((int) $verification->fetchColumn() !== 1) {
         throw new FinalizedSaleReplayV1Exception('Customer payment snapshot alignment failed.');
     }
 }

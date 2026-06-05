@@ -115,6 +115,7 @@ export type CustomersRepository = {
   remove: (id: number) => Promise<void>;
   restore: (id: number) => Promise<void>;
   permanentDelete: (id: number) => Promise<void>;
+  mapProfileToBackend?: (id: number) => Promise<number | string>;
   applyRemoteMirror?: (
     localId: number | string,
     remoteRecord: unknown
@@ -203,6 +204,47 @@ export const customersRepository: CustomersRepository = {
 
     await queueCustomerCreate(created ?? { ...cust, id: localId });
     return localId;
+  },
+
+  mapProfileToBackend: async (id: number): Promise<number | string> => {
+    const customer = await getCustomerById(id) as SyncableCustomer | undefined;
+    if (!customer) throw new Error("Customer not found");
+
+    const existingServerId = getServerId(customer);
+    if (existingServerId != null) return existingServerId;
+    if (!(await canUseApi())) {
+      throw new Error("Backend is unavailable for manual customer mapping.");
+    }
+
+    const remoteResponse = await entityApi.list<SyncableCustomer>("customers") as
+      | SyncableCustomer[]
+      | { data?: SyncableCustomer[] };
+    const remoteRows = Array.isArray(remoteResponse)
+      ? remoteResponse
+      : Array.isArray(remoteResponse.data)
+        ? remoteResponse.data
+        : [];
+    const exactClientMatches = remoteRows.filter(
+      (row: SyncableCustomer & { client_id?: string | number | null }) =>
+        String(row.client_id ?? "") === String(id)
+    );
+
+    if (exactClientMatches.length > 1) {
+      throw new Error("Multiple backend customers use this local client id.");
+    }
+
+    const remote = exactClientMatches[0] ?? await entityApi.create<SyncableCustomer>(
+      "customers",
+      stripAccountingFields({ ...customer, localId: id })
+    );
+    await customersRepository.applyRemoteMirror?.(id, remote);
+
+    const mapped = await getCustomerById(id) as SyncableCustomer | undefined;
+    const serverId = mapped ? getServerId(mapped) : null;
+    if (serverId == null) {
+      throw new Error("Backend customer mapping did not return a server id.");
+    }
+    return serverId;
   },
 
   /** Update customer */

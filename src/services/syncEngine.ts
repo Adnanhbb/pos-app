@@ -2,6 +2,7 @@ import { ApiError } from "../api/client";
 import { entityApi } from "../api/entityApi";
 import { transactionApi } from "../api/transactionApi";
 import { brandsRepository } from "../repositories/brandsRepository";
+import { batchRepository } from "../repositories/batchRepository";
 import { categoriesRepository } from "../repositories/categoriesRepository";
 import { customersRepository } from "../repositories/customerRepository";
 import { discountRepository } from "../repositories/discountRepository";
@@ -337,6 +338,38 @@ function assertReadyStandaloneSupplierPaymentReplay(payload: OfflineTransactionP
   }
 }
 
+async function applyPurchaseBatchMappings(response: unknown): Promise<void> {
+  const wrapped = response as {
+    data?: {
+      batchMappings?: Array<{
+        localBatchId?: number | null;
+        serverBatchId?: number | string | null;
+      }>;
+    };
+    batchMappings?: Array<{
+      localBatchId?: number | null;
+      serverBatchId?: number | string | null;
+    }>;
+  };
+  const mappings = wrapped?.data?.batchMappings ?? wrapped?.batchMappings ?? [];
+
+  for (const mapping of mappings) {
+    if (
+      !Number.isInteger(mapping.localBatchId) ||
+      mapping.localBatchId == null ||
+      mapping.localBatchId <= 0 ||
+      mapping.serverBatchId == null
+    ) {
+      throw new Error("Purchase replay returned an invalid batch mapping.");
+    }
+
+    await batchRepository.applyServerIdMapping(
+      mapping.localBatchId,
+      mapping.serverBatchId
+    );
+  }
+}
+
 export const syncEngine = {
   async canSync(): Promise<boolean> {
     return await connectivityService.isFullyOnline();
@@ -443,7 +476,10 @@ export const syncEngine = {
       if (isFinalizedPurchasePayload(item.payload)) {
         assertReadyFinalizedPurchaseReplay(item.payload);
         await transactionApi.postTransaction(item.payload);
-        await transactionApi.replayFinalizedPurchase(item.payload.clientTransactionId);
+        const response = await transactionApi.replayFinalizedPurchase(
+          item.payload.clientTransactionId
+        );
+        await applyPurchaseBatchMappings(response);
         return;
       }
 

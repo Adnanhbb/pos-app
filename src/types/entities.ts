@@ -41,6 +41,7 @@ export interface Supplier {
 
 export interface Item {
   id?: number;
+  serverId?: number | string | null;
   name: string;
   barcode: string;
   brand: string;
@@ -220,6 +221,7 @@ export interface DBHeldItem {
 
 export interface ItemBatch {
   id?: number;
+  serverId?: number | string | null;
   itemId: number;
   purchaseDate: string;
   qtyPurchased: number;

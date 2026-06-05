@@ -1467,6 +1467,7 @@ function createReplayBatchRow(PDO $pdo, int $syncTransactionId, string $clientTr
 
     return [
         'batchId' => $batchId,
+        'localBatchId' => normalizeOptionalReplayReferenceId($item['batchLocalId'] ?? null, 'batchLocalId'),
         'itemId' => $itemId,
         'transactionType' => $transactionType,
         'qtyPurchased' => $quantity,

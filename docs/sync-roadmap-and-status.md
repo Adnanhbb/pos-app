@@ -1838,3 +1838,14 @@ This is deployment preparation only. It does not deploy, upload, mutate
 IndexedDB/MySQL, trigger replay, restore/import data, change POS/payment
 behavior, change sync behavior, enable auto-sync, or add polling, listeners,
 workers, startup replay, or background replay.
+## Manual inventory mapping foundation
+
+An explicit authenticated mapping foundation now exists for a locally created
+non-cylinder item with exactly one Opening Stock batch. It preserves the
+original pre-Sale stock baseline, returns exact backend IDs, and writes item and
+batch mappings locally only after strict validation. It remains manual-only and
+does not rewrite or replay failed Sales automatically.
+
+Finalized Purchase replay now returns exact created-batch mappings and mirrors
+those backend batch IDs into IndexedDB. Cylinder and multi-batch bootstrap
+mapping remain deferred. See `docs/manual-inventory-mapping-strategy.md`.

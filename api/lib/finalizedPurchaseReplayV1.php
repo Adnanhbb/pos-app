@@ -192,6 +192,14 @@ function replayStoredFinalizedPurchaseV1(PDO $pdo, int|string $syncTransactionId
             'invoiceNo' => (string) $salesPersistenceResult['invoiceNo'],
             'saleItemsInserted' => (int) ($salesPersistenceResult['saleItemsInserted'] ?? 0),
             'batchesCreated' => count($batchMutationResult['created'] ?? []),
+            'batchMappings' => array_values(array_map(
+                static fn(array $batch): array => [
+                    'localBatchId' => isset($batch['localBatchId']) ? (int) $batch['localBatchId'] : null,
+                    'serverBatchId' => (int) ($batch['batchId'] ?? 0),
+                    'serverItemId' => (int) ($batch['itemId'] ?? 0),
+                ],
+                $batchMutationResult['created'] ?? []
+            )),
         ];
     } catch (Throwable $exception) {
         if ($transactionStarted && $pdo->inTransaction()) {
@@ -672,4 +680,3 @@ function finalizedPurchaseV1Number($value, string $field, bool $allowZero): floa
     }
     return $number;
 }
-

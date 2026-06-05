@@ -65,6 +65,30 @@ async updateBatch(batch: ItemBatch): Promise<void> {
   });
 },
 
+async applyServerIdMapping(
+  localBatchId: number,
+  serverBatchId: number | string
+): Promise<void> {
+  const batch = await batchRepository.getBatchById(localBatchId);
+  if (!batch) {
+    throw new Error(`Local batch ${localBatchId} was not found for serverId mapping.`);
+  }
+
+  if (
+    batch.serverId != null &&
+    String(batch.serverId) !== String(serverBatchId)
+  ) {
+    throw new Error(
+      `Local batch ${localBatchId} is already mapped to a different backend batch.`
+    );
+  }
+
+  await batchRepository.updateBatch({
+    ...batch,
+    serverId: serverBatchId,
+  });
+},
+
 async getAllBatchesByItem(itemId: number): Promise<ItemBatch[]> {
   const conn = await db.open();
 

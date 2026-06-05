@@ -414,6 +414,15 @@ if (result.ok === true) {
     nearlyEqual(value.supplierAfterFirst?.createdBatch?.qtyPurchased, 2) &&
     nearlyEqual(value.supplierAfterFirst?.createdBatch?.balance, 2),
   "Purchase batch creation mismatch.");
+  check("Purchase replay returns exact local batch mapping", result, (value) =>
+    Array.isArray(value.supplierFirst?.batchMappings) &&
+    value.supplierFirst.batchMappings.length === 1 &&
+    Number(value.supplierFirst.batchMappings[0]?.localBatchId) === 92028 &&
+    Number(value.supplierFirst.batchMappings[0]?.serverBatchId) ===
+      Number(value.supplierAfterFirst?.createdBatch?.id) &&
+    Number(value.supplierFirst.batchMappings[0]?.serverItemId) ===
+      Number(value.supplierFixture?.itemId),
+  "Purchase replay did not return the exact local-to-backend batch mapping.");
   check("supplier accounting and payment ledger mirror local Purchase outcome", result, (value) =>
     Number(value.supplierAfterFirst?.supplier?.invoices) === 2 &&
     nearlyEqual(value.supplierAfterFirst?.supplier?.payable, 300) &&
@@ -465,7 +474,8 @@ if (result.ok === true) {
 check("manual sync router stores then explicitly replays ready finalized Purchase", syncEngineSource, (source) =>
   source.includes('sale?.transactionType === "Purchase"') &&
   source.includes("assertReadyFinalizedPurchaseReplay(item.payload)") &&
-  source.includes("transactionApi.replayFinalizedPurchase(item.payload.clientTransactionId)"),
+  source.includes("transactionApi.replayFinalizedPurchase(") &&
+  source.includes("applyPurchaseBatchMappings(response)"),
 "Frontend manual router does not call narrow Purchase replay endpoint.");
 check("transaction API targets narrow Purchase replay endpoint", transactionApiSource, (source) =>
   source.includes('apiClient.post("/replay/purchase.php", { clientTransactionId })'),
