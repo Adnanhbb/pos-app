@@ -828,10 +828,215 @@ export async function addItem(item: Omit<Item, "id">): Promise<number> {
   return (await db.add("items", item as Item)) as number;
 }
 
+export async function addItemWithOpeningStock(
+  item: Omit<Item, "id">
+): Promise<number> {
+  const openingStock = Number(item.availableStock ?? 0);
+  if (!Number.isFinite(openingStock) || openingStock < 0) {
+    throw new Error("Opening Stock must be a non-negative number.");
+  }
+
+  const database = await initDB();
+  const tx = database.transaction(["items", "item_batches"], "readwrite");
+  const itemId = await tx.objectStore("items").add(item as Item);
+  if (openingStock > 0) {
+    await tx.objectStore("item_batches").add({
+      itemId,
+      purchaseDate: new Date().toISOString(),
+      qtyPurchased: openingStock,
+      qtySold: 0,
+      balance: openingStock,
+      costPrice: Number(item.purchasePrice ?? 0),
+      sourceSaleId: 0,
+      invoiceNo: "Opening Stock",
+      isDeleted: false,
+      deletedAt: null,
+    });
+  }
+  await tx.done;
+  return itemId;
+}
+
 export async function updateItem(item: Item): Promise<void> {
   if (!item.id) throw new Error("updateItem requires item.id");
   const db = await initDB();
   await db.put("items", item);
+}
+
+export type ItemOpeningStockUpdatePlan = {
+  previousItem: Item;
+  previousOpeningBatch: ItemBatch | null;
+  item: Item;
+  openingBatch: ItemBatch | null;
+  stockChanged: boolean;
+};
+
+function isCylinderItem(item: Item) {
+  const category = item.category.trim().toLowerCase();
+  return category.includes("gas") || category.includes("cylinder");
+}
+
+function isActiveOpeningStockBatch(batch: ItemBatch) {
+  return (
+    !batch.isDeleted &&
+    batch.sourceSaleId === 0 &&
+    batch.invoiceNo === "Opening Stock"
+  );
+}
+
+function nearlyEqual(left: number, right: number) {
+  return Math.abs(left - right) <= 0.000001;
+}
+
+function buildItemOpeningStockUpdatePlan(
+  requestedItem: Item,
+  existingItem: Item | undefined,
+  batches: ItemBatch[]
+): ItemOpeningStockUpdatePlan {
+  if (!existingItem) throw new Error("Item not found.");
+
+  const requestedOpeningStock = Number(requestedItem.availableStock);
+  if (!Number.isFinite(requestedOpeningStock) || requestedOpeningStock < 0) {
+    throw new Error("Opening Stock must be a non-negative number.");
+  }
+
+  const openingBatches = batches.filter(isActiveOpeningStockBatch);
+  if (openingBatches.length === 0) {
+    if (!nearlyEqual(requestedOpeningStock, existingItem.availableStock)) {
+      throw new Error(
+        "Opening Stock cannot be edited because this item has no active Opening Stock batch."
+      );
+    }
+    return {
+      previousItem: existingItem,
+      previousOpeningBatch: null,
+      item: { ...requestedItem, availableStock: existingItem.availableStock },
+      openingBatch: null,
+      stockChanged: false,
+    };
+  }
+  if (openingBatches.length > 1) {
+    if (!nearlyEqual(requestedOpeningStock, existingItem.availableStock)) {
+      throw new Error(
+        "Opening Stock cannot be edited because multiple active Opening Stock batches were found."
+      );
+    }
+    return {
+      previousItem: existingItem,
+      previousOpeningBatch: null,
+      item: { ...requestedItem, availableStock: existingItem.availableStock },
+      openingBatch: null,
+      stockChanged: false,
+    };
+  }
+
+  const openingBatch = openingBatches[0];
+  if (
+    (isCylinderItem(existingItem) || isCylinderItem(requestedItem)) &&
+    nearlyEqual(requestedOpeningStock, existingItem.availableStock)
+  ) {
+    return {
+      previousItem: existingItem,
+      previousOpeningBatch: openingBatch,
+      item: { ...requestedItem, availableStock: existingItem.availableStock },
+      openingBatch,
+      stockChanged: false,
+    };
+  }
+  if (nearlyEqual(requestedOpeningStock, openingBatch.qtyPurchased)) {
+    return {
+      previousItem: existingItem,
+      previousOpeningBatch: openingBatch,
+      item: { ...requestedItem, availableStock: existingItem.availableStock },
+      openingBatch,
+      stockChanged: false,
+    };
+  }
+  if (isCylinderItem(existingItem) || isCylinderItem(requestedItem)) {
+    throw new Error(
+      "Cylinder Opening Stock must be adjusted through the cylinder workflow."
+    );
+  }
+  if (
+    (existingItem.serverId == null) !== (openingBatch.serverId == null)
+  ) {
+    throw new Error(
+      "Item and Opening Stock batch mappings are incomplete."
+    );
+  }
+  if (requestedOpeningStock + 0.000001 < openingBatch.qtySold) {
+    throw new Error(
+      `Opening Stock cannot be lower than the already sold quantity (${openingBatch.qtySold}).`
+    );
+  }
+
+  const newBalance = requestedOpeningStock - openingBatch.qtySold;
+  const stockDelta = newBalance - openingBatch.balance;
+  const newAvailableStock = existingItem.availableStock + stockDelta;
+  if (newBalance < -0.000001 || newAvailableStock < -0.000001) {
+    throw new Error("Opening Stock change would create a negative stock balance.");
+  }
+
+  return {
+    previousItem: existingItem,
+    previousOpeningBatch: openingBatch,
+    item: {
+      ...requestedItem,
+      availableStock: Math.max(0, newAvailableStock),
+    },
+    openingBatch: {
+      ...openingBatch,
+      qtyPurchased: requestedOpeningStock,
+      qtySold: openingBatch.qtySold,
+      balance: Math.max(0, newBalance),
+    },
+    stockChanged: true,
+  };
+}
+
+export async function planItemOpeningStockUpdate(
+  requestedItem: Item
+): Promise<ItemOpeningStockUpdatePlan> {
+  if (!requestedItem.id) {
+    throw new Error("Item update requires an item id.");
+  }
+
+  const database = await initDB();
+  const tx = database.transaction(["items", "item_batches"], "readonly");
+  const existingItem = await tx.objectStore("items").get(requestedItem.id);
+  const batches = await tx
+    .objectStore("item_batches")
+    .index("by-item")
+    .getAll(requestedItem.id);
+  await tx.done;
+  return buildItemOpeningStockUpdatePlan(requestedItem, existingItem, batches);
+}
+
+export async function updateItemWithOpeningStock(
+  requestedItem: Item
+): Promise<ItemOpeningStockUpdatePlan> {
+  if (!requestedItem.id) {
+    throw new Error("Item update requires an item id.");
+  }
+
+  const database = await initDB();
+  const tx = database.transaction(["items", "item_batches"], "readwrite");
+  const existingItem = await tx.objectStore("items").get(requestedItem.id);
+  const batches = await tx
+    .objectStore("item_batches")
+    .index("by-item")
+    .getAll(requestedItem.id);
+  const plan = buildItemOpeningStockUpdatePlan(
+    requestedItem,
+    existingItem,
+    batches
+  );
+  await tx.objectStore("items").put(plan.item);
+  if (plan.stockChanged && plan.openingBatch) {
+    await tx.objectStore("item_batches").put(plan.openingBatch);
+  }
+  await tx.done;
+  return plan;
 }
 
 export async function deleteItem(id: number): Promise<void> {

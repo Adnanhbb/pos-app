@@ -165,8 +165,14 @@ const [form, setForm] = useState<
 // --- Open Edit ---
 async function openEdit(it: Item) {
   setEditingItem(it);
-
-  const isGas = it.category?.trim().toLowerCase() === "gas";
+  const normalizedCategory = it.category?.trim().toLowerCase() ?? "";
+  const isGas =
+    normalizedCategory.includes("gas") ||
+    normalizedCategory.includes("cylinder");
+  const openingStock = isGas
+    ? it.availableStock
+    : (await itemsRepository.getOpeningStockBaseline(it.id!)) ??
+      it.availableStock;
 
   if (isGas) {
     // Fetch saved 11.8kg prices from settings
@@ -196,12 +202,12 @@ async function openEdit(it: Item) {
   discountPrice: perKgDiscount,
   wholesalePrice: perKgWholesale,
   description: it.description || "",
-  availableStock: it.availableStock,
+  availableStock: openingStock,
 
   openingStockMax:
     it.ConvQty > 0
-      ? it.availableStock / it.ConvQty
-      : it.availableStock,
+      ? openingStock / it.ConvQty
+      : openingStock,
 
   isDeleted: it.isDeleted,
   deletedAt: it.deletedAt,
@@ -221,12 +227,12 @@ async function openEdit(it: Item) {
   discountPrice: it.discountPrice || 0,
   wholesalePrice: it.wholesalePrice,
   description: it.description || "",
-  availableStock: it.availableStock,
+  availableStock: openingStock,
 
   openingStockMax:
     it.ConvQty > 0
-      ? it.availableStock / it.ConvQty
-      : it.availableStock,
+      ? openingStock / it.ConvQty
+      : openingStock,
 
   isDeleted: it.isDeleted,
   deletedAt: it.deletedAt,
@@ -294,6 +300,17 @@ async function handleSave() {
      ✏️ EDIT MODE
   ================================================== */
   if (editingItem) {
+    try {
+      await itemsRepository.validateUpdate({ ...editingItem, ...form });
+    } catch (error) {
+      alert(
+        error instanceof Error
+          ? error.message
+          : "The item could not be updated safely."
+      );
+      return;
+    }
+
     const oldBrandId = brands.find(b => b.name === editingItem.brand)?.id;
     const oldCategoryId = categories.find(c => c.name === editingItem.category)?.id;
     const oldMinUnitId = units.find(u => u.name === editingItem.minunit)?.id;
@@ -431,22 +448,6 @@ else {
 } as Item);
 
   const openingQtyMin = Number(form.availableStock ?? 0);
-
-  /* ---------------- BATCH LOGIC ---------------- */
-  if (openingQtyMin > 0) {
-    await batchRepository.addBatch({
-      itemId: newItemId,
-      purchaseDate: new Date().toISOString(),
-      qtyPurchased: openingQtyMin,
-      qtySold: 0,
-      balance: openingQtyMin,
-      costPrice: Number(form.purchasePrice || 0),
-      sourceSaleId: 0,
-      invoiceNo: "Opening Stock",
-      isDeleted: false,
-      deletedAt: null,
-    });
-  }
 
   /* ---------------- CYLINDER LOGIC ---------------- */
   const isCylinder =

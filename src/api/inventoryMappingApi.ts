@@ -42,6 +42,32 @@ export type ManualItemOpeningStockMappingResponse = {
   backendOpeningQuantity: number;
 };
 
+export type MappedOpeningStockAdjustmentRequest = {
+  adjustmentVersion: 1;
+  localItemId: number;
+  serverItemId: number;
+  localBatchId: number;
+  serverBatchId: number;
+  expected: {
+    itemAvailableStock: number;
+    qtyPurchased: number;
+    qtySold: number;
+    balance: number;
+  };
+  requestedOpeningStock: number;
+};
+
+export type MappedOpeningStockAdjustmentResponse = {
+  adjustmentContract: "mappedOpeningStockAdjustment";
+  adjustmentVersion: 1;
+  serverItemId: number;
+  serverBatchId: number;
+  availableStock: number;
+  qtyPurchased: number;
+  qtySold: number;
+  balance: number;
+};
+
 export const inventoryMappingApi = {
   async mapItemOpeningStock(
     payload: ManualItemOpeningStockMappingRequest
@@ -57,5 +83,18 @@ export const inventoryMappingApi = {
     return (
       "data" in response && response.data ? response.data : response
     ) as ManualItemOpeningStockMappingResponse;
+  },
+
+  async adjustMappedOpeningStock(
+    payload: MappedOpeningStockAdjustmentRequest
+  ): Promise<MappedOpeningStockAdjustmentResponse> {
+    const response = await apiClient.post<
+      MappedOpeningStockAdjustmentResponse | {
+        data?: MappedOpeningStockAdjustmentResponse;
+      }
+    >("/replay/item-opening-stock-adjustment.php", payload);
+    return (
+      "data" in response && response.data ? response.data : response
+    ) as MappedOpeningStockAdjustmentResponse;
   },
 };
