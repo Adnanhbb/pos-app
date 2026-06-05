@@ -1,12 +1,23 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { FaBoxes, FaEye, FaUsers } from "react-icons/fa";
+import {
+  FaBalanceScale,
+  FaBoxes,
+  FaCreditCard,
+  FaEye,
+  FaMoneyBillWave,
+  FaUsers,
+} from "react-icons/fa";
 import { cylinderCustomerRepository } from "./repositories/cylinderCustomerRepository";
-import type { CylinderCustomer } from "./types/entities";
+import { customersRepository } from "./repositories/customerRepository";
+import type { Customer, CylinderCustomer } from "./types/entities";
 import { useLang } from "./i18n/LanguageContext";
 
 type CustomerCylinderSummary = {
   customerName: string;
   totalQty: number;
+  payable: number;
+  paid: number;
+  balance: number;
   types: {
     cylinderType: string;
     qtyHeld: number;
@@ -14,6 +25,21 @@ type CustomerCylinderSummary = {
 };
 
 const PAGE_SIZE = 10;
+
+function normalizeCustomerName(name: string) {
+  return name.trim().toLocaleLowerCase();
+}
+
+function getAccountValues(customer?: Customer) {
+  const payable = Number(customer?.payable ?? 0);
+  const paid = Number(customer?.paid ?? 0);
+
+  return {
+    payable,
+    paid,
+    balance: Number(customer?.balance ?? payable - paid),
+  };
+}
 
 export default function CustomerCylinders() {
   const [rows, setRows] = useState<CustomerCylinderSummary[]>([]);
@@ -43,15 +69,31 @@ export default function CustomerCylinders() {
     setLoading(true);
 
     try {
-      const data = await cylinderCustomerRepository.getAll();
+      const [data, customers] = await Promise.all([
+        cylinderCustomerRepository.getAll(),
+        customersRepository.getAll(),
+      ]);
       const active = data.filter(
         (cc: CylinderCustomer) => !cc.isDeleted && Number(cc.qtyHeld || 0) > 0
       );
+
+      const customersByName = new Map<string, Customer[]>();
+      customers.forEach((customer) => {
+        const key = normalizeCustomerName(customer.name);
+        const matches = customersByName.get(key) ?? [];
+        matches.push(customer);
+        customersByName.set(key, matches);
+      });
 
       const grouped = new Map<string, CustomerCylinderSummary>();
 
       active.forEach((cc) => {
         const customerName = cc.customerName?.trim() || "Unknown Customer";
+        const customerMatches =
+          customersByName.get(normalizeCustomerName(customerName)) ?? [];
+        const account = getAccountValues(
+          customerMatches.length === 1 ? customerMatches[0] : undefined
+        );
         const cylinderType = cc.cylinderType?.trim() || t("cylinder");
         const qtyHeld = Number(cc.qtyHeld || 0);
 
@@ -59,6 +101,7 @@ export default function CustomerCylinders() {
           grouped.set(customerName, {
             customerName,
             totalQty: 0,
+            ...account,
             types: [],
           });
         }
@@ -99,9 +142,19 @@ export default function CustomerCylinders() {
     return <p className="text-center p-4">{t("loading")}</p>;
   }
 
+  const totals = rows.reduce(
+    (summary, row) => ({
+      cylinders: summary.cylinders + row.totalQty,
+      payable: summary.payable + row.payable,
+      paid: summary.paid + row.paid,
+      balance: summary.balance + row.balance,
+    }),
+    { cylinders: 0, payable: 0, paid: 0, balance: 0 }
+  );
+
   return (
     <div className="p-4 sm:p-6">
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4 mb-5">
         <SummaryCard
           title={t("totalcustomers")}
           value={rows.length}
@@ -109,8 +162,23 @@ export default function CustomerCylinders() {
         />
         <SummaryCard
           title={t("total_customer_cylinders")}
-          value={rows.reduce((sum, row) => sum + row.totalQty, 0)}
+          value={totals.cylinders}
           icon={<FaBoxes size={26} className="text-blue-600" />}
+        />
+        <SummaryCard
+          title={t("payable")}
+          value={totals.payable}
+          icon={<FaMoneyBillWave size={26} className="text-amber-600" />}
+        />
+        <SummaryCard
+          title={t("paid")}
+          value={totals.paid}
+          icon={<FaCreditCard size={26} className="text-emerald-600" />}
+        />
+        <SummaryCard
+          title={t("balance")}
+          value={totals.balance}
+          icon={<FaBalanceScale size={26} className="text-rose-600" />}
         />
       </div>
 
@@ -119,14 +187,18 @@ export default function CustomerCylinders() {
           <thead className="bg-blue-100 text-gray-700">
             <tr>
               <th className={`p-3 ${textAlign}`}>{t("customername")}</th>
+              {/* <th className={`p-3 ${textAlign}`}>{t("type")}</th> */}
               <th className={`p-3 ${textAlign}`}>{t("total_customer_cylinders")}</th>
+              <th className={`p-3 ${textAlign}`}>{t("payable")}</th>
+              <th className={`p-3 ${textAlign}`}>{t("paid")}</th>
+              <th className={`p-3 ${textAlign}`}>{t("balance")}</th>
               <th className="p-3 text-center">{t("actions")}</th>
             </tr>
           </thead>
           <tbody>
             {pagedRows.length === 0 ? (
               <tr>
-                <td colSpan={3} className="text-center p-4 text-gray-500">
+                <td colSpan={7} className="text-center p-4 text-gray-500">
                   {t("nocustomercylindersfound")}
                 </td>
               </tr>
@@ -136,7 +208,13 @@ export default function CustomerCylinders() {
                   <td className={`p-3 font-medium ${textAlign}`}>
                     {row.customerName}
                   </td>
+                  {/* <td className={`p-3 ${textAlign}`}>
+                    {row.types.map((type) => type.cylinderType).join(", ")}
+                  </td> */}
                   <td className={`p-3 ${textAlign}`}>{row.totalQty}</td>
+                  <td className={`p-3 ${textAlign}`}>{row.payable}</td>
+                  <td className={`p-3 ${textAlign}`}>{row.paid}</td>
+                  <td className={`p-3 ${textAlign}`}>{row.balance}</td>
                   <td className="p-3">
                     <div className="flex justify-center">
                       <button
@@ -186,6 +264,12 @@ export default function CustomerCylinders() {
               {t("customer_cylinders")} - {selectedCustomer.customerName}
             </h3>
 
+            <div className="grid grid-cols-3 gap-2 mb-4 text-center">
+              <AccountValue label={t("payable")} value={selectedCustomer.payable} />
+              <AccountValue label={t("paid")} value={selectedCustomer.paid} />
+              <AccountValue label={t("balance")} value={selectedCustomer.balance} />
+            </div>
+
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {selectedCustomer.types.map((type) => (
                 <div
@@ -209,6 +293,15 @@ export default function CustomerCylinders() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function AccountValue({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="p-2 bg-gray-50 border rounded">
+      <p className="text-xs text-gray-600">{label}</p>
+      <p className="font-semibold">{value}</p>
     </div>
   );
 }
