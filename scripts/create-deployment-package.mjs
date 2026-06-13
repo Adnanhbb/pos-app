@@ -52,6 +52,7 @@ const deploymentDocs = [
   "docs/developer-control-panel-architecture.md",
   "docs/backup-restore-migration-strategy.md",
   "docs/backup-disaster-recovery-handover.md",
+  "docs/backup-and-restore-audit.md",
   "docs/auto-sync-eligibility-gate.md",
 ];
 

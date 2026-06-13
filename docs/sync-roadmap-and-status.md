@@ -10,6 +10,27 @@ Transaction ingestion exists as storage through `transactions.php`. Dev replay h
 
 Auto-sync is not enabled. `syncEngine` remains manually/dev invoked only.
 
+## Backup And Restore Handover Gate
+
+All 22 business-critical IndexedDB stores are part of the required backup
+inventory, and the runtime exporter enumerates every store in the opened
+database. Two explicit verification gates now exist:
+
+```powershell
+npm.cmd run test:backup:coverage
+npm.cmd run test:backup:restore-rehearsal
+```
+
+The restore rehearsal uses randomly named temporary databases on a temporary
+local origin. It validates counts, IDs, core relationships, and preservation of
+failed queue state, then removes the temporary databases. It does not open the
+live `POSDatabase`, contact MySQL, trigger replay, or enable auto-sync.
+
+This does not implement production restore/import. Active auth tokens/sessions
+are excluded and password-like fields are redacted, so device recovery still
+requires approved login/credential recovery. See
+[backup-and-restore-audit.md](./backup-and-restore-audit.md).
+
 ## Current Stable Capabilities
 
 Stable capabilities include:

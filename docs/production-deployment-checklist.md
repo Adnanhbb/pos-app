@@ -81,15 +81,30 @@ npm.cmd run backup:validate -- backups/<backup-file>.json
 npm.cmd run backup:audit-readiness
 ```
 
+- Verify complete store coverage and rehearse a structural restore in isolated
+  temporary databases:
+
+```powershell
+npm.cmd run test:backup:coverage
+npm.cmd run test:backup:restore-rehearsal
+```
+
 - Confirm validation reports `ok: true`.
 - Confirm count mismatches are `0`.
 - Confirm unsafe sensitive fields are `0`.
 - Confirm expected IndexedDB store coverage has no missing stores.
+- Confirm the restore rehearsal reports `livePOSDatabaseUntouched: true`,
+  `mysqlUntouched: true`, and `replayTriggered: false`.
 - Store backup checksums with deployment notes.
 - Protect backup files because they still contain business data.
-- Restore/import is not implemented; do not promise restore capability yet.
+- Restore/import into the live app is not implemented. The temporary rehearsal
+  proves structural round-trip only; do not promise one-click recovery.
+- Record that replacement-device login credentials must be re-established
+  because active sessions/tokens and password secrets are not restored.
 - Follow [backup-disaster-recovery-handover.md](./backup-disaster-recovery-handover.md)
   for the client handover backup routine and disaster recovery no-go rules.
+- Use [backup-and-restore-audit.md](./backup-and-restore-audit.md) for current
+  store coverage, rehearsal boundaries, and remaining recovery risk.
 
 ## Replay/Queue Health Verification
 

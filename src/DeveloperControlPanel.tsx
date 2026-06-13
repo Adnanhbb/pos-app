@@ -7,10 +7,7 @@ import { fetchCurrentSession, type AuthActor } from "./api/authSession";
 import { initDB } from "./db";
 import { getPOSActivityState, type POSActivityState } from "./services/posActivityState";
 
-const CHECKPOINT_BACKUP_INDEXEDDB = "backups/indexeddb-backup-2026-05-25T15-40-10-403Z.json";
-const CHECKPOINT_BACKUP_MYSQL = "backups/mysql-backup-2026-05-25T15-46-55-642Z.json";
-const CHECKPOINT_INDEXEDDB_SHA = "44e577dcd795a49b03a27ea3730d43b947489189070de3b8ed5ac5642b5ba510";
-const CHECKPOINT_MYSQL_SHA = "a446acfec5044a16d872f2ce560de9c5477f043d8f6c8a5abe52ac721ec3a4c2";
+const PROTECTED_INDEXEDDB_STORE_COUNT = 22;
 
 type UserRole = "admin" | "saleboy" | "Dev";
 
@@ -298,19 +295,18 @@ export default function DeveloperControlPanel({ user }: DeveloperControlPanelPro
 
         <Section title="Backup Status">
           <div className="space-y-3 text-sm">
-            <div className="rounded border border-gray-200 bg-gray-50 p-3">
-              <div className="font-semibold text-gray-900">Latest validated IndexedDB backup</div>
-              <div className="mt-1 break-all text-gray-700">{CHECKPOINT_BACKUP_INDEXEDDB}</div>
-              <div className="mt-1 break-all text-gray-600">SHA-256: {CHECKPOINT_INDEXEDDB_SHA}</div>
-            </div>
-            <div className="rounded border border-gray-200 bg-gray-50 p-3">
-              <div className="font-semibold text-gray-900">Latest validated MySQL backup</div>
-              <div className="mt-1 break-all text-gray-700">{CHECKPOINT_BACKUP_MYSQL}</div>
-              <div className="mt-1 break-all text-gray-600">SHA-256: {CHECKPOINT_MYSQL_SHA}</div>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <MetricCard label="Last Backup" value="Not recorded in app" tone="warn" />
+              <MetricCard label="Backup Status" value="Manual export available" tone="good" />
+              <MetricCard label="Records Protected" value={`${PROTECTED_INDEXEDDB_STORE_COUNT} data sections`} />
+              <MetricCard label="Backup Recommended" value="Before deployment and daily" tone="warn" />
             </div>
             <div className="rounded border border-emerald-200 bg-emerald-50 p-3 text-emerald-800">
               Export and validation tools exist. Restore/import is not implemented.
             </div>
+            <p className="text-gray-600">
+              Backup files and validation dates are recorded outside the app. No backup content, password, token, or replay body is shown here.
+            </p>
           </div>
         </Section>
 

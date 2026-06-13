@@ -37,8 +37,17 @@ Audit backup/restore readiness:
 npm.cmd run backup:audit-readiness
 ```
 
-These commands do not restore/import data, do not replay sync rows, do not
-mutate MySQL, do not mutate IndexedDB, and do not enable auto-sync.
+Verify store coverage and run the isolated structural restore rehearsal:
+
+```powershell
+npm.cmd run test:backup:coverage
+npm.cmd run test:backup:restore-rehearsal
+```
+
+The export, validation, and readiness audit commands do not restore/import
+data. The rehearsal writes only to randomly named temporary databases and
+deletes them afterward. None of these commands mutate the live `POSDatabase`,
+mutate MySQL, replay sync rows, or enable auto-sync.
 
 ## What IndexedDB Backups Must Include
 
@@ -81,19 +90,23 @@ store must not be treated as handover-ready.
 
 ## Safe Restore Rehearsal Today
 
-Because restore/import is not implemented, restore rehearsal is validation-only:
+Because production restore/import is not implemented, the supported rehearsal
+is isolated and structural:
 
 1. Export IndexedDB.
 2. Export MySQL.
 3. Validate both backup files.
 4. Run `backup:audit-readiness`.
-5. Confirm expected stores are present.
-6. Confirm sensitive-field validation passes.
-7. Confirm restore/import flags remain false.
-8. Confirm no replay or auto-sync is triggered.
+5. Run `test:backup:coverage`.
+6. Run `test:backup:restore-rehearsal`.
+7. Confirm expected stores are present.
+8. Confirm sensitive-field validation passes.
+9. Confirm the live `POSDatabase` and MySQL were untouched.
+10. Confirm no replay or auto-sync is triggered.
 
-This validates backup integrity and coverage. It does not prove that restore
-will succeed, because no restore apply tool exists yet.
+The rehearsal restores clearly marked fixtures only between temporary
+databases. It validates structural round-trip behavior but does not prove a
+production restore into the live app, because no restore apply tool exists.
 
 ## Future Restore Safety Requirements
 

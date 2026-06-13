@@ -71,6 +71,8 @@
                     "backup:mysql:export":  "node scripts/export-mysql-backup.mjs",
                     "backup:validate":  "node scripts/validate-backup-file.mjs",
                     "backup:audit-readiness":  "node scripts/audit-backup-restore-readiness.mjs",
+                    "test:backup:coverage":  "node scripts/verify-backup-coverage.mjs",
+                    "test:backup:restore-rehearsal":  "node scripts/verify-backup-restore-rehearsal.mjs",
                     "release:verify":  "node scripts/verify-production-build.mjs",
                     "release:manifest":  "node scripts/create-release-manifest.mjs",
                     "release:git-readiness":  "node scripts/report-release-git-readiness.mjs",
