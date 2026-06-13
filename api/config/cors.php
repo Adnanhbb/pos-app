@@ -3,15 +3,34 @@
 declare(strict_types=1);
 
 /*
- * CORS is permissive for local development. Replace the production origins
- * with your deployed frontend domain before going live.
+ * Configure production origins through FRONTEND_ORIGIN. Multiple origins may
+ * be comma-separated for a controlled staging/production rollout.
+ *
+ * Local development origins are opt-in through CORS_ALLOW_LOCAL=true. Same-
+ * origin deployments (frontend and /api under one domain) require no CORS
+ * response header when the browser sends no Origin header.
  */
-$allowedOrigins = [
-    'http://localhost:5173',
-    'http://localhost:4173',
-    'http://127.0.0.1:5173',
-    'http://127.0.0.1:4173',
-];
+$configuredOrigins = array_filter(array_map(
+    static fn (string $origin): string => rtrim(trim($origin), '/'),
+    explode(',', (string) (getenv('FRONTEND_ORIGIN') ?: ''))
+));
+
+$allowLocal = in_array(
+    strtolower(trim((string) (getenv('CORS_ALLOW_LOCAL') ?: 'false'))),
+    ['1', 'true', 'yes', 'on'],
+    true
+);
+
+$localOrigins = $allowLocal
+    ? [
+        'http://localhost:5173',
+        'http://localhost:4173',
+        'http://127.0.0.1:5173',
+        'http://127.0.0.1:4173',
+    ]
+    : [];
+
+$allowedOrigins = array_values(array_unique(array_merge($configuredOrigins, $localOrigins)));
 
 $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
 

@@ -16,10 +16,34 @@ function get_pdo(): PDO
         return $pdo;
     }
 
-    $host = getenv('DB_HOST') ?: 'localhost';
-    $name = getenv('DB_NAME') ?: 'jawad_bro';
-    $user = getenv('DB_USER') ?: 'root';
-    $pass = getenv('DB_PASS') ?: '';
+    $appEnv = strtolower(trim((string) (getenv('APP_ENV') ?: 'development')));
+    $envHost = getenv('DB_HOST');
+    $envName = getenv('DB_NAME');
+    $envUser = getenv('DB_USER');
+    $envPass = getenv('DB_PASS');
+
+    if ($appEnv === 'production') {
+        $missing = [];
+        foreach ([
+            'DB_HOST' => $envHost,
+            'DB_NAME' => $envName,
+            'DB_USER' => $envUser,
+            'DB_PASS' => $envPass,
+        ] as $key => $value) {
+            if ($value === false || trim((string) $value) === '') {
+                $missing[] = $key;
+            }
+        }
+
+        if ($missing !== []) {
+            throw new RuntimeException('Production database configuration is incomplete.');
+        }
+    }
+
+    $host = $envHost ?: 'localhost';
+    $name = $envName ?: 'jawad_bro';
+    $user = $envUser ?: 'root';
+    $pass = $envPass !== false ? $envPass : '';
 
     $dsn = sprintf(
         'mysql:host=%s;dbname=%s;charset=utf8mb4',
@@ -35,4 +59,3 @@ function get_pdo(): PDO
 
     return $pdo;
 }
-

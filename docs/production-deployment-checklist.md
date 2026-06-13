@@ -14,9 +14,15 @@ real-hosting requirements, use
 For the final pre-tag release-candidate handover gate, use
 [release-candidate-client-handover-audit.md](./release-candidate-client-handover-audit.md).
 
+For the exact shared-hosting folder, environment, database, CORS, SSL,
+first-login, backup, and rollback preparation sequence, use
+[shared-hosting-deployment-preparation.md](./shared-hosting-deployment-preparation.md).
+
 ## Frontend Build Verification
 
 - Confirm production API URL is set through `VITE_API_BASE_URL`.
+- Run `npm.cmd run hosting:verify-readiness` against the generated package.
+- Do not upload while its report lists placeholder or localhost build values.
 - Run `npx.cmd tsc -b`.
 - Run `npm.cmd run build` in staging before production upload.
 - Confirm `dist/` assets are generated from the intended commit/tag.

@@ -10,6 +10,23 @@ Transaction ingestion exists as storage through `transactions.php`. Dev replay h
 
 Auto-sync is not enabled. `syncEngine` remains manually/dev invoked only.
 
+## Shared Hosting Preparation Gate
+
+Shared-hosting package readiness can be checked locally with:
+
+```powershell
+npm.cmd run hosting:verify-readiness
+```
+
+The gate checks packaged frontend/API/schema/docs, auth and manual replay
+endpoints, production environment variables, disabled developer backdoor and
+offline login defaults, environment-driven CORS, secret/dev artifact
+exclusions, localhost leakage, and absence of startup/background replay.
+Placeholder host values remain explicit operator inputs and prevent the
+package from being considered upload-ready. The command never contacts or
+uploads to hosting. See
+[shared-hosting-deployment-preparation.md](./shared-hosting-deployment-preparation.md).
+
 ## Backup And Restore Handover Gate
 
 All 22 business-critical IndexedDB stores are part of the required backup

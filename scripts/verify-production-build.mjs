@@ -48,6 +48,7 @@ const requiredDocs = [
   "docs/backup-restore-migration-strategy.md",
   "docs/backup-disaster-recovery-handover.md",
   "docs/backup-and-restore-audit.md",
+  "docs/shared-hosting-deployment-preparation.md",
   "docs/developer-control-panel-architecture.md",
   "docs/production-operational-tooling-strategy.md",
 ];
@@ -58,6 +59,7 @@ const requiredScripts = [
   "scripts/validate-backup-file.mjs",
   "scripts/verify-backup-coverage.mjs",
   "scripts/verify-backup-restore-rehearsal.mjs",
+  "scripts/verify-shared-hosting-readiness.mjs",
   "scripts/evaluate-auto-sync-eligibility.mjs",
   "scripts/report-sync-queue.mjs",
   "scripts/report-sync-reconciliation.mjs",

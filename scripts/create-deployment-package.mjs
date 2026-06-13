@@ -53,6 +53,7 @@ const deploymentDocs = [
   "docs/backup-restore-migration-strategy.md",
   "docs/backup-disaster-recovery-handover.md",
   "docs/backup-and-restore-audit.md",
+  "docs/shared-hosting-deployment-preparation.md",
   "docs/auto-sync-eligibility-gate.md",
 ];
 
