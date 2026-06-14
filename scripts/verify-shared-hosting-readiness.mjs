@@ -23,6 +23,9 @@ const requiredPackageFiles = [
   "api/config/.htaccess",
   "api/config/runtime.php",
   "api/config/private.example.php",
+  "api/config-check.php",
+  "api/setup/.htaccess",
+  "api/setup/create-first-dev.php",
   "api/lib/.htaccess",
   "api/sql/.htaccess",
   "api/health.php",
@@ -79,6 +82,7 @@ const requiredEnvVariables = [
   "CORS_ALLOW_LOCAL",
   "VITE_ENABLE_DEV_BACKDOOR",
   "VITE_ALLOW_OFFLINE_LOGIN",
+  "ENABLE_CONFIG_DIAGNOSTICS",
 ];
 
 const hostingProfile = {
@@ -210,6 +214,24 @@ const configLoadingOrderIsSafe =
   environmentLookupIndex >= 0 &&
   privateLookupIndex >= 0 &&
   environmentLookupIndex < privateLookupIndex;
+const configCheckSource = read("api/config-check.php");
+const firstDevSetupSource = read("api/setup/create-first-dev.php");
+const setupHtaccess = existsSync(join(packageRoot, "api", "setup", ".htaccess"))
+  ? readFileSync(join(packageRoot, "api", "setup", ".htaccess"), "utf8")
+  : "";
+const configCheckIsSafelyGuarded =
+  configCheckSource.includes("ENABLE_CONFIG_DIAGNOSTICS") &&
+  configCheckSource.includes("'message' => 'Not found.'") &&
+  configCheckSource.includes("dbPasswordPresent") &&
+  configCheckSource.includes("replayWorkerTokenPresent") &&
+  !configCheckSource.includes("'dbPassword' =>") &&
+  !configCheckSource.includes("'replayWorkerToken' =>");
+const firstDevSetupIsSafe =
+  firstDevSetupSource.includes("PHP_SAPI !== 'cli'") &&
+  firstDevSetupSource.includes("password_hash($password, PASSWORD_DEFAULT)") &&
+  firstDevSetupSource.includes("'role' => 'Dev'") &&
+  firstDevSetupSource.includes("An active Dev user already exists") &&
+  (setupHtaccess.includes("Require all denied") || setupHtaccess.includes("Deny from all"));
 
 const buildApiUrl = String(manifest?.build?.VITE_API_BASE_URL ?? "");
 const isLocalApiUrl = /(^|\/\/)(localhost|127\.0\.0\.1)(:|\/|$)/i.test(buildApiUrl);
@@ -248,6 +270,8 @@ const checks = [
   result("database, CORS, and replay auth use the shared runtime config", databaseSource.includes("app_config_value(") && corsSource.includes("app_config_value(") && authSource.includes("app_config_value(")),
   result("production database configuration fails closed when incomplete", env.APP_ENV === "production" && databaseSource.includes("$appEnv === 'production'") && databaseSource.includes("Production database configuration is incomplete")),
   result("private config example is packaged with placeholder secrets only", privateExamplePackaged && privateExampleSecretsArePlaceholders && envExampleSecretsArePlaceholders),
+  result("temporary config diagnostic is guarded and disabled by default", configCheckIsSafelyGuarded && env.ENABLE_CONFIG_DIAGNOSTICS === "false" && privateExampleSource.includes("'ENABLE_CONFIG_DIAGNOSTICS' => 'false'")),
+  result("one-time Dev creator is CLI-only, web-blocked, and password-hashed", firstDevSetupIsSafe),
   result("actual private config is ignored, untracked, and excluded from package", privateConfigIgnored && !privateConfigTracked && !privateConfigPackaged, {
     privateConfigIgnored,
     privateConfigTracked,

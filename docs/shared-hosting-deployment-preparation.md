@@ -121,6 +121,25 @@ contains only `private.example.php`. Never commit, download into the repository,
 email, message, screenshot, or include the database password or replay token in
 support reports.
 
+### Temporary Database Configuration Diagnosis
+
+When `/api/health.php` reports only `Database connection failed`, a temporary
+support endpoint is available at `/api/config-check.php`. It is disabled by
+default and returns a generic HTTP 404 until explicitly enabled.
+
+For a supervised troubleshooting window:
+
+1. Set `'ENABLE_CONFIG_DIAGNOSTICS' => 'true'` in the Hostinger-only
+   `public_html/api/config/private.php`.
+2. Open `https://<production-domain>/api/config-check.php`.
+3. Record only its safe booleans, non-secret database identifiers, PDO status,
+   SQLSTATE/driver code, and sanitized connection message.
+4. Set `ENABLE_CONFIG_DIAGNOSTICS` back to `false`.
+5. Remove `public_html/api/config-check.php` after the issue is resolved.
+
+The endpoint never returns the database password, replay token, auth tokens,
+session secrets, raw private configuration, or raw PDO exception message.
+
 Start with the reviewed `CRUD_AUTH_ENFORCEMENT` policy from the production
 checklist. Generate a strong replay worker token privately. Never place either
 database credentials or the replay token in frontend files.
@@ -198,8 +217,35 @@ Use HTTPS and do not print credentials or bearer tokens:
 
 ## Support User
 
-Create the client-specific DB-backed support user through the approved command
-after production database configuration is active:
+Create the first client-specific DB-backed support user only after production
+database configuration is active. The packaged setup script is CLI-only and its
+directory denies web access.
+
+Using Hostinger SSH/terminal:
+
+```text
+php public_html/api/setup/create-first-dev.php
+```
+
+Enter the username, display name, optional mobile number, and a strong password
+at the prompts. The script:
+
+- inserts into the existing `users` table
+- uses exact role `Dev`
+- hashes with `password_hash(..., PASSWORD_DEFAULT)`
+- refuses a duplicate username or a second active Dev account
+- never prints the password or password hash
+
+After the success message:
+
+1. Remove `public_html/api/setup/create-first-dev.php`.
+2. Keep `public_html/api/setup/.htaccess`.
+3. Login through the normal application login form.
+4. Confirm the session reports exact role `Dev`.
+5. Confirm Admin cannot see the Dev account in Staff/Users.
+
+For a controlled local setup where PHP environment variables are available,
+the existing helper remains:
 
 ```powershell
 $env:SUPPORT_USER_USERNAME="<private-support-username>"
@@ -209,8 +255,9 @@ npm.cmd run support:user:create
 Remove-Item Env:SUPPORT_USER_PASSWORD
 ```
 
-Do not use or enable the frontend development backdoor. Confirm the Developer
-Control Panel remains exact-`Dev` only.
+`SUPPORT_USER_ROLE` must be exactly `Dev`. Do not use or enable the frontend
+development backdoor. Confirm the Developer Control Panel remains exact-`Dev`
+only.
 
 ## Post-Upload Manual Validation
 

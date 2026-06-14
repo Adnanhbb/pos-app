@@ -24,14 +24,22 @@ if ($username === '' || trim($password) === '') {
     fail_support_setup('SUPPORT_USER_USERNAME and SUPPORT_USER_PASSWORD are required.');
 }
 
-if (strcasecmp($role, 'admin') === 0) {
-    $role = 'admin';
-} elseif ($role !== 'Dev') {
-    fail_support_setup('SUPPORT_USER_ROLE must be Dev or admin.');
+if ($role !== 'Dev') {
+    fail_support_setup('SUPPORT_USER_ROLE must be exactly Dev.');
 }
 
 try {
     $pdo = get_pdo();
+    $existingDev = $pdo->query(
+        "SELECT `id` FROM `users`
+         WHERE `role` = 'Dev' AND `is_deleted` = 0
+         LIMIT 1"
+    )->fetch();
+
+    if ($existingDev) {
+        fail_support_setup('A Dev support user already exists. No changes were applied.');
+    }
+
     $statement = $pdo->prepare(
         'SELECT `id`, `username`, `role`, `is_active`, `is_deleted`
          FROM `users`

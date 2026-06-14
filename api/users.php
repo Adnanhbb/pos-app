@@ -4,8 +4,9 @@ declare(strict_types=1);
 
 /*
  * Users/staff CRUD endpoint.
- * login.php and password verification will be implemented later.
- * Auth middleware will be added later.
+ *
+ * Admin may manage normal client roles but cannot discover or mutate exact
+ * role Dev accounts. Exact role Dev may view and manage all users.
  */
 require_once __DIR__ . '/config/cors.php';
 require_once __DIR__ . '/config/database.php';
@@ -19,26 +20,29 @@ $method = get_request_method();
 $id = get_query_id();
 
 try {
-        $pdo = get_pdo();
-    initialize_optional_crud_auth_audit($pdo, 'users.php', $method);
+    $pdo = get_pdo();
+    $authContext = initialize_optional_crud_auth_audit($pdo, 'users.php', $method);
+    $actorRole = require_user_management_role($authContext);
+    $canManageDev = $actorRole === 'Dev';
 
     if ($method === 'GET') {
         if ($id !== null) {
             $user = get_user_by_id($pdo, $id);
 
-            if ($user === null) {
+            if ($user === null || (!$canManageDev && is_dev_user($user))) {
                 error_response('User not found.', 404);
             }
 
             success_response(normalize_user_response($user));
         }
 
-        success_response(array_map('normalize_user_response', list_users($pdo)));
+        success_response(array_map('normalize_user_response', list_users($pdo, $canManageDev)));
     }
 
     if ($method === 'POST') {
         $body = normalize_user_payload(get_json_body());
         $errors = require_fields($body, ['username', 'name', 'role']);
+        validate_user_role_for_actor($body, $canManageDev);
 
         if (!has_non_empty_password($body)) {
             $errors['password'] = 'This field is required.';
@@ -59,11 +63,12 @@ try {
 
         $existing = get_user_by_id($pdo, $id);
 
-        if ($existing === null) {
+        if ($existing === null || (!$canManageDev && is_dev_user($existing))) {
             error_response('User not found.', 404);
         }
 
         $body = normalize_user_payload(get_json_body());
+        validate_user_role_for_actor($body, $canManageDev);
         $user = update_user_row($pdo, $id, $body);
 
         if ($user === null) {
@@ -80,7 +85,7 @@ try {
 
         $existing = get_user_by_id($pdo, $id);
 
-        if ($existing === null) {
+        if ($existing === null || (!$canManageDev && is_dev_user($existing))) {
             error_response('User not found.', 404);
         }
 
@@ -99,11 +104,56 @@ try {
     error_response('Server error.', 500);
 }
 
-function list_users(PDO $pdo): array
+function require_user_management_role(array $authContext): string
 {
-    $statement = $pdo->prepare(
-        'SELECT * FROM `users` WHERE `is_deleted` = 0 ORDER BY `id` DESC'
-    );
+    if (($authContext['authenticated'] ?? false) !== true) {
+        error_response('Authentication required.', 401);
+    }
+
+    $role = trim((string) ($authContext['actorRole'] ?? ''));
+    if ($role === 'Dev') {
+        return 'Dev';
+    }
+
+    if (strtolower($role) === 'admin') {
+        return 'admin';
+    }
+
+    error_response('User management access denied.', 403);
+}
+
+function is_dev_user(array $user): bool
+{
+    return trim((string) ($user['role'] ?? '')) === 'Dev';
+}
+
+function validate_user_role_for_actor(array $body, bool $canManageDev): void
+{
+    if (!array_key_exists('role', $body)) {
+        return;
+    }
+
+    $role = trim((string) $body['role']);
+    if (!in_array($role, ['admin', 'saleboy', 'Dev'], true)) {
+        error_response('Validation failed.', 422, [
+            'role' => 'Unsupported user role.',
+        ]);
+    }
+
+    if ($role === 'Dev' && !$canManageDev) {
+        error_response('User management access denied.', 403);
+    }
+}
+
+function list_users(PDO $pdo, bool $includeDev): array
+{
+    $sql = 'SELECT * FROM `users` WHERE `is_deleted` = 0';
+    if (!$includeDev) {
+        $sql .= " AND `role` <> 'Dev'";
+    }
+    $sql .= ' ORDER BY `id` DESC';
+
+    $statement = $pdo->prepare($sql);
     $statement->execute();
 
     return $statement->fetchAll();

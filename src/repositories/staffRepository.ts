@@ -1,8 +1,16 @@
 // src/staffRepository.ts
-import { getUsersPaged, addUser, updateUser,getUserById, deleteUser } from "../db";
+import {
+  getAllUsers,
+  getUsersPaged,
+  addUser,
+  updateUser,
+  getUserById,
+  deleteUser,
+} from "../db";
 import type { Role, User } from "../types/entities";
 import type { SyncMetadata } from "../types/sync";
 import { entityApi } from "../api/entityApi";
+import { ApiError } from "../api/client";
 import {
   canUseApi,
   getServerId,
@@ -26,6 +34,178 @@ type RemoteUserResponse = Partial<SyncableUser> & {
   is_deleted?: boolean | number;
   deleted_at?: string | number | null;
 };
+
+type RemoteUserListEnvelope = {
+  data?: unknown;
+};
+
+function currentStaffActorRole(): Role | null {
+  if (typeof window === "undefined") return null;
+  const role = window.localStorage.getItem("loggedInUserRole");
+  return role === "admin" || role === "saleboy" || role === "Dev" ? role : null;
+}
+
+function actorCanManageDevUsers(): boolean {
+  return currentStaffActorRole() === "Dev";
+}
+
+function assertStaffListAccess(): void {
+  const role = currentStaffActorRole();
+  if (role !== "admin" && role !== "Dev") {
+    throw new Error("User management access denied.");
+  }
+}
+
+function assertDevUserAccess(user: Partial<User>): void {
+  if (user.Role === "Dev" && !actorCanManageDevUsers()) {
+    throw new Error("Developer support users can only be managed by a Dev user.");
+  }
+}
+
+function isNetworkUnavailable(error: unknown): boolean {
+  return error instanceof ApiError && error.status === undefined;
+}
+
+function normalizeUsername(username: unknown): string {
+  return typeof username === "string" ? username.trim().toLowerCase() : "";
+}
+
+function extractRemoteUserList(response: unknown): RemoteUserResponse[] {
+  if (Array.isArray(response)) {
+    return response.filter(
+      (record): record is RemoteUserResponse =>
+        Boolean(record) && typeof record === "object"
+    );
+  }
+
+  if (response && typeof response === "object") {
+    const envelope = response as RemoteUserListEnvelope;
+    if (Array.isArray(envelope.data)) {
+      return envelope.data.filter(
+        (record): record is RemoteUserResponse =>
+          Boolean(record) && typeof record === "object"
+      );
+    }
+  }
+
+  throw new Error("The users service returned an invalid response.");
+}
+
+function getRemoteServerId(record: RemoteUserResponse): number | string | null {
+  return record.serverId ?? record.id ?? null;
+}
+
+function createSafeCachedUser(
+  remote: RemoteUserResponse,
+  existing?: SyncableUser
+): SyncableUser {
+  const name = remote.Name ?? remote.name;
+  const username = remote.Username ?? remote.username;
+  const role = remote.Role ?? remote.role;
+  const serverId = getRemoteServerId(remote);
+
+  if (
+    typeof name !== "string" ||
+    typeof username !== "string" ||
+    typeof role !== "string" ||
+    serverId == null
+  ) {
+    throw new Error("The users service returned an incomplete user profile.");
+  }
+
+  const deletedAt = normalizeDeletedAt(
+    remote.deletedAt ?? remote.deleted_at,
+    existing?.deletedAt ?? null
+  );
+
+  return {
+    ...existing,
+    id: existing?.id,
+    serverId,
+    Name: name,
+    Username: username,
+    Mobile: remote.Mobile ?? remote.mobile ?? "",
+    Role: role,
+    // Backend-only profiles are viewable offline but are not local credentials.
+    Password: existing?.Password ?? "",
+    isDeleted: remote.isDeleted ?? Boolean(remote.is_deleted),
+    deletedAt,
+  };
+}
+
+async function cacheRemoteUserProfiles(
+  remoteUsers: RemoteUserResponse[]
+): Promise<User[]> {
+  const localUsers = (await getAllUsers()) as SyncableUser[];
+  const cachedUsers: SyncableUser[] = [];
+
+  for (const remote of remoteUsers) {
+    const serverId = getRemoteServerId(remote);
+    const username = normalizeUsername(remote.Username ?? remote.username);
+
+    const byServerId = serverId == null
+      ? undefined
+      : localUsers.find(
+          (user) =>
+            user.serverId != null &&
+            String(user.serverId) === String(serverId)
+        );
+    const byUsername = byServerId
+      ? undefined
+      : localUsers.find(
+          (user) => normalizeUsername(user.Username) === username
+        );
+    const existing = byServerId ?? byUsername;
+    const cachedUser = createSafeCachedUser(remote, existing);
+
+    if (existing?.id != null) {
+      await updateUser(cachedUser);
+    } else {
+      const { id: _remoteLocalId, ...localProfile } = cachedUser;
+      const localId = await addUser(localProfile);
+      cachedUser.id = localId;
+      localUsers.push(cachedUser);
+    }
+
+    cachedUsers.push(cachedUser);
+  }
+
+  return cachedUsers;
+}
+
+function paginateUsers(
+  users: User[],
+  page: number,
+  pageSize: number,
+  searchQuery?: string,
+  roleFilter?: Role
+): { total: number; data: User[] } {
+  const query = searchQuery?.trim().toLowerCase() ?? "";
+  let filtered = users.filter((user) => !user.isDeleted);
+
+  if (!actorCanManageDevUsers()) {
+    filtered = filtered.filter((user) => user.Role !== "Dev");
+  }
+  if (roleFilter) {
+    filtered = filtered.filter((user) => user.Role === roleFilter);
+  }
+  if (query) {
+    filtered = filtered.filter(
+      (user) =>
+        user.Name.toLowerCase().includes(query) ||
+        user.Username.toLowerCase().includes(query) ||
+        user.Mobile.toLowerCase().includes(query)
+    );
+  }
+
+  filtered.sort((left, right) =>
+    left.Name.localeCompare(right.Name, undefined, { sensitivity: "base" })
+  );
+
+  const total = filtered.length;
+  const start = Math.max(0, page - 1) * pageSize;
+  return { total, data: filtered.slice(start, start + pageSize) };
+}
 
 function normalizeRemoteUser(
   remote: unknown,
@@ -107,30 +287,55 @@ async function queueUserDelete(user: Partial<SyncableUser>) {
 
 export const staffRepository = {
   /** Fetch a paged list of users with optional search & role filter */
-    getPaged: async (
+  getPaged: async (
     page: number,
     pageSize: number,
     searchQuery?: string,
     roleFilter?: Role,
-    includeDeleted: boolean = false // new param
+    includeDeleted: boolean = false
   ): Promise<{ total: number; data: User[] }> => {
+    assertStaffListAccess();
+
+    // The backend endpoint intentionally lists active users only. Deleted-user
+    // review remains a local/offline workflow.
+    if (!includeDeleted && await canUseApi()) {
+      try {
+        const response = await entityApi.list<RemoteUserResponse>("users");
+        const remoteUsers = extractRemoteUserList(response);
+        const cachedUsers = await cacheRemoteUserProfiles(remoteUsers);
+        return paginateUsers(
+          cachedUsers,
+          page,
+          pageSize,
+          searchQuery,
+          roleFilter
+        );
+      } catch (error) {
+        if (!isNetworkUnavailable(error)) {
+          throw error;
+        }
+      }
+    }
+
     const { total, data } = await getUsersPaged(
       page,
       pageSize,
       "Name",
       "asc",
       roleFilter ?? null,
-      searchQuery || null
+      searchQuery || null,
+      actorCanManageDevUsers() ? null : "Dev"
     );
 
-    // filter out deleted unless requested
-    const filteredData = includeDeleted ? data : data.filter(u => !u.isDeleted);
+    const filteredData = includeDeleted ? data : data.filter((user) => !user.isDeleted);
 
-    return { total: filteredData.length, data: filteredData };
+    return { total, data: filteredData };
   },
 
   /** Create a new user */
   create: async (user: StaffForm) => {
+    assertDevUserAccess(user);
+
     if (await canUseApi()) {
       try {
         const remote = await entityApi.create<SyncableUser>("users", user);
@@ -141,8 +346,10 @@ export const staffRepository = {
         }
 
         return await addUser(user);
-      } catch {
-        // Fall through to local write + queue when the API is unavailable or rejects.
+      } catch (error) {
+        if (!isNetworkUnavailable(error)) {
+          throw error;
+        }
       }
     }
 
@@ -155,6 +362,8 @@ export const staffRepository = {
 
   /** Update an existing user */
   update: async (user: User) => {
+    assertDevUserAccess(user);
+
     const syncableUser = user as SyncableUser;
     const serverId = getServerId(syncableUser);
 
@@ -164,8 +373,10 @@ export const staffRepository = {
         const remoteUser = normalizeRemoteUser(remote, syncableUser);
 
         return await updateUser(remoteUser ?? user);
-      } catch {
-        // Fall through to local update + queue when the API write fails.
+      } catch (error) {
+        if (!isNetworkUnavailable(error)) {
+          throw error;
+        }
       }
     }
 
@@ -252,6 +463,7 @@ export const staffRepository = {
   remove: async (id: number) => {
     const user = await getUserById(id); // make sure this helper exists in db.ts
     if (!user) throw new Error("User not found");
+    assertDevUserAccess(user);
 
     const deletedUser: SyncableUser = { 
       ...user, 
@@ -266,8 +478,10 @@ export const staffRepository = {
         await entityApi.remove("users", serverId);
         await updateUser(deletedUser);
         return true;
-      } catch {
-        // Fall through to local soft delete + queue when the API write fails.
+      } catch (error) {
+        if (!isNetworkUnavailable(error)) {
+          throw error;
+        }
       }
     }
 
@@ -280,19 +494,23 @@ export const staffRepository = {
   restore: async (id: number) => {
   const user = await getUserById(id);
   if (!user) throw new Error("User not found");
+  assertDevUserAccess(user);
   await staffRepository.update({ ...user, isDeleted: false, deletedAt: null });
 },
 
 permanentDelete: async (id: number) => {
   const user = (await getUserById(id)) as SyncableUser | undefined;
+  if (user) assertDevUserAccess(user);
   const serverId = user ? getServerId(user) : null;
 
   if (serverId != null && await canUseApi()) {
     try {
       await entityApi.remove("users", serverId);
       return await deleteUser(id);
-    } catch {
-      // Fall through to local hard delete + queue when the API write fails.
+    } catch (error) {
+      if (!isNetworkUnavailable(error)) {
+        throw error;
+      }
     }
   }
 

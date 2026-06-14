@@ -164,6 +164,65 @@ async function main() {
   });
   check("authenticated CRUD request carries token and remains allowed", crud, (value) => value.status === 201 && value.body?.success === true && value.headers.authStatus === "valid" && value.headers.actorType === "user", "CRUD request was not audited as valid auth");
 
+  const adminUsers = await request("users", { token });
+  const adminUserRows = Array.isArray(adminUsers.body?.data) ? adminUsers.body.data : [];
+  check(
+    "Admin user list hides exact Dev accounts",
+    { status: adminUsers.status, usernames: adminUserRows.map((row) => row?.username) },
+    (value) => value.status === 200 && value.usernames.includes(username) && !value.usernames.includes(devUsername),
+    "Admin could see a Dev account"
+  );
+
+  const adminDirectDev = await request("users", { token, query: `?id=${setup.devUserId}` });
+  check(
+    "Admin direct lookup cannot discover Dev account",
+    adminDirectDev,
+    (value) => value.status === 404 && value.body?.success === false,
+    "Admin direct Dev lookup was not blocked"
+  );
+
+  const adminUpdateDev = await request("users", {
+    method: "PUT",
+    token,
+    query: `?id=${setup.devUserId}`,
+    body: { name: "Blocked Admin Dev Edit" },
+  });
+  check(
+    "Admin cannot edit Dev account",
+    adminUpdateDev,
+    (value) => value.status === 404 && value.body?.success === false,
+    "Admin Dev update was not blocked"
+  );
+
+  const adminDeleteDev = await request("users", {
+    method: "DELETE",
+    token,
+    query: `?id=${setup.devUserId}`,
+  });
+  check(
+    "Admin cannot delete Dev account",
+    adminDeleteDev,
+    (value) => value.status === 404 && value.body?.success === false,
+    "Admin Dev deletion was not blocked"
+  );
+
+  const adminCreateDev = await request("users", {
+    method: "POST",
+    token,
+    body: {
+      username: `blocked_${devUsername}`,
+      name: "Blocked Dev Creation",
+      role: "Dev",
+      password,
+    },
+  });
+  check(
+    "Admin cannot create Dev account",
+    adminCreateDev,
+    (value) => value.status === 403 && value.body?.success === false,
+    "Admin Dev creation was not blocked"
+  );
+
   const logout = await request("logout", { method: "POST", token, body: {} });
   check("logout revokes token safely", logout, (value) => value.status === 200 && value.body?.success === true && value.body?.data?.loggedOut === true, "logout failed");
 
@@ -174,16 +233,39 @@ async function main() {
   const devLogin = await request("login", { method: "POST", body: { username: devUsername, password } });
   const devToken = devLogin.body?.data?.token;
   check("DB-backed Dev support user can login normally", { status: devLogin.status, tokenPresent: Boolean(devToken), actor: devLogin.body?.data?.actor }, (value) => value.status === 200 && value.tokenPresent === true && value.actor?.Role === "Dev", "Dev login did not return the expected role");
+
+  const devUsers = await request("users", { token: devToken });
+  const devUserRows = Array.isArray(devUsers.body?.data) ? devUsers.body.data : [];
+  check(
+    "Dev user can view all user roles",
+    { status: devUsers.status, usernames: devUserRows.map((row) => row?.username) },
+    (value) => value.status === 200 && value.usernames.includes(username) && value.usernames.includes(devUsername),
+    "Dev did not receive the full user list"
+  );
+  check("user-management responses do not leak password hashes", { adminUsers, devUsers }, hasNoPasswordLeak, "users endpoint leaked password fields");
+
   await request("logout", { method: "POST", token: devToken, body: {} });
 
   const authRepository = readFileSync(resolve(projectRoot, "src/repositories/authRepository.ts"), "utf8");
   const app = readFileSync(resolve(projectRoot, "src/App.tsx"), "utf8");
   const loginSource = readFileSync(resolve(projectRoot, "src/Login.tsx"), "utf8");
+  const staffRepository = readFileSync(resolve(projectRoot, "src/repositories/staffRepository.ts"), "utf8");
+  const staffPage = readFileSync(resolve(projectRoot, "src/Staff.tsx"), "utf8");
+  const firstDevSetup = readFileSync(resolve(projectRoot, "api/setup/create-first-dev.php"), "utf8");
   const envTemplate = readFileSync(resolve(projectRoot, ".env.production.example"), "utf8");
   check("online backend rejection cannot fall back to local login", authRepository, (value) => value.includes("if (!isBackendUnavailable(error))") && value.includes("Remote login rejected; local fallback was not attempted.") && value.includes("clearLocalLoginState();") && value.includes("return null;"), "remote rejection guard is missing");
   check("offline local fallback requires explicit build opt-in", authRepository, (value) => value.includes('VITE_ALLOW_OFFLINE_LOGIN === "true"') && value.includes("Remote login unavailable; explicit offline login is disabled."), "offline login opt-in guard is missing");
   check("startup restore validates backend session before trusting local markers", { app, authRepository }, (value) => value.app.includes("restoreStartupSession") && !value.app.includes("if (id && username && role") && value.authRepository.includes("clearLocalLoginState()"), "startup still trusts marker-only login");
   check("frontend backdoor and offline login both default disabled", { loginSource, envTemplate }, (value) => value.loginSource.includes('VITE_ENABLE_DEV_BACKDOOR === "true"') && /^VITE_ENABLE_DEV_BACKDOOR=false$/m.test(value.envTemplate) && /^VITE_ALLOW_OFFLINE_LOGIN=false$/m.test(value.envTemplate), "production auth defaults are not safe");
+  check("Admin local Staff repository hides and protects Dev users", staffRepository, (value) => value.includes('actorCanManageDevUsers() ? null : "Dev"') && value.includes('user.Role === "Dev"') && value.includes("assertDevUserAccess"), "local Dev account boundary is missing");
+  check("Staff repository uses authenticated users API as the online listing source", staffRepository, (value) => value.includes('entityApi.list<RemoteUserResponse>("users")') && value.includes("extractRemoteUserList(response)") && value.includes("cacheRemoteUserProfiles(remoteUsers)"), "Staff listing is not API-first");
+  check("Staff repository caches backend profiles by serverId then normalized username", staffRepository, (value) => value.includes("const byServerId") && value.includes("const byUsername = byServerId") && value.includes("normalizeUsername(user.Username) === username"), "safe user cache matching is missing");
+  check("Backend-only Staff profiles never become local offline credentials", staffRepository, (value) => value.includes('Password: existing?.Password ?? ""') && !value.includes("password_hash"), "Staff cache may hydrate backend credentials");
+  check("Staff offline listing falls back to IndexedDB only after connectivity failure", staffRepository, (value) => value.includes("isNetworkUnavailable(error)") && value.includes("getUsersPaged(") && value.indexOf("entityApi.list<RemoteUserResponse>") < value.indexOf("getUsersPaged("), "Staff offline fallback policy is missing");
+  check("Staff API rejection is surfaced before any contradictory local write", staffRepository, (value) => (value.match(/if \(!isNetworkUnavailable\(error\)\) \{\s*throw error;\s*\}/g) || []).length >= 4, "Staff writes still fall back after backend rejection");
+  check("Staff page exposes Dev role controls only to Dev", staffPage, (value) => value.includes('currentRole === "Dev"') && value.includes('{isDevRole && <option value="Dev">Dev</option>}'), "Staff role control is not Dev-only");
+  check("Staff page surfaces safe list and write errors", staffPage, (value) => value.includes("getStaffErrorMessage") && value.includes("setLoadError(getStaffErrorMessage(error))") && value.includes("alert(getStaffErrorMessage(error))"), "Staff API errors are not visible to the user");
+  check("one-time Dev creator is CLI-only and hashes safely", firstDevSetup, (value) => value.includes("PHP_SAPI !== 'cli'") && value.includes("password_hash($password, PASSWORD_DEFAULT)") && value.includes("'role' => 'Dev'") && !value.includes("passwordHash ."), "first Dev setup safeguards are missing");
 
   console.log(`Summary: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

@@ -7,7 +7,15 @@ import { useLang } from "./i18n/LanguageContext";
 
 const PAGE_SIZE = 8;
 
+function getStaffErrorMessage(error: unknown): string {
+  return error instanceof Error
+    ? error.message
+    : "User management could not be completed.";
+}
+
 export default function Staff() {
+  const currentRole = localStorage.getItem("loggedInUserRole");
+  const isDevRole = currentRole === "Dev";
   const [users, setUsers] = useState<User[]>([]);
   const [view, setView] = useState<"table" | "cards">("table");
   const [query, setQuery] = useState("");
@@ -15,6 +23,7 @@ export default function Staff() {
 
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
+  const [loadError, setLoadError] = useState("");
 
   // Modal / form state
   const [isFormOpen, setFormOpen] = useState(false);
@@ -30,7 +39,12 @@ export default function Staff() {
   };
   const [form, setForm] = useState<StaffForm>(emptyForm);
 
-  const roles = useMemo(() => ["all", "admin", "saleboy"] as const, []);
+  const roles = useMemo(
+    () => isDevRole
+      ? (["all", "admin", "saleboy", "Dev"] as const)
+      : (["all", "admin", "saleboy"] as const),
+    [isDevRole]
+  );
 
   const { t, lang, setLang } = useLang();
   
@@ -41,14 +55,19 @@ export default function Staff() {
 
   /** Load current page of users */
   const loadPage = async () => {
-    const { total: t, data } = await staffRepository.getPaged(
-      page,
-      PAGE_SIZE,
-      query,
-      roleFilter !== "all" ? roleFilter : undefined
-    );
-    setUsers(data);
-    setTotal(t);
+    try {
+      const { total: t, data } = await staffRepository.getPaged(
+        page,
+        PAGE_SIZE,
+        query,
+        roleFilter !== "all" ? roleFilter : undefined
+      );
+      setUsers(data);
+      setTotal(t);
+      setLoadError("");
+    } catch (error) {
+      setLoadError(getStaffErrorMessage(error));
+    }
   };
 
   useEffect(() => {
@@ -90,25 +109,33 @@ export default function Staff() {
     if (!form.Username.trim()) return alert("Username is required");
     if (!form.Password.trim()) return alert("Password is required");
 
-    if (editingUser) await staffRepository.update({ ...editingUser, ...form });
-    else {
-      await staffRepository.create(form);
-      setPage(1);
-    }
+    try {
+      if (editingUser) await staffRepository.update({ ...editingUser, ...form });
+      else {
+        await staffRepository.create(form);
+        setPage(1);
+      }
 
-    closeForm();
-    await loadPage();
+      closeForm();
+      await loadPage();
+    } catch (error) {
+      alert(getStaffErrorMessage(error));
+    }
   };
 
   /** Delete user */
   const handleDelete = async (id?: number) => {
     if (!id) return;
     if (!confirm("Delete this user?")) return;
-    await staffRepository.remove(id);
-    const newTotal = Math.max(0, total - 1);
-    const newTotalPages = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
-    if (page > newTotalPages) setPage(newTotalPages);
-    await loadPage();
+    try {
+      await staffRepository.remove(id);
+      const newTotal = Math.max(0, total - 1);
+      const newTotalPages = Math.max(1, Math.ceil(newTotal / PAGE_SIZE));
+      if (page > newTotalPages) setPage(newTotalPages);
+      await loadPage();
+    } catch (error) {
+      alert(getStaffErrorMessage(error));
+    }
   };
 
   const loadDeletedUsers = async () => {
@@ -136,6 +163,11 @@ const handlePermanentDelete = async (id?: number) => {
 
   return (
   <div className="p-4 lg:p-8">
+    {loadError && (
+      <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        {loadError}
+      </div>
+    )}
 
     {/* Header Controls */}
     <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 mb-6">
@@ -364,6 +396,7 @@ const handlePermanentDelete = async (id?: number) => {
               <select className="w-full p-2 border rounded" value={form.Role} onChange={(e) => setForm({ ...form, Role: e.target.value as Role })}>
                 <option value="admin">{t("admin")}</option>
                 <option value="saleboy">{t("saleboy")}</option>
+                {isDevRole && <option value="Dev">Dev</option>}
               </select>
             </div>
             <div>

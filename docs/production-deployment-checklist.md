@@ -358,6 +358,12 @@ Environment variables take precedence when available. The fallback file is
 gitignored, excluded by package generation, and protected by
 `api/config/.htaccess`. Confirm direct access returns HTTP 403 before go-live.
 
+The temporary `/api/config-check.php` support endpoint must remain disabled
+unless actively troubleshooting production database configuration. After use,
+set `ENABLE_CONFIG_DIAGNOSTICS=false` and remove the endpoint from the deployed
+API. Never copy its output into a report if it contains client-specific
+database identifiers that do not need to be shared.
+
 The manifest records `deploymentPerformed: false`, `uploadPerformed: false`, and `autoSyncEnabled: false`. Actual hosting upload remains manual and outside this repository tooling.
 
 ## Hosting-Agnostic Deployment Rehearsal
@@ -412,6 +418,14 @@ Local CORS origins such as `localhost`, `127.0.0.1`, or Laragon paths are allowe
 
 - Keep `VITE_ENABLE_DEV_BACKDOOR=false` for rehearsal, package, staging, and production builds.
 - Use a client-specific database-backed support user with exact role `Dev` for Developer Control Panel access. Lowercase `admin` remains a normal client role and must not receive panel access.
+- On Hostinger, run `php public_html/api/setup/create-first-dev.php` through
+  SSH/terminal after private database configuration is working, then remove the
+  PHP setup file immediately after success.
+- Confirm the script refuses web execution, duplicate usernames, and a second
+  active Dev account. It must hash through `PASSWORD_DEFAULT` and never display
+  a password or password hash.
+- Confirm Admin cannot list, fetch, create, edit, delete, restore, or permanently
+  delete exact-role `Dev` users. Exact-role `Dev` may view all users.
 - Create the support user only when missing during controlled client setup:
 
 ```powershell

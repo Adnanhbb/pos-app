@@ -19,4 +19,6 @@ return [
     'CORS_ALLOW_LOCAL' => 'false',
     'CRUD_AUTH_ENFORCEMENT' => 'off',
     'REPLAY_WORKER_TOKEN' => 'replace_with_strong_random_token',
+    // Temporary support switch. Keep false except during supervised diagnosis.
+    'ENABLE_CONFIG_DIAGNOSTICS' => 'false',
 ];

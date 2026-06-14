@@ -586,10 +586,12 @@ export async function getUsersPaged(
   sortBy: keyof User | null = "Name",
   sortDir: "asc" | "desc" = "asc",
   filterRole: Role | null = null,
-  query: string | null = null
+  query: string | null = null,
+  hiddenRole: Role | null = null
 ) {
   const all = await getAllUsers();
   let data = all.slice();
+  if (hiddenRole) data = data.filter((d) => d.Role !== hiddenRole);
   if (filterRole) data = data.filter((d) => d.Role === filterRole);
   if (query) {
     const q = query.trim().toLowerCase();
