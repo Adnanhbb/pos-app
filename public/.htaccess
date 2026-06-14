@@ -1,0 +1,13 @@
+Options -Indexes
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+
+  # Preserve real files/directories, including the packaged /api directory.
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Safe SPA fallback if a future client-side route is opened directly.
+  RewriteRule ^ index.html [L]
+</IfModule>

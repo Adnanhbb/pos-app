@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/../config/runtime.php';
+
 /*
  * Shared-hosting friendly auth/session foundation.
  *
@@ -81,14 +83,14 @@ function authenticate_api_bearer_token(PDO $pdo, ?string $token): array
     }
 
     $token = trim($token);
-    $envReplayToken = trim((string) getenv('REPLAY_WORKER_TOKEN'));
+    $envReplayToken = trim((string) app_config_value('REPLAY_WORKER_TOKEN', ''));
     if ($envReplayToken !== '' && hash_equals($envReplayToken, $token)) {
         return [
             'success' => true,
             'authenticated' => true,
             'source' => 'environment',
             'actorType' => 'replay_worker',
-            'actorId' => trim((string) (getenv('REPLAY_WORKER_ID') ?: 'env-replay-worker')),
+            'actorId' => trim((string) app_config_value('REPLAY_WORKER_ID', 'env-replay-worker')),
             'actorRole' => 'replay',
             'sessionId' => null,
         ];
@@ -245,7 +247,7 @@ function generate_bearer_token(): string
 
 function auth_token_expiry_sql(): ?string
 {
-    $ttl = (int) (getenv('AUTH_TOKEN_TTL_SECONDS') ?: 2592000);
+    $ttl = (int) app_config_value('AUTH_TOKEN_TTL_SECONDS', 2592000);
     if ($ttl <= 0) {
         return null;
     }

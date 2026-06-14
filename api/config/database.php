@@ -2,11 +2,12 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/runtime.php';
+
 /*
  * Shared hosting note:
- * Prefer environment variables when your host supports them. If not, replace
- * the placeholder values below with credentials from the hosting control panel
- * and keep this file outside public access where your host allows it.
+ * Environment variables take precedence. api/config/private.php is the
+ * gitignored fallback for hosts that do not expose PHP environment variables.
  */
 function get_pdo(): PDO
 {
@@ -16,11 +17,11 @@ function get_pdo(): PDO
         return $pdo;
     }
 
-    $appEnv = strtolower(trim((string) (getenv('APP_ENV') ?: 'development')));
-    $envHost = getenv('DB_HOST');
-    $envName = getenv('DB_NAME');
-    $envUser = getenv('DB_USER');
-    $envPass = getenv('DB_PASS');
+    $appEnv = strtolower(trim((string) app_config_value('APP_ENV', 'development')));
+    $envHost = app_config_value('DB_HOST');
+    $envName = app_config_value('DB_NAME');
+    $envUser = app_config_value('DB_USER');
+    $envPass = app_config_value('DB_PASS');
 
     if ($appEnv === 'production') {
         $missing = [];
@@ -30,7 +31,7 @@ function get_pdo(): PDO
             'DB_USER' => $envUser,
             'DB_PASS' => $envPass,
         ] as $key => $value) {
-            if ($value === false || trim((string) $value) === '') {
+            if ($value === null || trim((string) $value) === '') {
                 $missing[] = $key;
             }
         }
@@ -43,7 +44,7 @@ function get_pdo(): PDO
     $host = $envHost ?: 'localhost';
     $name = $envName ?: 'jawad_bro';
     $user = $envUser ?: 'root';
-    $pass = $envPass !== false ? $envPass : '';
+    $pass = $envPass !== null ? (string) $envPass : '';
 
     $dsn = sprintf(
         'mysql:host=%s;dbname=%s;charset=utf8mb4',

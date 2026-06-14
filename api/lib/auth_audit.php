@@ -63,12 +63,7 @@ function initialize_optional_crud_auth_audit(PDO $pdo, string $endpoint, string 
 
 function is_crud_auth_enforcement_enabled(): bool
 {
-    $raw = getenv('CRUD_AUTH_ENFORCEMENT');
-
-    if ($raw === false || trim((string) $raw) === '') {
-        $raw = $_SERVER['CRUD_AUTH_ENFORCEMENT'] ?? $_ENV['CRUD_AUTH_ENFORCEMENT'] ?? '';
-    }
-
+    $raw = app_config_value('CRUD_AUTH_ENFORCEMENT', '');
     $value = strtolower(trim((string) $raw));
     return in_array($value, ['1', 'true', 'on', 'yes', 'enabled', 'enforced'], true);
 }

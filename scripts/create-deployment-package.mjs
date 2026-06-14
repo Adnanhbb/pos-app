@@ -36,6 +36,7 @@ const excludedFiles = [
   ".env.local",
   ".env.production",
   ".env.development",
+  "private.php",
   "tsconfig.tsbuildinfo",
 ];
 

@@ -350,6 +350,14 @@ This command is preparation only. It runs a production build, creates a local `d
 
 The package excludes `node_modules/`, `backups/`, `releases/`, `.git/`, logs, local environment files, and `tsconfig.tsbuildinfo`. It includes `.env.production.example` only. Real production secrets must be configured on the hosting provider or server and must never be packaged.
 
+For shared hosting without reliable PHP environment variables, the package also
+includes `api/config/private.example.php`. Create
+`public_html/api/config/private.php` on the server only, enter production values
+there, and never copy that private file into Git or a deployment package.
+Environment variables take precedence when available. The fallback file is
+gitignored, excluded by package generation, and protected by
+`api/config/.htaccess`. Confirm direct access returns HTTP 403 before go-live.
+
 The manifest records `deploymentPerformed: false`, `uploadPerformed: false`, and `autoSyncEnabled: false`. Actual hosting upload remains manual and outside this repository tooling.
 
 ## Hosting-Agnostic Deployment Rehearsal

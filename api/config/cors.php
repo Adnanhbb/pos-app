@@ -2,6 +2,8 @@
 
 declare(strict_types=1);
 
+require_once __DIR__ . '/runtime.php';
+
 /*
  * Configure production origins through FRONTEND_ORIGIN. Multiple origins may
  * be comma-separated for a controlled staging/production rollout.
@@ -12,11 +14,11 @@ declare(strict_types=1);
  */
 $configuredOrigins = array_filter(array_map(
     static fn (string $origin): string => rtrim(trim($origin), '/'),
-    explode(',', (string) (getenv('FRONTEND_ORIGIN') ?: ''))
+    explode(',', (string) app_config_value('FRONTEND_ORIGIN', ''))
 ));
 
 $allowLocal = in_array(
-    strtolower(trim((string) (getenv('CORS_ALLOW_LOCAL') ?: 'false'))),
+    strtolower(trim((string) app_config_value('CORS_ALLOW_LOCAL', 'false'))),
     ['1', 'true', 'yes', 'on'],
     true
 );

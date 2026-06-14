@@ -25,6 +25,17 @@ Recommended server baseline: PHP 8.1 or newer with PDO MySQL and JSON support.
 Confirm the host allows PHP authorization headers and the HTTP methods used by
 the API: GET, POST, PUT, PATCH, DELETE, and OPTIONS.
 
+The package includes Hostinger/Apache/LiteSpeed-compatible `.htaccess` files:
+
+- frontend fallback preserves real files/directories and excludes `/api`
+  naturally because that directory exists
+- API root forwards bearer `Authorization` headers to PHP
+- `api/config`, `api/lib`, and `api/sql` deny direct web access
+
+The current app does not use React Router or path-based browser routes, so the
+root `index.html` is sufficient. The frontend fallback is defensive and does
+not rewrite real assets or the API directory.
+
 ## Domain And Folder Layout
 
 For a same-domain root deployment:
@@ -77,6 +88,38 @@ REPLAY_WORKER_TOKEN
 FRONTEND_ORIGIN
 CORS_ALLOW_LOCAL=false
 ```
+
+## Private Hostinger Configuration
+
+The API loads production configuration in this order:
+
+1. PHP environment variables, when Hostinger exposes them to `getenv()`.
+2. `public_html/api/config/private.php`, when an environment value is absent.
+3. Safe defaults only for non-secret development settings. Production database
+   access fails closed when any required database value is missing.
+
+For Hostinger, first try the hosting environment/configuration facility. If a
+test `GET /api/health.php` reports that database configuration is incomplete,
+create the private fallback through File Manager or SFTP:
+
+1. Copy `public_html/api/config/private.example.php` to
+   `public_html/api/config/private.php`.
+2. Edit only `private.php` on Hostinger.
+3. Set `APP_ENV` to `production`.
+4. Enter the Hostinger database host, database name, and database user from the
+   private deployment record.
+5. Enter the database password privately.
+6. Set `FRONTEND_ORIGIN` to the exact HTTPS frontend origin.
+7. Keep `CORS_ALLOW_LOCAL` set to `false`.
+8. Generate and enter a strong, unique `REPLAY_WORKER_TOKEN` privately.
+9. Keep the reviewed `CRUD_AUTH_ENFORCEMENT` setting.
+10. Confirm `/api/config/private.php` returns HTTP 403 and never displays file
+    contents.
+
+`private.php` is gitignored and excluded from deployment packages. The package
+contains only `private.example.php`. Never commit, download into the repository,
+email, message, screenshot, or include the database password or replay token in
+support reports.
 
 Start with the reviewed `CRUD_AUTH_ENFORCEMENT` policy from the production
 checklist. Generate a strong replay worker token privately. Never place either
@@ -136,7 +179,8 @@ Do not perform these steps until the package and backups are reviewed:
 2. Export and validate the current MySQL database if one exists.
 3. Preserve the previous deployed frontend/API package.
 4. Upload API files to the selected `/api` location.
-5. Configure private server environment values.
+5. Configure environment variables or create `api/config/private.php` on the
+   server from the packaged placeholder-only example.
 6. Import/verify schema.
 7. Check API health/login/session.
 8. Upload frontend assets last.

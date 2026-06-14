@@ -15,6 +15,7 @@ dist-ssr
 .env.*
 !.env.example
 !.env.production.example
+api/config/private.php
 
 # Editor directories and files
 .vscode/*
