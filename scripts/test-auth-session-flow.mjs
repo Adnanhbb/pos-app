@@ -6,6 +6,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import ts from "typescript";
 
 const API_BASE_URL = (process.env.API_BASE_URL || "http://localhost/jawad-bro/api").replace(/\/+$/, "");
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -129,6 +130,21 @@ function hasNoPasswordLeak(value) {
   return !text.includes(password) && !/password_hash|Password/.test(text);
 }
 
+async function loadAuthIdentityResolver() {
+  const source = readFileSync(
+    resolve(projectRoot, "src/services/authIdentityService.ts"),
+    "utf8"
+  );
+  const transpiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+  }).outputText;
+  const moduleUrl = `data:text/javascript;base64,${Buffer.from(transpiled).toString("base64")}`;
+  return await import(moduleUrl);
+}
+
 async function main() {
   console.log(`Testing auth session flow against ${API_BASE_URL}`);
   console.log(`Run id: ${runId}`);
@@ -247,15 +263,53 @@ async function main() {
   await request("logout", { method: "POST", token: devToken, body: {} });
 
   const authRepository = readFileSync(resolve(projectRoot, "src/repositories/authRepository.ts"), "utf8");
+  const authIdentityService = readFileSync(resolve(projectRoot, "src/services/authIdentityService.ts"), "utf8");
   const app = readFileSync(resolve(projectRoot, "src/App.tsx"), "utf8");
   const loginSource = readFileSync(resolve(projectRoot, "src/Login.tsx"), "utf8");
   const staffRepository = readFileSync(resolve(projectRoot, "src/repositories/staffRepository.ts"), "utf8");
   const staffPage = readFileSync(resolve(projectRoot, "src/Staff.tsx"), "utf8");
+  const dashboardSource = readFileSync(resolve(projectRoot, "src/Dashboard.tsx"), "utf8");
   const firstDevSetup = readFileSync(resolve(projectRoot, "api/setup/create-first-dev.php"), "utf8");
+  const passwordSupport = readFileSync(resolve(projectRoot, "api/setup/verify-or-reset-user-password.php"), "utf8");
   const envTemplate = readFileSync(resolve(projectRoot, ".env.production.example"), "utf8");
   check("online backend rejection cannot fall back to local login", authRepository, (value) => value.includes("if (!isBackendUnavailable(error))") && value.includes("Remote login rejected; local fallback was not attempted.") && value.includes("clearLocalLoginState();") && value.includes("return null;"), "remote rejection guard is missing");
   check("offline local fallback requires explicit build opt-in", authRepository, (value) => value.includes('VITE_ALLOW_OFFLINE_LOGIN === "true"') && value.includes("Remote login unavailable; explicit offline login is disabled."), "offline login opt-in guard is missing");
   check("startup restore validates backend session before trusting local markers", { app, authRepository }, (value) => value.app.includes("restoreStartupSession") && !value.app.includes("if (id && username && role") && value.authRepository.includes("clearLocalLoginState()"), "startup still trusts marker-only login");
+  const { resolveBackendActorIdentity } = await loadAuthIdentityResolver();
+  const collisionResult = resolveBackendActorIdentity(
+    {
+      id: 2,
+      serverId: 2,
+      username: "engr",
+      name: "Adnan Habib",
+      role: "Dev",
+    },
+    [{
+      id: 2,
+      Name: "Jawad",
+      Username: "admin",
+      Mobile: "",
+      Role: "admin",
+      Password: "local-only",
+      isDeleted: false,
+      deletedAt: null,
+    }]
+  );
+  check(
+    "backend actor wins over colliding IndexedDB local id",
+    collisionResult,
+    (value) =>
+      value?.Name === "Adnan Habib" &&
+      value?.Username === "engr" &&
+      value?.Role === "Dev" &&
+      value?.serverId === 2 &&
+      value?.id === undefined,
+    "local user Jawad overrode backend actor engr"
+  );
+  check("backend actor numeric id is treated as serverId, not IndexedDB id", authIdentityService, (value) => value.includes("serverId = actor.serverId ?? actor.id ?? null") && value.includes("id: cachedMatch?.id") && !value.includes("id: actor.id"), "backend id can still collide with a local IndexedDB id");
+  check("backend actor fields override a matching local cached profile", authIdentityService, (value) => value.includes("Name: name") && value.includes("Username: username") && value.includes('identitySource: "backend"'), "local cached identity can override the backend actor");
+  check("online and offline identity markers keep serverId and local id separate", authRepository, (value) => value.includes('localStorage.setItem("loggedInUserServerId"') && value.includes('localStorage.removeItem("loggedInUserId")') && value.includes('user.identitySource === "backend"'), "identity markers do not distinguish backend and local ids");
+  check("Dashboard displays validated session identity instead of local id lookup", dashboardSource, (value) => value.includes(".restoreStartupSession()") && !value.includes(".getCurrentUser()"), "Dashboard can still display a colliding local user");
   check("frontend backdoor and offline login both default disabled", { loginSource, envTemplate }, (value) => value.loginSource.includes('VITE_ENABLE_DEV_BACKDOOR === "true"') && /^VITE_ENABLE_DEV_BACKDOOR=false$/m.test(value.envTemplate) && /^VITE_ALLOW_OFFLINE_LOGIN=false$/m.test(value.envTemplate), "production auth defaults are not safe");
   check("Admin local Staff repository hides and protects Dev users", staffRepository, (value) => value.includes('actorCanManageDevUsers() ? null : "Dev"') && value.includes('user.Role === "Dev"') && value.includes("assertDevUserAccess"), "local Dev account boundary is missing");
   check("Staff repository uses authenticated users API as the online listing source", staffRepository, (value) => value.includes('entityApi.list<RemoteUserResponse>("users")') && value.includes("extractRemoteUserList(response)") && value.includes("cacheRemoteUserProfiles(remoteUsers)"), "Staff listing is not API-first");
@@ -266,6 +320,9 @@ async function main() {
   check("Staff page exposes Dev role controls only to Dev", staffPage, (value) => value.includes('currentRole === "Dev"') && value.includes('{isDevRole && <option value="Dev">Dev</option>}'), "Staff role control is not Dev-only");
   check("Staff page surfaces safe list and write errors", staffPage, (value) => value.includes("getStaffErrorMessage") && value.includes("setLoadError(getStaffErrorMessage(error))") && value.includes("alert(getStaffErrorMessage(error))"), "Staff API errors are not visible to the user");
   check("one-time Dev creator is CLI-only and hashes safely", firstDevSetup, (value) => value.includes("PHP_SAPI !== 'cli'") && value.includes("password_hash($password, PASSWORD_DEFAULT)") && value.includes("'role' => 'Dev'") && !value.includes("passwordHash ."), "first Dev setup safeguards are missing");
+  check("password support workflow is CLI-only and uses the API-configured database", passwordSupport, (value) => value.includes("PHP_SAPI !== 'cli'") && value.includes("config/database.php") && value.includes("get_pdo()"), "password support script is not safely bound to CLI/API configuration");
+  check("password support workflow reports safe metadata without printing hashes", passwordSupport, (value) => value.includes("Password hash present") && value.includes("Password hash length") && value.includes("password_verify(") && !value.includes("print_password_support_result('Password hash',"), "password support script may expose sensitive material");
+  check("password reset requires explicit confirmation and PASSWORD_DEFAULT", passwordSupport, (value) => value.includes("resetConfirmation !== 'RESET'") && value.includes("password_hash($newPassword, PASSWORD_DEFAULT)") && value.includes("Password reset applied"), "password reset confirmation or hashing policy is missing");
 
   console.log(`Summary: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

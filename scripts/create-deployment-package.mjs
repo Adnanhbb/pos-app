@@ -12,10 +12,22 @@ const frontendTarget = join(packageRoot, "frontend");
 const backendTarget = join(packageRoot, "api");
 const docsTarget = join(packageRoot, "docs");
 
-const buildApiBaseUrl = process.env.VITE_API_BASE_URL || "https://api.example.com";
-const buildBasePath = process.env.VITE_BASE_PATH || "/";
-const buildDevBackdoorEnabled = process.env.VITE_ENABLE_DEV_BACKDOOR === "true";
-const buildOfflineLoginEnabled = process.env.VITE_ALLOW_OFFLINE_LOGIN === "true";
+const args = process.argv.slice(2);
+const hostingerMode = args.includes("--hostinger");
+const packageMode = hostingerMode ? "hostinger-production" : "custom";
+const HOSTINGER_API_BASE_URL = "https://jawadandbrother.com/api";
+const buildApiBaseUrl = hostingerMode
+  ? HOSTINGER_API_BASE_URL
+  : process.env.VITE_API_BASE_URL || "https://api.example.com";
+const buildBasePath = hostingerMode
+  ? "/"
+  : process.env.VITE_BASE_PATH || "/";
+const buildDevBackdoorEnabled = hostingerMode
+  ? false
+  : process.env.VITE_ENABLE_DEV_BACKDOOR === "true";
+const buildOfflineLoginEnabled = hostingerMode
+  ? false
+  : process.env.VITE_ALLOW_OFFLINE_LOGIN === "true";
 const buildCommand = process.platform === "win32" ? "cmd.exe" : "npm";
 const buildArgs = process.platform === "win32" ? ["/c", "npm.cmd", "run", "build"] : ["run", "build"];
 const buildCommandLabel = process.platform === "win32" ? "npm.cmd run build" : "npm run build";
@@ -149,6 +161,44 @@ function scanForbiddenPackagePaths() {
   return forbidden;
 }
 
+function scanFrontendBuild() {
+  const forbiddenPatterns = [
+    { label: "localhost", pattern: /localhost/i },
+    { label: "Laragon rehearsal path", pattern: /jawad-bro-rehearsal/i },
+    { label: "legacy POS subfolder", pattern: /\/pos-app\//i },
+  ];
+  const forbiddenMatches = [];
+  const apiUrlMatches = [];
+
+  for (const file of listFiles(frontendTarget)) {
+    if (!/\.(html|js|css|json|txt|webmanifest)$/i.test(file)) continue;
+    const fullPath = join(frontendTarget, file);
+    const text = readFileSync(fullPath, "utf8");
+
+    for (const forbidden of forbiddenPatterns) {
+      if (forbidden.pattern.test(text)) {
+        forbiddenMatches.push({ file, reason: forbidden.label });
+      }
+    }
+
+    if (text.includes(buildApiBaseUrl)) {
+      apiUrlMatches.push(file);
+    }
+  }
+
+  const indexHtml = readFileSync(join(frontendTarget, "index.html"), "utf8");
+  const rootAssetPaths =
+    !indexHtml.includes("/jawad-bro-rehearsal/") &&
+    !indexHtml.includes("/pos-app/") &&
+    /(?:src|href)="\/(?:assets\/|vite\.svg)/.test(indexHtml);
+
+  return {
+    forbiddenMatches,
+    apiUrlMatches,
+    rootAssetPaths,
+  };
+}
+
 function main() {
   if (buildDevBackdoorEnabled) {
     throw new Error("Refusing to create a client deployment package while VITE_ENABLE_DEV_BACKDOOR=true. Use a database-backed support user.");
@@ -190,14 +240,33 @@ function main() {
   const includedFolders = ["frontend", "api", "docs"];
   const sqlFiles = listFiles(backendTarget).filter((file) => file.toLowerCase().endsWith(".sql"));
   const forbiddenPackagePaths = scanForbiddenPackagePaths();
+  const frontendBuildScan = scanFrontendBuild();
 
   if (forbiddenPackagePaths.length > 0) {
     console.error(JSON.stringify({ ok: false, step: "package-safety-scan", forbiddenPackagePaths }, null, 2));
     process.exit(1);
   }
+  if (
+    hostingerMode &&
+    (
+      frontendBuildScan.forbiddenMatches.length > 0 ||
+      frontendBuildScan.apiUrlMatches.length === 0 ||
+      !frontendBuildScan.rootAssetPaths
+    )
+  ) {
+    console.error(JSON.stringify({
+      ok: false,
+      step: "hostinger-frontend-safety-scan",
+      expectedApiBaseUrl: buildApiBaseUrl,
+      expectedBasePath: buildBasePath,
+      frontendBuildScan,
+    }, null, 2));
+    process.exit(1);
+  }
 
   const manifest = {
     format: "jawad-bro-deployment-package-manifest",
+    packageMode,
     createdAt,
     deploymentPerformed: false,
     uploadPerformed: false,
@@ -235,6 +304,7 @@ function main() {
       devBackdoorEnabled: false,
       offlineLoginExplicitlyEnabled: buildOfflineLoginEnabled,
       forbiddenPackagePaths,
+      frontendBuildScan,
     },
     counts: {
       frontendFiles: listFiles(frontendTarget).length,
@@ -266,6 +336,8 @@ function main() {
     counts: manifest.counts,
     git: manifest.git,
     safety: manifest.safety,
+    packageMode,
+    build: manifest.build,
   }, null, 2));
 }
 

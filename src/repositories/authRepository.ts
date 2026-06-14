@@ -3,8 +3,15 @@ import { clearAuthToken } from "../api/authToken";
 import { fetchCurrentSession, loginWithPassword, logoutSession, type AuthActor } from "../api/authSession";
 import { ApiError } from "../api/client";
 import type { Role, User } from "../types/entities";
+import {
+  resolveBackendActorIdentity,
+  type BackendAuthenticatedUser,
+} from "../services/authIdentityService";
 
 type SyncableUser = User & { serverId?: number | string | null };
+export type AuthenticatedUser =
+  | BackendAuthenticatedUser
+  | (SyncableUser & { identitySource: "offline" });
 const OFFLINE_LOGIN_ENABLED = import.meta.env.VITE_ALLOW_OFFLINE_LOGIN === "true";
 
 function isBackendUnavailable(error: unknown): boolean {
@@ -14,62 +21,25 @@ function isBackendUnavailable(error: unknown): boolean {
 function clearLocalLoginState(): void {
   clearAuthToken();
   localStorage.removeItem("loggedInUserId");
+  localStorage.removeItem("loggedInUserServerId");
   localStorage.removeItem("loggedInUserName");
   localStorage.removeItem("loggedInUserRole");
 }
 
-function getActorServerId(actor: AuthActor): number | string | null {
-  return actor.serverId ?? actor.id ?? null;
+async function resolveActorToLocalUser(actor: AuthActor): Promise<AuthenticatedUser | null> {
+  const users = await getAllUsers() as SyncableUser[];
+  return resolveBackendActorIdentity(actor, users);
 }
 
-function actorToUser(actor: AuthActor): SyncableUser | null {
-  const username = actor.Username ?? actor.username;
-  const name = actor.Name ?? actor.name;
-  const role = actor.Role ?? actor.role;
-
-  if (!username || !name || !role) return null;
-
-  const serverId = getActorServerId(actor);
-
+function asOfflineIdentity(user: User): AuthenticatedUser {
   return {
-    id: typeof actor.id === "number" ? actor.id : undefined,
-    serverId,
-    Username: username,
-    Name: name,
-    Mobile: actor.Mobile ?? actor.mobile ?? "",
-    Role: role,
-    Password: "",
-    isDeleted: false,
-    deletedAt: null,
+    ...(user as SyncableUser),
+    identitySource: "offline",
   };
 }
 
-async function resolveActorToLocalUser(actor: AuthActor): Promise<User | null> {
-  const actorUser = actorToUser(actor);
-  if (!actorUser) return null;
-
-  const users = await getAllUsers() as SyncableUser[];
-  const serverId = actorUser.serverId;
-
-  const localMatch = users.find((user) => {
-    if (serverId != null && user.serverId != null && String(user.serverId) === String(serverId)) return true;
-    return user.Username === actorUser.Username;
-  });
-
-  if (!localMatch) return actorUser;
-
-  return {
-    ...localMatch,
-    Name: actorUser.Name || localMatch.Name,
-    Username: actorUser.Username || localMatch.Username,
-    Mobile: actorUser.Mobile ?? localMatch.Mobile,
-    Role: actorUser.Role || localMatch.Role,
-    serverId: localMatch.serverId ?? actorUser.serverId,
-  } as SyncableUser;
-}
-
 export const authRepository = {
-  async validateUser(username: string, password: string, role?: Role): Promise<User | null> {
+  async validateUser(username: string, password: string, role?: Role): Promise<AuthenticatedUser | null> {
     try {
       const actor = await loginWithPassword(username, password);
       const remoteUser = await resolveActorToLocalUser(actor);
@@ -93,14 +63,15 @@ export const authRepository = {
       console.warn("Remote login unavailable; using explicitly enabled local login fallback.");
     }
 
-    return await validateUser(username, password, role);
+    const localUser = await validateUser(username, password, role);
+    return localUser ? asOfflineIdentity(localUser) : null;
   },
 
   async getUserByUsername(username: string): Promise<User | null> {
     return await getUserByUsername(username);
   },
 
-  async getCurrentSession(): Promise<User | null> {
+  async getCurrentSession(): Promise<AuthenticatedUser | null> {
     try {
       const actor = await fetchCurrentSession();
       return actor ? await resolveActorToLocalUser(actor) : null;
@@ -109,13 +80,14 @@ export const authRepository = {
     }
   },
 
-  async restoreStartupSession(): Promise<User | null> {
+  async restoreStartupSession(): Promise<AuthenticatedUser | null> {
     try {
       const actor = await fetchCurrentSession();
       return actor ? await resolveActorToLocalUser(actor) : null;
     } catch (error) {
       if (isBackendUnavailable(error) && OFFLINE_LOGIN_ENABLED) {
-        return await authRepository.getCurrentUser();
+        const localUser = await authRepository.getCurrentUser();
+        return localUser ? asOfflineIdentity(localUser) : null;
       }
 
       if (!isBackendUnavailable(error)) {
@@ -147,6 +119,28 @@ export const authRepository = {
     }
 
     return null;
+  },
+
+  rememberAuthenticatedUser(user: AuthenticatedUser): void {
+    localStorage.setItem("loggedInUserName", user.Name);
+    localStorage.setItem("loggedInUserRole", user.Role);
+
+    if (user.identitySource === "backend") {
+      localStorage.removeItem("loggedInUserId");
+      if (user.serverId != null) {
+        localStorage.setItem("loggedInUserServerId", String(user.serverId));
+      } else {
+        localStorage.removeItem("loggedInUserServerId");
+      }
+      return;
+    }
+
+    localStorage.removeItem("loggedInUserServerId");
+    if (user.id != null) {
+      localStorage.setItem("loggedInUserId", String(user.id));
+    } else {
+      localStorage.removeItem("loggedInUserId");
+    }
   },
 
   logout() {

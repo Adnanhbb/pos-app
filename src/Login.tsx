@@ -78,8 +78,7 @@ export default function Login({ onLogin }: LoginProps) {
           return;
         }
 
-        // store logged-in ID
-        localStorage.setItem("loggedInUserId", String(user.id));
+        authRepository.rememberAuthenticatedUser(user);
 
         // pass display name and role to app state
         onLogin(user.Name, user.Role as Role);

@@ -15,6 +15,8 @@ import { join, relative, resolve } from "node:path";
 const root = process.cwd();
 const packageRoot = resolve(root, "deployment-package");
 const rehearsalMode = process.argv.includes("--rehearsal");
+const expectedProductionApiUrl =
+  process.env.HOSTING_EXPECTED_API_URL || "https://jawadandbrother.com/api";
 
 const requiredPackageFiles = [
   "frontend/index.html",
@@ -26,6 +28,7 @@ const requiredPackageFiles = [
   "api/config-check.php",
   "api/setup/.htaccess",
   "api/setup/create-first-dev.php",
+  "api/setup/verify-or-reset-user-password.php",
   "api/lib/.htaccess",
   "api/sql/.htaccess",
   "api/health.php",
@@ -216,6 +219,7 @@ const configLoadingOrderIsSafe =
   environmentLookupIndex < privateLookupIndex;
 const configCheckSource = read("api/config-check.php");
 const firstDevSetupSource = read("api/setup/create-first-dev.php");
+const passwordSupportSource = read("api/setup/verify-or-reset-user-password.php");
 const setupHtaccess = existsSync(join(packageRoot, "api", "setup", ".htaccess"))
   ? readFileSync(join(packageRoot, "api", "setup", ".htaccess"), "utf8")
   : "";
@@ -232,8 +236,16 @@ const firstDevSetupIsSafe =
   firstDevSetupSource.includes("'role' => 'Dev'") &&
   firstDevSetupSource.includes("An active Dev user already exists") &&
   (setupHtaccess.includes("Require all denied") || setupHtaccess.includes("Deny from all"));
+const passwordSupportIsSafe =
+  passwordSupportSource.includes("PHP_SAPI !== 'cli'") &&
+  passwordSupportSource.includes("password_verify(") &&
+  passwordSupportSource.includes("password_hash($newPassword, PASSWORD_DEFAULT)") &&
+  passwordSupportSource.includes("resetConfirmation !== 'RESET'") &&
+  passwordSupportSource.includes("Password hash length") &&
+  !passwordSupportSource.includes("print_password_support_result('Password hash',");
 
 const buildApiUrl = String(manifest?.build?.VITE_API_BASE_URL ?? "");
+const buildBasePath = String(manifest?.build?.VITE_BASE_PATH ?? "");
 const isLocalApiUrl = /(^|\/\/)(localhost|127\.0\.0\.1)(:|\/|$)/i.test(buildApiUrl);
 const placeholderApiUrl = /example\.com|<|replace[_-]?with/i.test(buildApiUrl);
 const placeholderOrigin = /example\.com|<|replace[_-]?with/i.test(env.FRONTEND_ORIGIN ?? "");
@@ -255,6 +267,32 @@ const profileSupplied = Boolean(
   hostingProfile.dbNameProvided ||
   hostingProfile.dbUserProvided
 );
+const frontendTextFiles = packageFiles.filter((path) =>
+  /^frontend\/.*\.(html|js|css|json|txt|webmanifest)$/i.test(path)
+);
+const frontendForbiddenReferences = [];
+const frontendApiUrlMatches = [];
+for (const path of frontendTextFiles) {
+  const text = readFileSync(join(packageRoot, path), "utf8");
+  if (/localhost/i.test(text)) {
+    frontendForbiddenReferences.push({ path, reason: "localhost" });
+  }
+  if (/jawad-bro-rehearsal/i.test(text)) {
+    frontendForbiddenReferences.push({ path, reason: "Laragon rehearsal path" });
+  }
+  if (/\/pos-app\//i.test(text)) {
+    frontendForbiddenReferences.push({ path, reason: "legacy POS subfolder" });
+  }
+  if (text.includes(expectedProductionApiUrl)) {
+    frontendApiUrlMatches.push(path);
+  }
+}
+const frontendIndexSource = existsSync(join(packageRoot, "frontend", "index.html"))
+  ? readFileSync(join(packageRoot, "frontend", "index.html"), "utf8")
+  : "";
+const frontendUsesRootAssetPaths =
+  /(?:src|href)="\/(?:assets\/|vite\.svg)/.test(frontendIndexSource) &&
+  !/jawad-bro-rehearsal|\/pos-app\//i.test(frontendIndexSource);
 
 const checks = [
   result("deployment package exists", existsSync(packageRoot)),
@@ -272,6 +310,7 @@ const checks = [
   result("private config example is packaged with placeholder secrets only", privateExamplePackaged && privateExampleSecretsArePlaceholders && envExampleSecretsArePlaceholders),
   result("temporary config diagnostic is guarded and disabled by default", configCheckIsSafelyGuarded && env.ENABLE_CONFIG_DIAGNOSTICS === "false" && privateExampleSource.includes("'ENABLE_CONFIG_DIAGNOSTICS' => 'false'")),
   result("one-time Dev creator is CLI-only, web-blocked, and password-hashed", firstDevSetupIsSafe),
+  result("password verification/reset support is CLI-only, web-blocked, and secret-safe", passwordSupportIsSafe && (setupHtaccess.includes("Require all denied") || setupHtaccess.includes("Deny from all"))),
   result("actual private config is ignored, untracked, and excluded from package", privateConfigIgnored && !privateConfigTracked && !privateConfigPackaged, {
     privateConfigIgnored,
     privateConfigTracked,
@@ -279,6 +318,14 @@ const checks = [
   }),
   result("config directory blocks direct web access", configHtaccess.includes("Require all denied") || configHtaccess.includes("Deny from all")),
   result("production package does not target localhost", rehearsalMode || !isLocalApiUrl, { buildApiUrl: isLocalApiUrl ? "[local rehearsal URL]" : buildApiUrl }),
+  result("Hostinger package mode is explicit", rehearsalMode || manifest?.packageMode === "hostinger-production", { packageMode: manifest?.packageMode ?? null }),
+  result("Hostinger frontend uses the production API URL", rehearsalMode || buildApiUrl === expectedProductionApiUrl && frontendApiUrlMatches.length > 0, {
+    buildApiUrl,
+    expectedProductionApiUrl,
+    matchedFiles: frontendApiUrlMatches,
+  }),
+  result("Hostinger frontend uses domain-root asset paths", rehearsalMode || buildBasePath === "/" && frontendUsesRootAssetPaths, { buildBasePath }),
+  result("frontend contains no rehearsal, localhost, or legacy subfolder references", rehearsalMode || frontendForbiddenReferences.length === 0, { frontendForbiddenReferences }),
   result("frontend htaccess preserves files/api and provides safe fallback", frontendHtaccess.includes("REQUEST_FILENAME") && frontendHtaccess.includes("index.html")),
   result("api htaccess forwards bearer authorization", apiHtaccess.includes("HTTP_AUTHORIZATION") && apiHtaccess.includes("Authorization")),
   result("package excludes secrets and generated/dev artifacts", forbiddenPackageFiles.length === 0, { forbiddenPackageFiles }),

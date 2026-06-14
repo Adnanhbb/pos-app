@@ -47,10 +47,31 @@ public_html/
   api/
 ```
 
-- Copy `deployment-package/frontend/*` into `public_html/`.
-- Copy `deployment-package/api/*` into `public_html/api/`.
+- Copy the contents of `deployment-package/frontend/` into `public_html/`.
+- Copy the contents of `deployment-package/api/` into `public_html/api/`.
+- Do not overwrite the existing server-only
+  `public_html/api/config/private.php`.
 - Build with `VITE_BASE_PATH=/`.
 - Set `VITE_API_BASE_URL=https://<domain>/api`.
+
+For the current Hostinger deployment, generate the package only with:
+
+```powershell
+npm.cmd run deployment:package:hostinger
+npm.cmd run hosting:verify-readiness
+```
+
+This mode locks the public build values to:
+
+```text
+VITE_API_BASE_URL=https://jawadandbrother.com/api
+VITE_BASE_PATH=/
+VITE_ENABLE_DEV_BACKDOOR=false
+VITE_ALLOW_OFFLINE_LOGIN=false
+```
+
+It also rejects emitted frontend files containing `localhost`,
+`jawad-bro-rehearsal`, or `/pos-app/`.
 
 For a frontend subfolder, build with the exact leading/trailing slash:
 
@@ -165,19 +186,11 @@ database credentials or the replay token in frontend files.
 
 ## Package Preparation And Local Gate
 
-Set the real public build values locally without committing them:
+For `jawadandbrother.com`, use the locked Hostinger package command:
 
 ```powershell
-$env:VITE_API_BASE_URL="https://<production-domain>/api"
-$env:VITE_BASE_PATH="/"
-$env:VITE_ENABLE_DEV_BACKDOOR="false"
-$env:VITE_ALLOW_OFFLINE_LOGIN="false"
-npm.cmd run deployment:package
+npm.cmd run deployment:package:hostinger
 npm.cmd run hosting:verify-readiness
-Remove-Item Env:VITE_API_BASE_URL
-Remove-Item Env:VITE_BASE_PATH
-Remove-Item Env:VITE_ENABLE_DEV_BACKDOOR
-Remove-Item Env:VITE_ALLOW_OFFLINE_LOGIN
 ```
 
 Inspect `deployment-package/deployment-manifest.json`. It must show:
@@ -197,12 +210,14 @@ Do not perform these steps until the package and backups are reviewed:
 1. Export and validate IndexedDB.
 2. Export and validate the current MySQL database if one exists.
 3. Preserve the previous deployed frontend/API package.
-4. Upload API files to the selected `/api` location.
+4. Upload the contents of `deployment-package/api/` to `public_html/api/`.
+   Preserve `public_html/api/config/private.php`; do not overwrite or remove it.
 5. Configure environment variables or create `api/config/private.php` on the
    server from the packaged placeholder-only example.
 6. Import/verify schema.
 7. Check API health/login/session.
-8. Upload frontend assets last.
+8. Upload the contents of `deployment-package/frontend/` to `public_html/`
+   last.
 9. Perform first-login and business smoke checks.
 
 ## First Endpoint Checks
@@ -243,6 +258,32 @@ After the success message:
 3. Login through the normal application login form.
 4. Confirm the session reports exact role `Dev`.
 5. Confirm Admin cannot see the Dev account in Staff/Users.
+
+### Verify Or Reset A Production User Password
+
+For a supervised login support case, run the packaged CLI-only utility through
+Hostinger SSH:
+
+```text
+php public_html/api/setup/verify-or-reset-user-password.php
+```
+
+It uses the same production API configuration, including the server-only
+`api/config/private.php` fallback. It reports only whether the username exists,
+role, active/deleted state, whether a hash exists, hash length, and whether
+`password_verify` passed when a password is entered privately.
+
+Reset is optional and requires typing `RESET`, then entering the new password
+twice. The replacement is generated with
+`password_hash(..., PASSWORD_DEFAULT)`. Passwords, hashes, tokens, and database
+credentials are never printed.
+
+After verification or reset:
+
+1. Confirm normal login through the application.
+2. Delete
+   `public_html/api/setup/verify-or-reset-user-password.php` from Hostinger.
+3. Keep `public_html/api/setup/.htaccess`.
 
 For a controlled local setup where PHP environment variables are available,
 the existing helper remains:

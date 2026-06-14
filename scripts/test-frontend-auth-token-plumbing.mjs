@@ -26,6 +26,7 @@ const syncEngine = readFileSync("src/services/syncEngine.ts", "utf8");
 const settings = readFileSync("src/Settings.tsx", "utf8");
 const authSession = readFileSync("src/api/authSession.ts", "utf8");
 const authRepository = readFileSync("src/repositories/authRepository.ts", "utf8");
+const authIdentity = readFileSync("src/services/authIdentityService.ts", "utf8");
 const app = readFileSync("src/App.tsx", "utf8");
 const dashboard = readFileSync("src/Dashboard.tsx", "utf8");
 const login = readFileSync("src/Login.tsx", "utf8");
@@ -49,6 +50,10 @@ check("authRepository logout clears token and local login state", authRepository
 check("Dashboard logout uses shared App logout instead of reload-only local cleanup", dashboard.includes("onLogout();") && dashboard.includes("setCurrentUser(null)") && !dashboard.includes("window.location.reload()"));
 check("App restores startup session through validated repository policy without sync replay", app.includes("restoreStartupSession") && !app.includes("processPending") && !app.includes("if (id && username && role"));
 check("startup restore clears stale online markers after invalid backend session", authRepository.includes("restoreStartupSession") && authRepository.includes("clearLocalLoginState()"));
+check("backend actor id is stored only as serverId", authIdentity.includes("serverId = actor.serverId ?? actor.id ?? null") && !authIdentity.includes("id: actor.id"));
+check("backend actor identity overrides local cached display fields", authIdentity.includes("Name: name") && authIdentity.includes("Username: username") && authIdentity.includes('identitySource: "backend"'));
+check("online identity markers never reuse backend id as local IndexedDB id", authRepository.includes('localStorage.setItem("loggedInUserServerId"') && authRepository.includes('localStorage.removeItem("loggedInUserId")'));
+check("Dashboard current identity comes from validated session policy", dashboard.includes(".restoreStartupSession()") && !dashboard.includes(".getCurrentUser()"));
 check("frontend backdoor remains explicitly gated", login.includes('VITE_ENABLE_DEV_BACKDOOR === "true"'));
 check("role mismatch revokes the newly issued login token", login.includes('if (user.Role !== "Dev" && user.Role !== role)') && login.includes("authRepository.logout();"));
 check("syncEngine marks auth failures with safe status metadata", syncEngine.includes("authError") && syncEngine.includes("getErrorStatus(error)") && syncEngine.includes("isAuthError(error)"));

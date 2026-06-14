@@ -83,9 +83,7 @@ export default function App() {
 
     authRepository.restoreStartupSession().then((sessionUser) => {
       if (cancelled || !sessionUser || !validRoles.includes(sessionUser.Role as Role)) return;
-      localStorage.setItem("loggedInUserId", String(sessionUser.id ?? sessionUser.Username));
-      localStorage.setItem("loggedInUserName", sessionUser.Name);
-      localStorage.setItem("loggedInUserRole", sessionUser.Role);
+      authRepository.rememberAuthenticatedUser(sessionUser);
       setUser({ username: sessionUser.Name, role: sessionUser.Role as Role });
     });
 

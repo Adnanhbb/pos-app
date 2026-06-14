@@ -390,7 +390,7 @@ useEffect(() => {
 
   useEffect(() => {
   authRepository
-    .getCurrentUser()
+    .restoreStartupSession()
     .then(setCurrentUser)
     .catch((err) => {
       console.error("Failed to load current user", err);
@@ -464,7 +464,7 @@ const saveEditedUser = async () => {
     await staffRepository.update(userToUpdate);
 
     // Reload the current user ONLY
-    const refreshed = await authRepository.getCurrentUser();
+    const refreshed = await authRepository.restoreStartupSession();
     setCurrentUser(refreshed);
 
     setEditUserOpen(false);
